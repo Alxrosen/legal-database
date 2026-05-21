@@ -1,0 +1,9 @@
+Alembic migrations.
+
+After approving the M2 schema, generate and apply the first migration:
+
+    uv run alembic revision --autogenerate -m "initial schema"
+    uv run alembic upgrade head
+
+The DB URL is loaded from `.env` via `legal_sourcing.config.get_settings()`,
+not from alembic.ini.

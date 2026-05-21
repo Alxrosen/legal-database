@@ -1,0 +1,300 @@
+# Canonical practice-area taxonomy.
+#
+# Schema:
+#   - slug: stable kebab-case identifier (FK target). NEVER change once shipped.
+#     name: human-readable label.
+#     priority: optional bool. Defaults to false. Marks categories the
+#               business cares about specifically (today: anything under
+#               Personal Injury).
+#     parent: optional slug. Subcategories roll up to their parent at
+#             query time — a firm tagged with a child is implicitly tagged
+#             with the parent.
+#     aliases: list of strings the system should treat as equivalent.
+#              Both these aliases AND the scraped value are normalized
+#              the same way (lowercase, trim, collapse whitespace, strip
+#              filler words ["law","attorney","attorneys","lawyer",
+#              "lawyers","legal","services","practice"], strip
+#              punctuation, singularize) and matched by EXACT equality.
+#              Add new aliases by inspecting unmatched_practice_areas.
+#     description: optional, for humans.
+#
+# Loading: a seed script (added in M3) upserts this file into the
+# `practice_areas` and `practice_area_aliases` tables. The YAML is the
+# source of truth; the DB is a read-optimized projection.
+
+areas:
+
+  # ---------- Personal Injury (PRIORITY) ----------
+  - slug: personal-injury
+    name: Personal Injury
+    priority: true
+    description: >
+      Catch-all for plaintiff-side bodily-injury work. Firms tagged with
+      any of the child slugs below are implicitly tagged with this slug.
+    aliases:
+      - personal injury
+      - personal injury law
+      - pi
+      - injury
+      - injury law
+      - injuries
+      - bodily injury
+      - accident
+      - accidents
+      - accident law
+      - plaintiff personal injury
+      - plaintiffs personal injury
+      - tort
+      - torts
+      - tort law
+      - civil litigation injury
+      - catastrophic injury
+
+  - slug: auto-accidents
+    name: Auto Accidents
+    parent: personal-injury
+    priority: true
+    aliases:
+      - auto accident
+      - auto accidents
+      - car accident
+      - car accidents
+      - car crash
+      - car crashes
+      - automobile accident
+      - automobile accidents
+      - motor vehicle accident
+      - motor vehicle accidents
+      - mva
+      - vehicle accident
+      - vehicle accidents
+      - rideshare accident
+      - uber accident
+      - lyft accident
+
+  - slug: motorcycle-accidents
+    name: Motorcycle Accidents
+    parent: personal-injury
+    priority: true
+    aliases:
+      - motorcycle accident
+      - motorcycle accidents
+      - motorcycle crash
+      - bike accident
+      - motorbike accident
+
+  - slug: truck-accidents
+    name: Truck Accidents
+    parent: personal-injury
+    priority: true
+    aliases:
+      - truck accident
+      - truck accidents
+      - 18 wheeler
+      - eighteen wheeler
+      - semi truck accident
+      - tractor trailer accident
+      - commercial vehicle accident
+      - big rig accident
+      - trucking accident
+
+  - slug: slip-and-fall
+    name: Slip and Fall
+    parent: personal-injury
+    priority: true
+    aliases:
+      - slip and fall
+      - slip fall
+      - trip and fall
+      - trip fall
+      - fall accident
+
+  - slug: premises-liability
+    name: Premises Liability
+    parent: personal-injury
+    priority: true
+    aliases:
+      - premises liability
+      - premises
+      - unsafe premises
+      - inadequate security
+      - negligent security
+
+  - slug: medical-malpractice
+    name: Medical Malpractice
+    parent: personal-injury
+    priority: true
+    aliases:
+      - medical malpractice
+      - med mal
+      - medmal
+      - medical negligence
+      - hospital negligence
+      - physician malpractice
+      - surgical error
+      - birth injury
+      - misdiagnosis
+
+  - slug: wrongful-death
+    name: Wrongful Death
+    parent: personal-injury
+    priority: true
+    aliases:
+      - wrongful death
+      - fatal accident
+      - survivor action
+
+  - slug: product-liability
+    name: Product Liability
+    parent: personal-injury
+    priority: true
+    aliases:
+      - product liability
+      - products liability
+      - defective product
+      - defective products
+      - dangerous product
+      - product defect
+
+  - slug: workers-compensation
+    name: Workers Compensation
+    parent: personal-injury
+    priority: true
+    aliases:
+      - workers compensation
+      - workers comp
+      - workmens comp
+      - workman comp
+      - on the job injury
+      - work injury
+      - industrial injury
+
+  - slug: dog-bites
+    name: Dog Bites
+    parent: personal-injury
+    priority: true
+    aliases:
+      - dog bite
+      - dog bites
+      - animal attack
+      - animal bite
+      - dog attack
+
+  - slug: nursing-home-abuse
+    name: Nursing Home Abuse
+    parent: personal-injury
+    priority: true
+    aliases:
+      - nursing home abuse
+      - nursing home neglect
+      - elder abuse
+      - elder neglect
+      - assisted living abuse
+      - long term care abuse
+
+  - slug: mass-torts
+    name: Mass Torts
+    parent: personal-injury
+    priority: true
+    aliases:
+      - mass tort
+      - mass torts
+      - class action
+      - mdl
+      - multidistrict litigation
+      - pharmaceutical litigation
+      - drug litigation
+
+  # ---------- Other top-level areas (non-priority, lightly seeded) ----------
+  - slug: family-law
+    name: Family Law
+    aliases:
+      - family law
+      - divorce
+      - divorce law
+      - custody
+      - child custody
+      - child support
+      - alimony
+      - adoption
+
+  - slug: criminal-defense
+    name: Criminal Defense
+    aliases:
+      - criminal defense
+      - criminal law
+      - dui
+      - dwi
+      - white collar
+      - white collar defense
+      - felony defense
+
+  - slug: estate-planning
+    name: Estate Planning
+    aliases:
+      - estate planning
+      - wills
+      - trusts
+      - probate
+      - estates and trusts
+      - estate
+
+  - slug: business-law
+    name: Business Law
+    aliases:
+      - business law
+      - corporate law
+      - corporate
+      - commercial law
+      - business litigation
+      - contracts
+      - mergers and acquisitions
+      - m a
+      - ma
+
+  - slug: real-estate
+    name: Real Estate
+    aliases:
+      - real estate
+      - real estate law
+      - property law
+      - landlord tenant
+
+  - slug: immigration
+    name: Immigration
+    aliases:
+      - immigration
+      - immigration law
+      - visa
+      - deportation defense
+      - asylum
+
+  - slug: bankruptcy
+    name: Bankruptcy
+    aliases:
+      - bankruptcy
+      - chapter 7
+      - chapter 11
+      - chapter 13
+      - debt relief
+
+  - slug: employment
+    name: Employment
+    aliases:
+      - employment
+      - employment law
+      - labor law
+      - wrongful termination
+      - discrimination
+      - harassment
+
+  - slug: intellectual-property
+    name: Intellectual Property
+    aliases:
+      - intellectual property
+      - ip
+      - patent
+      - patents
+      - trademark
+      - trademarks
+      - copyright

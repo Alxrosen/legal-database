@@ -22,6 +22,10 @@ dependencies = [
     "sqlalchemy>=2.0",
     "alembic>=1.13",
 
+    # Reference data / text processing
+    "pyyaml>=6.0",
+    "inflect>=7.3",  # singularize "injuries" -> "injury" for practice-area matching
+
     # Config + logging
     "pydantic-settings>=2.4",
     "structlog>=24.4",
