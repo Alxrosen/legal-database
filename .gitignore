@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.python-version
+
+# uv
+.uv-cache/
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Environment
+.env
+.env.local
+
+# Project data — never commit scraped content or local DBs
+data/raw/
+data/processed/
+*.sqlite
+*.sqlite-journal
+*.db
+
+# Logs
+logs/
+*.log
+
+# Notebooks (committed selectively — keep this strict for now)
+notebooks/*
+!notebooks/.gitkeep
