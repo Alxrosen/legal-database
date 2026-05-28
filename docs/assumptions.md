@@ -385,3 +385,116 @@ config table.
 - Per-site overrides: each `src/legal_sourcing/scrapers/<source>.py`
   module (added M4+) declares its own constants on top of the base
   class (added M3).
+
+---
+
+## 2026-05-28 — Seniority rule for primary contact
+
+**Assumption.** Each firm has at most one "primary contact" — the
+`FirmPerson` row with `is_primary_contact = True` (enforced by a partial
+unique index). Population and replacement follow these rules:
+
+1. **All scraped attorneys are kept** in `persons` and `firm_persons`,
+   not just the primary contact. The primary slot is a separate concern
+   from coverage.
+2. **Title rank** for each affiliation is stored on `FirmPerson.title_rank`
+   (nullable int, higher = more senior). It is assigned at insert /
+   update time by the title-rank normalizer (added in M3).
+3. **Initial assignment.** The first attorney we record for a firm
+   becomes the primary contact if their rank is known (non-NULL). If
+   rank is NULL, the slot is left vacant until a ranked candidate
+   arrives.
+4. **Replacement.** An incoming candidate replaces the current primary
+   contact only when the candidate's `title_rank` is **strictly
+   greater** than the current primary's `title_rank`. On equal rank or
+   on missing rank (NULL on either side), keep the existing primary.
+5. **Removal.** If the current primary's affiliation goes inactive
+   (`active = False` or `end_date` set in the past), the slot becomes
+   vacant and the next ranked candidate fills it.
+
+**Rank ladder** (initial; tunable as we see real data). Higher is more
+senior:
+
+| Rank | Title bucket                                              |
+|------|-----------------------------------------------------------|
+| 100  | managing partner, managing director                       |
+|  90  | senior partner, equity partner, name partner, founder     |
+|  80  | partner, principal, shareholder                           |
+|  70  | of counsel, senior counsel                                |
+|  60  | counsel                                                   |
+|  50  | senior associate, senior attorney                         |
+|  40  | associate                                                 |
+|  30  | junior associate, staff attorney, contract attorney       |
+|  20  | attorney (generic), lawyer (generic)                      |
+| NULL | unclassified / blank                                      |
+
+Title matching is normalized: lowercase, strip punctuation, collapse
+whitespace, strip filler words (`the`, `at`, `for`, `firm`). The
+classifier walks the ladder from highest to lowest, returning the
+first bucket whose keywords appear in the normalized title. The full
+mapping and classifier live in
+`src/legal_sourcing/normalize/title_rank.py` (added in M3).
+
+**Why.** Sources differ wildly in attorney coverage (a state bar
+lists everyone; Justia lists a curated few; firm websites lead with
+managing partners). A first-come-wins rule would make the primary
+contact a function of scrape order rather than seniority.
+Strictly-greater on rank avoids thrashing the slot on ties.
+
+**Trigger to revisit.** (a) The rank ladder produces obviously wrong
+primaries that humans want to override — at that point, add a manual
+override flag (e.g. `is_primary_contact_locked`) and respect it. (b)
+We start needing >1 contact per firm (e.g. one for litigation, one
+for transactional) — at that point promote the bool to a typed
+"contact role" enum or a small role table.
+
+**Enforced where.**
+- Schema: `src/legal_sourcing/models/person.py`
+  (`FirmPerson.is_primary_contact`, `FirmPerson.title_rank`,
+  partial unique index `uq_firm_primary_contact`).
+- Classifier: `src/legal_sourcing/normalize/title_rank.py` (M3).
+- Replacement logic: `src/legal_sourcing/resolution/contact.py` (M6).
+
+---
+
+## 2026-05-28 — Scale target: 160,000 firms
+
+**Assumption.** The pilot scale target is **≥ 160,000 canonical firms**
+(up from the earlier 80k working number). With multiple sources per
+firm, expect roughly:
+
+- 300k–800k source records total (assumes 2–5 sources per firm; many
+  firms appear in only one or two).
+- A few million `firm_persons` rows (if we keep all scraped attorneys
+  per the seniority assumption above).
+- Match-pair candidates pre-blocking: O(N²) is untenable; the blocker
+  is the binding constraint.
+
+**Implications already accounted for.**
+- Index choices on `*_normalized` columns are real, not decorative —
+  blocking joins on them.
+- `firm_practice_areas` "one row per source" means a few million
+  rows; the FK indexes are there.
+
+**Implications to revisit at M6 (resolution) and M7+.**
+- **Blocking strategy.** Multi-key blocking (phone, website domain,
+  name prefix + state, normalized address) is required. A naive
+  cross-join is ~1.3e10 pairs at 160k — impossible.
+- **DB choice.** SQLite handles 160k firms comfortably for batch
+  ingestion + offline resolution. Migration to Postgres becomes
+  attractive when (a) we need concurrent writers, (b) we want JSONB +
+  GIN indexes on the JSON columns, or (c) FTS5 isn't sufficient for
+  name-prefix blocking.
+- **Memory.** Don't materialize all-pairs in RAM at any point —
+  resolution is streaming / chunked over blocks.
+
+**Why the bump.** Updated business target.
+
+**Trigger to revisit.** (a) Target shifts another large factor. (b)
+SQLite query latency on `firms` queries exceeds ~1s on the indexed
+paths during ingest, indicating it's time for Postgres. (c) Single-
+process resolution time exceeds the cycle we want to re-run on
+(e.g. nightly).
+
+**Enforced where.** Design-level concern. Tracked here so M6 (blocking)
+and M7+ (DB choice) start with the right scale in mind.

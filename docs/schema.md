@@ -135,6 +135,19 @@ time-bounded (`start_date`, `end_date`, `active`) — lawyers move.
 Strongest identity key is `(bar_state, bar_number)`; falls back to
 name+phone+email matching.
 
+`firm_persons` additionally carries:
+
+- `is_primary_contact` (bool) — designates the firm's primary-contact
+  slot. Enforced by a partial unique index: at most one primary contact
+  per firm. Replacement is governed by `title_rank` (see below) — only
+  a higher-ranked candidate replaces the current primary; ties or
+  missing rank keep the existing.
+- `title_rank` (int, nullable) — assessed seniority derived from
+  `title` by the title-rank normalizer (added in M3). Higher is more
+  senior. NULL means we couldn't classify the title. See
+  `docs/assumptions.md` "Seniority rule for primary contact" for the
+  ladder.
+
 ### Practice-area taxonomy
 
 `practice_areas` is the canonical taxonomy, populated from
