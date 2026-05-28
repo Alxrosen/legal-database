@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import JSON, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, ForeignKey, Integer, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from legal_sourcing.models.base import Base, TimestampMixin
@@ -50,7 +50,9 @@ class Firm(Base, TimestampMixin):
     attorney_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Free-form per-field provenance.
-    field_provenance: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    field_provenance: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=dict, server_default=text("'{}'")
+    )
 
 
 class FirmSourceRecordLink(Base, TimestampMixin):

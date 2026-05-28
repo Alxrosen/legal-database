@@ -26,6 +26,11 @@ dependencies = [
     "pyyaml>=6.0",
     "inflect>=7.3",  # singularize "injuries" -> "injury" for practice-area matching
 
+    # IANA tzdata for zoneinfo lookups on Windows (Python stdlib zoneinfo
+    # has no fallback database on Windows). Used by alembic.ini's
+    # `timezone = UTC` and any ZoneInfo() callsites.
+    "tzdata>=2024.1",
+
     # Config + logging
     "pydantic-settings>=2.4",
     "structlog>=24.4",

@@ -16,7 +16,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, DateTime, Integer, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from legal_sourcing.models.base import Base, TimestampMixin
@@ -109,12 +109,26 @@ class FirmSourceRecord(Base, TimestampMixin):
     )
 
     # Composite / multi-valued fields as JSON. See docstring for shapes.
-    contacts: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
-    offices: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
+    # server_default mirrors the Python-side default so raw-SQL inserts
+    # also produce non-NULL, well-shaped JSON.
+    contacts: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, nullable=False, default=list, server_default=text("'[]'")
+    )
+    offices: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, nullable=False, default=list, server_default=text("'[]'")
+    )
 
-    practice_areas_raw: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
-    practice_areas_matched: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
-    practice_areas_unmatched: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    practice_areas_raw: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=list, server_default=text("'[]'")
+    )
+    practice_areas_matched: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=list, server_default=text("'[]'")
+    )
+    practice_areas_unmatched: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=list, server_default=text("'[]'")
+    )
 
     # Escape hatch for source-specific data we don't have a column for yet.
-    additional_data: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    additional_data: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=dict, server_default=text("'{}'")
+    )

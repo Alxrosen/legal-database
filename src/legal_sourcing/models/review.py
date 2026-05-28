@@ -18,6 +18,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -53,12 +54,18 @@ class MatchReviewQueue(Base, TimestampMixin):
 
     score_total: Mapped[float] = mapped_column(Float, nullable=False)
     # {"name": 0.92, "phone": 1.0, "website": 0.0, "address": 0.8, "people": 0.5, ...}
-    score_components: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    score_components: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=dict, server_default=text("'{}'")
+    )
 
     # Snapshot of the thresholds in effect when the row was created.
-    thresholds: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    thresholds: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=dict, server_default=text("'{}'")
+    )
 
-    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="pending", server_default="pending"
+    )
     reviewer: Mapped[str | None] = mapped_column(String(64), nullable=True)
     reviewer_notes: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
