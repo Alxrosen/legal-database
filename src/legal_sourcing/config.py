@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = Field(default="INFO")
 
+    # Per-source secrets. Empty by default — the corresponding scraper
+    # fails loud at startup with a useful error message if its secret
+    # is required but unset. See docs/data_sources/az_bar_reference.md
+    # for how to obtain the AZ Bar Password header (DevTools capture).
+    azbar_api_password: str = Field(default="")
+
     @property
     def db_url(self) -> str:
         """SQLAlchemy URL. Swap-in point when we move off SQLite."""

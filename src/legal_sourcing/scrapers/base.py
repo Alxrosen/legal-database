@@ -126,12 +126,20 @@ class BaseScraper:
         self._raw_root: Path = s.raw_data_dir
 
         self._rate_limiter = RateLimiter(self._rps, burst=self.BURST_CAPACITY)
+        # Merge UA with subclass-supplied default headers (e.g. API key,
+        # Referer). Subclass values override UA if there's a collision.
+        merged_headers = {"User-Agent": self._user_agent, **self._default_headers()}
         self._client = httpx.Client(
-            headers={"User-Agent": self._user_agent},
+            headers=merged_headers,
             timeout=self._timeout,
             follow_redirects=True,
         )
         self._robots_cache: dict[str, urllib.robotparser.RobotFileParser] = {}
+
+    def _default_headers(self) -> dict[str, str]:
+        """Subclass hook for per-source default headers (API keys, Referer,
+        Accept tweaks). Returns {} by default."""
+        return {}
 
     # ---- Public API ----------------------------------------------------
 
@@ -175,11 +183,48 @@ class BaseScraper:
         log.info("scrape.done", source=self.SOURCE_NAME, count=len(written))
         return written
 
-    def fetch_one(self, url: str) -> Path | None:
-        """Single-URL fetch + store. Useful for testing and ad-hoc runs."""
+    def fetch_one(
+        self,
+        url: str,
+        *,
+        method: str = "GET",
+        json_body: dict | None = None,
+        bucket: str | None = None,
+        filename: str | None = None,
+    ) -> Path | None:
+        """Single-URL fetch + store. The base building block.
+
+        Parameters
+        ----------
+        url
+            Absolute URL to fetch.
+        method
+            HTTP method. Defaults to GET. The AZ Bar list endpoint, for
+            example, requires POST with query params.
+        json_body
+            JSON body for POST/PUT/PATCH. Ignored for GET.
+        bucket
+            Optional subdirectory under the date partition. Useful when
+            a single source has structurally distinct payload classes
+            (reference / list / detail).
+        filename
+            Optional stem for the stored payload. If omitted, defaults
+            to sha256(url)[:16]. Use a stable name when re-fetches
+            should overwrite (e.g. "page_0001").
+
+        Returns the path of the gzipped payload on disk.
+        """
         target_dir = self._date_partition_dir(date.today())
+        if bucket:
+            target_dir = target_dir / bucket
         target_dir.mkdir(parents=True, exist_ok=True)
-        return self._fetch_and_store(url, target_dir)
+        return self._fetch_and_store(
+            url,
+            target_dir,
+            method=method,
+            json_body=json_body,
+            filename=filename,
+        )
 
     def close(self) -> None:
         self._client.close()
@@ -192,7 +237,15 @@ class BaseScraper:
 
     # ---- Internals -----------------------------------------------------
 
-    def _fetch_and_store(self, url: str, target_dir: Path) -> Path | None:
+    def _fetch_and_store(
+        self,
+        url: str,
+        target_dir: Path,
+        *,
+        method: str = "GET",
+        json_body: dict | None = None,
+        filename: str | None = None,
+    ) -> Path | None:
         if self.ROBOTS_POLICY != "ignore" and not self._robots_allows(url):
             if self.ROBOTS_POLICY == "block":
                 log.warning("scrape.robots_blocked", url=url, policy="block")
@@ -205,23 +258,30 @@ class BaseScraper:
                 note="proceeding despite robots disallow",
             )
 
-        response = self._fetch_with_retries(url)
-        path = self._store_payload(url, response, target_dir)
+        response = self._fetch_with_retries(url, method=method, json_body=json_body)
+        path = self._store_payload(url, response, target_dir, filename=filename)
         log.debug(
             "scrape.fetched",
             url=url,
+            method=method,
             status=response.status_code,
             bytes=len(response.content),
             path=str(path),
         )
         return path
 
-    def _fetch_with_retries(self, url: str) -> httpx.Response:
+    def _fetch_with_retries(
+        self,
+        url: str,
+        *,
+        method: str = "GET",
+        json_body: dict | None = None,
+    ) -> httpx.Response:
         last_exc: Exception | None = None
         for attempt in range(1, self.MAX_RETRIES + 2):  # initial + retries
             self._rate_limiter.acquire()
             try:
-                response = self._client.get(url)
+                response = self._client.request(method, url, json=json_body)
             except (httpx.TransportError, httpx.TimeoutException) as exc:
                 last_exc = exc
                 wait = self._compute_backoff(attempt, retry_after=None)
@@ -252,16 +312,18 @@ class BaseScraper:
                 )
                 if attempt > self.MAX_RETRIES:
                     raise ScrapeError(
-                        f"GET {url} -> {response.status_code} after {attempt} attempts"
+                        f"{method} {url} -> {response.status_code} after {attempt} attempts"
                     )
                 time.sleep(wait)
                 continue
 
             # Non-retryable error (4xx other than 429).
-            raise ScrapeError(f"GET {url} -> {response.status_code} (non-retryable)")
+            raise ScrapeError(
+                f"{method} {url} -> {response.status_code} (non-retryable)"
+            )
 
         # Exhausted retries on transport errors.
-        raise ScrapeError(f"GET {url} failed after retries") from last_exc
+        raise ScrapeError(f"{method} {url} failed after retries") from last_exc
 
     def _compute_backoff(self, attempt: int, retry_after: str | None) -> float:
         # Honor Retry-After when present (RFC 7231: seconds or HTTP-date).
@@ -302,13 +364,16 @@ class BaseScraper:
         url: str,
         response: httpx.Response,
         target_dir: Path,
+        *,
+        filename: str | None = None,
     ) -> Path:
-        # Stable filename so repeat fetches overwrite the same slot
-        # within a day. Different dates produce different slots.
-        digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
+        # If filename provided, use it as the stem; otherwise hash the URL.
+        # Either way the stored file is gzipped with a .{ext}.gz tail and a
+        # JSON sidecar with the same stem.
+        stem = filename or hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
         ext = self._extension_for(response)
-        gz_path = target_dir / f"{digest}.{ext}.gz"
-        json_path = target_dir / f"{digest}.json"
+        gz_path = target_dir / f"{stem}.{ext}.gz"
+        json_path = target_dir / f"{stem}.json"
 
         # Body
         with gzip.open(gz_path, "wb") as f:

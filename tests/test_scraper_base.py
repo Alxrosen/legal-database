@@ -115,6 +115,52 @@ def test_invalid_robots_policy_rejected_at_init(tmp_path):
         _BadScraper(raw_root=tmp_path / "raw")
 
 
+class _PostScraper(_DummyScraper):
+    """Exercises POST, bucket, filename, and default headers."""
+
+    def _default_headers(self) -> dict[str, str]:
+        return {"X-Api-Key": "secret-token", "Referer": "https://example.com/"}
+
+
+@respx.mock
+def test_post_with_bucket_and_filename_uses_custom_layout(tmp_path):
+    respx.get("https://example.com/robots.txt").mock(
+        return_value=httpx.Response(200, text="User-agent: *\nAllow: /\n")
+    )
+    # Capture the request so we can assert headers + method + body.
+    route = respx.post("https://example.com/search?Page=1").mock(
+        return_value=httpx.Response(
+            200,
+            json={"Result": {"Page": 1}},
+            headers={"Content-Type": "application/json"},
+        )
+    )
+
+    scraper = _PostScraper(raw_root=tmp_path / "raw")
+    path = scraper.fetch_one(
+        "https://example.com/search?Page=1",
+        method="POST",
+        json_body={},
+        bucket="list",
+        filename="page_0001",
+    )
+
+    # File landed in the right place with the requested stem.
+    assert path is not None and path.exists()
+    assert path.name == "page_0001.json.gz"
+    assert path.parent.name == "list"  # bucket subdir present
+    # Sidecar carries the same stem.
+    sidecar = path.parent / "page_0001.json"
+    assert sidecar.exists()
+    # Default headers + UA were sent.
+    sent = route.calls[0].request
+    assert sent.method == "POST"
+    assert sent.headers["X-Api-Key"] == "secret-token"
+    assert sent.headers["Referer"] == "https://example.com/"
+    assert "User-Agent" in sent.headers
+    scraper.close()
+
+
 @respx.mock
 def test_429_retried_then_succeeds(tmp_path):
     respx.get("https://example.com/robots.txt").mock(

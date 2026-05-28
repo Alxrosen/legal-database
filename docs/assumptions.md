@@ -539,3 +539,69 @@ review of the project recommends a stricter posture.
   (`test_robots_default_warn_proceeds`,
   `test_robots_block_policy_raises`,
   `test_invalid_robots_policy_rejected_at_init`).
+
+---
+
+## 2026-05-28 — AZ Bar: proceed via api-proxy.azbar.org with the documented Password header
+
+**Assumption.** The AZ State Bar scraper targets the JSON API at
+`api-proxy.azbar.org` directly (not the HTML front-end at
+`www.azbar.org`), authenticating each request with the static `Password`
+UUID that the official front-end JS bundle hard-codes. We accept the
+legal posture documented below.
+
+**Why this approach.**
+
+- The underlying data — bar number, full name, public address, firm
+  affiliation, member status — is information AZ Bar publishes
+  intentionally for public consumption. Bulk access does not change the
+  per-record privacy posture.
+- The HTML site is a thin JS shell over the JSON API; there is no
+  meaningful technical difference between rendering 26K pages in a
+  browser and calling the API 26K times. Going through the HTML would
+  waste compute and bandwidth on both ends.
+- The `Password` header is not a per-user credential — it is the same
+  UUID baked into the public JavaScript bundle, identifying calls as
+  coming from the official site. We accept the risk that AZ Bar may
+  treat this as out-of-scope use; if challenged, we stop.
+
+**What we are NOT doing.**
+
+- We do not bypass per-user authentication, paywalls, captchas, or any
+  other access control beyond the static header.
+- We do not impersonate individual attorneys or use any identifier
+  beyond the documented Password header.
+- We do not republish, resell, or rebroadcast the raw scraped data.
+  Use is internal lead-sourcing only.
+
+**Operational guard rails.**
+
+- Polite rate: 15 RPS sustained, 10 concurrent workers, exponential
+  backoff with `Retry-After` honored. Token-bucket burst capped at 15
+  so the first second after idle is allowed to fire.
+- `ROBOTS_POLICY = "warn"` (project default). robots.txt at
+  `api-proxy.azbar.org` is informational; we log disallows but proceed.
+- 401/403 from the API triggers `AZBarApiPasswordRotatedError` and
+  aborts the scrape with re-capture instructions — we never retry
+  blindly through an auth change.
+- Raw payloads gzipped to `data/raw/az_bar/{YYYY-MM-DD}/` (gitignored).
+  Reference fixtures committed under `tests/fixtures/az_bar/`.
+
+**Trigger to revisit.**
+
+- AZ Bar (or counsel) tells us to stop. Then we stop, and either pivot
+  to firm-website crawls + Justia + FindLaw, or seek explicit
+  permission.
+- AZ Bar exposes an official bulk endpoint or paid feed — switch to it.
+- The Password header rotation cadence becomes a continuous
+  maintenance burden (more than once per month).
+
+**Enforced where.**
+
+- Reference doc: `docs/data_sources/az_bar_reference.md`.
+- Config: `AZBAR_API_PASSWORD` in `.env`; `Settings.azbar_api_password`
+  in `src/legal_sourcing/config.py`.
+- Scraper: `src/legal_sourcing/scrapers/az_bar.py`
+  (`AZBarScraper`, `AZBarApiPasswordMissingError`,
+  `AZBarApiPasswordRotatedError`).
+- Recon: `scripts/recon_azbar.py`.
