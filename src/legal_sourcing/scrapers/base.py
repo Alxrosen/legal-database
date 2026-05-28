@@ -26,7 +26,7 @@ Pseudocode for a subclass:
         BASE_URL = "https://azbar.example.com"
         RATE_LIMIT_RPS = 2.0    # AZ bar is slow; be polite
         WORKERS = 2             # match the RPS, don't overcommit
-        RESPECT_ROBOTS = True
+        ROBOTS_POLICY = "warn"  # "warn" | "block" | "ignore"
 
         def iter_target_urls(self):
             # Yield URLs to fetch. The base class handles fetch/store/retry.
@@ -86,7 +86,12 @@ class BaseScraper:
     USER_AGENT: str | None = None
     TIMEOUT_SECONDS: float | None = None
 
-    RESPECT_ROBOTS: bool = True
+    # robots.txt policy. Default is "warn": still check robots.txt, log
+    # a warning when a URL is disallowed, but proceed with the fetch.
+    # Subclasses opt in to "block" for sources where we want hard
+    # enforcement, or "ignore" to skip the robots fetch entirely.
+    ROBOTS_POLICY: str = "warn"  # one of: "warn", "block", "ignore"
+
     MAX_RETRIES: int = 3
     BACKOFF_BASE_SECONDS: float = 1.0
     BACKOFF_MAX_SECONDS: float = 60.0
@@ -104,6 +109,11 @@ class BaseScraper:
             raise ValueError(f"{type(self).__name__} must set SOURCE_NAME")
         if not self.BASE_URL:
             raise ValueError(f"{type(self).__name__} must set BASE_URL")
+        if self.ROBOTS_POLICY not in ("warn", "block", "ignore"):
+            raise ValueError(
+                f"{type(self).__name__}.ROBOTS_POLICY must be one of "
+                f"'warn', 'block', 'ignore'; got {self.ROBOTS_POLICY!r}"
+            )
 
         s = get_settings()
         self._rps = self.RATE_LIMIT_RPS or s.rate_limit_rps
@@ -180,9 +190,17 @@ class BaseScraper:
     # ---- Internals -----------------------------------------------------
 
     def _fetch_and_store(self, url: str, target_dir: Path) -> Path | None:
-        if self.RESPECT_ROBOTS and not self._robots_allows(url):
-            log.warning("scrape.robots_blocked", url=url)
-            raise RobotsDisallowedError(url)
+        if self.ROBOTS_POLICY != "ignore" and not self._robots_allows(url):
+            if self.ROBOTS_POLICY == "block":
+                log.warning("scrape.robots_blocked", url=url, policy="block")
+                raise RobotsDisallowedError(url)
+            # "warn" (default): record the violation but proceed.
+            log.warning(
+                "scrape.robots_disallowed",
+                url=url,
+                policy=self.ROBOTS_POLICY,
+                note="proceeding despite robots disallow",
+            )
 
         response = self._fetch_with_retries(url)
         path = self._store_payload(url, response, target_dir)

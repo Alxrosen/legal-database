@@ -498,3 +498,44 @@ process resolution time exceeds the cycle we want to re-run on
 
 **Enforced where.** Design-level concern. Tracked here so M6 (blocking)
 and M7+ (DB choice) start with the right scale in mind.
+
+---
+
+## 2026-05-28 — robots.txt default is "warn", not hard-block
+
+**Assumption.** `BaseScraper.ROBOTS_POLICY` defaults to `"warn"`:
+robots.txt is still fetched and parsed, but a disallowed URL produces
+a structured log warning (`scrape.robots_disallowed`) and the fetch
+proceeds anyway. Subclasses opt into stricter behavior by setting
+`ROBOTS_POLICY = "block"` (raise `RobotsDisallowedError` and skip the
+URL) or `"ignore"` (skip the robots fetch entirely).
+
+This reverses the earlier "hard-block default" choice made during the
+M3 planning Q&A.
+
+**Why.** Many legal-directory sites have overly broad robots
+`Disallow` rules that would block routine, fair-use scraping of
+publicly listed firm information. A hard default would make every
+new source require an explicit opt-in to scrape at all, which buries
+the decision and risks silent zero-result runs. Warning is the
+better default: the log makes the policy violation visible without
+blocking the work, and we can flip individual scrapers to `"block"`
+when (a) the source's ToS / robots are clearly meant to be respected
+or (b) we have explicit written permission and want to enforce a
+narrower scope.
+
+**Trigger to revisit.** (a) A source sends a takedown / abuse
+complaint — at that point flip its scraper to `"block"` (or stop
+scraping it). (b) We standardize on a managed crawler that does its
+own robots enforcement — at that point the in-process policy
+collapses into "ignore" and the crawler is authoritative. (c) Legal
+review of the project recommends a stricter posture.
+
+**Enforced where.**
+- `src/legal_sourcing/scrapers/base.py`
+  (`BaseScraper.ROBOTS_POLICY`, `_fetch_and_store`).
+- Per-source overrides: each scraper module's class definition.
+- Tests: `tests/test_scraper_base.py`
+  (`test_robots_default_warn_proceeds`,
+  `test_robots_block_policy_raises`,
+  `test_invalid_robots_policy_rejected_at_init`).

@@ -68,18 +68,51 @@ def test_successful_fetch_stores_gzip_and_sidecar(tmp_path):
 
 
 @respx.mock
-def test_robots_blocks_disallowed_path(tmp_path):
+def test_robots_default_warn_proceeds(tmp_path):
+    """Default ROBOTS_POLICY='warn' logs the violation but still fetches."""
     respx.get("https://example.com/robots.txt").mock(
         return_value=httpx.Response(
             200, text="User-agent: *\nDisallow: /private/\n"
         )
     )
-    # No mock for /private/x — robots should block before any GET happens.
+    respx.get("https://example.com/private/x").mock(
+        return_value=httpx.Response(
+            200, content=b"private body", headers={"Content-Type": "text/html"}
+        )
+    )
 
     scraper = _make(tmp_path)
+    path = scraper.fetch_one("https://example.com/private/x")
+    assert path is not None and path.exists()
+    scraper.close()
+
+
+class _BlockingScraper(_DummyScraper):
+    ROBOTS_POLICY = "block"
+
+
+@respx.mock
+def test_robots_block_policy_raises(tmp_path):
+    """Subclasses can opt into hard-block via ROBOTS_POLICY = 'block'."""
+    respx.get("https://example.com/robots.txt").mock(
+        return_value=httpx.Response(
+            200, text="User-agent: *\nDisallow: /private/\n"
+        )
+    )
+    # No mock for /private/x — block policy should raise before any GET.
+
+    scraper = _BlockingScraper(raw_root=tmp_path / "raw")
     with pytest.raises(RobotsDisallowedError):
         scraper.fetch_one("https://example.com/private/x")
     scraper.close()
+
+
+def test_invalid_robots_policy_rejected_at_init(tmp_path):
+    class _BadScraper(_DummyScraper):
+        ROBOTS_POLICY = "explode"
+
+    with pytest.raises(ValueError, match="ROBOTS_POLICY"):
+        _BadScraper(raw_root=tmp_path / "raw")
 
 
 @respx.mock
