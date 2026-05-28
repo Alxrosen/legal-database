@@ -85,6 +85,12 @@ class BaseScraper:
     # Token-bucket burst capacity. None -> defaults to max(1, RPS) inside
     # the limiter, i.e. ~1 second of full-rate headroom after idle.
     BURST_CAPACITY: float | None = None
+    # Optional polite-startup ramp. When INITIAL_RATE_LIMIT_RPS is set
+    # AND RATE_RAMP_SECONDS > 0, the RPS linearly interpolates from
+    # INITIAL_RATE_LIMIT_RPS to RATE_LIMIT_RPS over RATE_RAMP_SECONDS
+    # before settling at the target rate.
+    INITIAL_RATE_LIMIT_RPS: float | None = None
+    RATE_RAMP_SECONDS: float = 0.0
     WORKERS: int | None = None
     USER_AGENT: str | None = None
     TIMEOUT_SECONDS: float | None = None
@@ -125,7 +131,12 @@ class BaseScraper:
         self._timeout = self.TIMEOUT_SECONDS or s.request_timeout_seconds
         self._raw_root: Path = s.raw_data_dir
 
-        self._rate_limiter = RateLimiter(self._rps, burst=self.BURST_CAPACITY)
+        self._rate_limiter = RateLimiter(
+            self._rps,
+            burst=self.BURST_CAPACITY,
+            initial_rps=self.INITIAL_RATE_LIMIT_RPS,
+            ramp_seconds=self.RATE_RAMP_SECONDS,
+        )
         # Merge UA with subclass-supplied default headers (e.g. API key,
         # Referer). Subclass values override UA if there's a collision.
         merged_headers = {"User-Agent": self._user_agent, **self._default_headers()}

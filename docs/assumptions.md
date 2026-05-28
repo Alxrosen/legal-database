@@ -576,9 +576,11 @@ legal posture documented below.
 
 **Operational guard rails.**
 
-- Polite rate: 15 RPS sustained, 10 concurrent workers, exponential
-  backoff with `Retry-After` honored. Token-bucket burst capped at 15
-  so the first second after idle is allowed to fire.
+- Polite ramped rate: **start at 3 RPS with burst capacity 3, linearly
+  ramp to 15 RPS over the first 2 minutes**, then steady-state at 15
+  RPS. 10 concurrent workers — the RPS gate is the real throttle, so
+  workers waiting at the limiter during ramp is acceptable. Exponential
+  backoff with `Retry-After` honored.
 - `ROBOTS_POLICY = "warn"` (project default). robots.txt at
   `api-proxy.azbar.org` is informational; we log disallows but proceed.
 - 401/403 from the API triggers `AZBarApiPasswordRotatedError` and

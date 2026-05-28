@@ -86,3 +86,42 @@ def test_invalid_burst_rejected():
 def test_default_burst_is_max_one_or_rps():
     assert RateLimiter(rps=0.5).capacity == 1.0  # floor
     assert RateLimiter(rps=10).capacity == 10.0
+
+
+def test_effective_rps_with_no_ramp_returns_target():
+    rl = RateLimiter(rps=15.0)
+    assert rl.effective_rps() == 15.0
+
+
+def test_effective_rps_ramps_linearly():
+    rl = RateLimiter(rps=15.0, initial_rps=3.0, ramp_seconds=10.0, burst=1.0)
+    start = rl._start_time
+    # At t=0, effective rate = initial.
+    assert rl.effective_rps(start) == pytest.approx(3.0)
+    # Midpoint: halfway between initial and target.
+    assert rl.effective_rps(start + 5.0) == pytest.approx(9.0)
+    # End of ramp: target.
+    assert rl.effective_rps(start + 10.0) == pytest.approx(15.0)
+    # Past the ramp: still target.
+    assert rl.effective_rps(start + 60.0) == pytest.approx(15.0)
+
+
+def test_ramp_slows_initial_acquires():
+    """Under ramp, drained-bucket waits are longer at the start than at
+    the end of the ramp."""
+    rl = RateLimiter(rps=50.0, initial_rps=5.0, ramp_seconds=2.0, burst=1.0)
+    rl.acquire()  # drain the initial token
+    # At t≈0, refill rate is ~5/s -> ~0.2s to refill one token.
+    t0 = time.monotonic()
+    rl.acquire()
+    initial_wait = time.monotonic() - t0
+    assert 0.1 < initial_wait < 0.4, f"initial wait was {initial_wait:.3f}s"
+
+
+def test_invalid_ramp_args_rejected():
+    with pytest.raises(ValueError):
+        RateLimiter(rps=10, initial_rps=0)
+    with pytest.raises(ValueError):
+        RateLimiter(rps=10, initial_rps=-1)
+    with pytest.raises(ValueError):
+        RateLimiter(rps=10, ramp_seconds=-1)
