@@ -607,3 +607,41 @@ legal posture documented below.
   (`AZBarScraper`, `AZBarApiPasswordMissingError`,
   `AZBarApiPasswordRotatedError`).
 - Recon: `scripts/recon_azbar.py`.
+
+---
+
+## 2026-05-28 — Diagnostic discipline: confirm rotation with evidence, never as a default
+
+**Assumption.** When a request that previously worked starts returning
+401/403, **never** conclude the API key / Password has rotated without
+explicit evidence. Required evidence: capture a fresh value from
+DevTools and confirm the failing call still fails with the new value.
+Only then is rotation the cause.
+
+**Why.** In the AZ Bar reconnaissance, the recon script returned 401
+and the script's error message blamed Password rotation. The user
+correctly pushed back: they verified in an InPrivate browser that the
+documented Password was still accepted (200 OK). The real cause was a
+**missing `Userid: publictools` header** the original reference doc
+hadn't called out as required.
+
+Concluding "rotated" without evidence sent us toward the wrong fix
+(asking the user to re-capture a still-valid value) instead of the
+right one (diffing our request shape against a working browser
+request). The lesson: when a hypothesis is convenient but unverified,
+say so loudly and ask for the diff before acting on it.
+
+**Trigger to revisit.** This is process, not design — no real trigger.
+Keep the rule.
+
+**Enforced where.**
+
+- `src/legal_sourcing/scrapers/az_bar.py` — the
+  `AZBarApiPasswordRotatedError` docstring should reference this entry
+  (TODO: update when the parser lands).
+- `scripts/recon_azbar.py` — the 401 error message now lists three
+  ranked causes (Password rotation, header shape change, endpoint
+  moved) instead of jumping to the first.
+- `docs/data_sources/az_bar_reference.md` — required-headers section
+  explicitly calls out `Userid: publictools` and warns "Missing
+  either `Password` OR `Userid` returns 401 with an empty body."

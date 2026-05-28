@@ -215,6 +215,21 @@ def main() -> int:
         print(f"FATAL: {exc}", file=sys.stderr)
         return 2
 
+    # Dump the exact headers we'll send so the operator can diff
+    # against what DevTools shows in the browser.
+    print("Outgoing request headers (merged from BaseScraper UA + AZBar defaults):")
+    redacted = dict(scraper._client.headers)
+    if "password" in {k.lower() for k in redacted}:
+        # Mask the password — first 8 chars + ellipsis. Keeps length
+        # info for sanity but doesn't leak the value into log captures.
+        for k in list(redacted.keys()):
+            if k.lower() == "password":
+                v = redacted[k]
+                redacted[k] = (v[:8] + "...") if len(v) > 8 else "***"
+    for k in sorted(redacted):
+        print(f"  {k}: {redacted[k]}")
+    print(f"\nFirst URL we will hit: {scraper.reference_url(scraper.SPECIALIZATIONS_PATH)}\n")
+
     try:
         if args.pi_only:
             print("[PI-only] PI specialization filter")
@@ -261,13 +276,18 @@ def main() -> int:
         raise
     except ScrapeError as exc:
         # Our base scraper wraps 401/403 into ScrapeError("... non-retryable").
+        # The error message now includes a body excerpt — print it
+        # before bailing so the operator can see what the server said.
         msg = str(exc)
         if " 401 " in msg or " 403 " in msg or "-> 401" in msg or "-> 403" in msg:
             print(
-                "\nFATAL: 401/403 from AZ Bar. The Password header has likely "
-                "rotated. Re-capture per "
-                "docs/data_sources/az_bar_reference.md and update "
-                "AZBAR_API_PASSWORD in .env.",
+                f"\nFATAL: 401/403 from AZ Bar.\n{msg}\n\n"
+                "Most likely causes:\n"
+                "  1. AZBAR_API_PASSWORD has rotated. Re-capture from "
+                "DevTools per docs/data_sources/az_bar_reference.md.\n"
+                "  2. A required header changed shape. Compare the "
+                "browser Network tab's request to ours.\n"
+                "  3. The API endpoint moved or was disabled.",
                 file=sys.stderr,
             )
             return 3

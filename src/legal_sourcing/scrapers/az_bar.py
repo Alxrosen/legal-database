@@ -103,11 +103,25 @@ class AZBarScraper(BaseScraper):
         super().__init__()
 
     def _default_headers(self) -> dict[str, str]:
-        # Headers required by every api-proxy.azbar.org call.
+        # Headers matched against a real browser request captured from
+        # DevTools — see docs/data_sources/az_bar_reference.md for the
+        # capture procedure. Minimum set:
+        #   * Password — the static UUID, the actual auth.
+        #   * Userid: publictools — application-identity header. Missing
+        #     this returns 401 even when Password is correct.
+        #   * Origin/Referer — browsers send both; the proxy uses them
+        #     to authorize same-site CORS calls.
+        #   * Accept/Content-Type — standard.
+        #
+        # NOT included (browsers don't send these for this API):
+        #   * X-Requested-With — was added speculatively; removed.
+        #     Sending it may flag the call as non-browser.
         return {
             "Accept": "application/json, text/javascript, */*; q=0.01",
             "Content-Type": "application/json; charset=UTF-8",
             "Password": self._password,
+            "Userid": "publictools",
+            "Origin": "https://www.azbar.org",
             "Referer": "https://www.azbar.org/",
         }
 
@@ -122,6 +136,11 @@ class AZBarScraper(BaseScraper):
         seed: str = "null",
         specialization_code: str | None = None,
     ) -> str:
+        # NOTE: the reference doc shows trailing literal `{}` and `?{}`
+        # tokens (e.g. "?PageSize=25&...&Seed=null&{}"). Those are
+        # JavaScript template artifacts from the captured URLs and get
+        # percent-encoded by httpx into %7B%7D, which some WAFs reject.
+        # We omit them and send clean URLs.
         params = (
             f"?PageSize={page_size}&Page={page}"
             f"&RequestorEntityNumber=undefined"
@@ -135,12 +154,13 @@ class AZBarScraper(BaseScraper):
     def detail_url(self, entity_number: int | str) -> str:
         return (
             f"{self.BASE_URL}{self.SEARCH_PATH}"
-            f"?EntityNumber={entity_number}&RequestorEntityNumber=undefined&{{}}"
+            f"?EntityNumber={entity_number}&RequestorEntityNumber=undefined"
         )
 
     def reference_url(self, path: str, *, include_inactive: bool = False) -> str:
-        qs = "?IncludeInactive=true&{}" if include_inactive else "?{}"
-        return f"{self.BASE_URL}{path}{qs}"
+        if include_inactive:
+            return f"{self.BASE_URL}{path}?IncludeInactive=true"
+        return f"{self.BASE_URL}{path}"
 
     # ---- iter_target_urls is NOT implemented yet ----------------------
     # The reference-then-list-then-detail orchestration belongs in a

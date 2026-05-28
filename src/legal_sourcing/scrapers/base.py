@@ -328,9 +328,13 @@ class BaseScraper:
                 time.sleep(wait)
                 continue
 
-            # Non-retryable error (4xx other than 429).
+            # Non-retryable error (4xx other than 429). Include a body
+            # excerpt so the caller can see what the server said —
+            # invaluable for diagnosing 401/403/422.
+            body_excerpt = response.text[:300] if response.text else ""
             raise ScrapeError(
                 f"{method} {url} -> {response.status_code} (non-retryable)"
+                + (f"\nBody: {body_excerpt!r}" if body_excerpt else "")
             )
 
         # Exhausted retries on transport errors.

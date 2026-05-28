@@ -1,0 +1,42 @@
+[
+  {
+    "CertifiedSpecializationCode": "AL",
+    "CertifiedSpecializationDescription": "Administrative Law"
+  },
+  {
+    "CertifiedSpecializationCode": "BY",
+    "CertifiedSpecializationDescription": "Bankruptcy Law"
+  },
+  {
+    "CertifiedSpecializationCode": "CD",
+    "CertifiedSpecializationDescription": "Construction Defect Law"
+  },
+  {
+    "CertifiedSpecializationCode": "CR",
+    "CertifiedSpecializationDescription": "Criminal Law"
+  },
+  {
+    "CertifiedSpecializationCode": "ET",
+    "CertifiedSpecializationDescription": "Estate & Trust Law"
+  },
+  {
+    "CertifiedSpecializationCode": "FL",
+    "CertifiedSpecializationDescription": "Family Law"
+  },
+  {
+    "CertifiedSpecializationCode": "PI",
+    "CertifiedSpecializationDescription": "Injury & Wrongful Death Litigation"
+  },
+  {
+    "CertifiedSpecializationCode": "RE",
+    "CertifiedSpecializationDescription": "Real Estate Law"
+  },
+  {
+    "CertifiedSpecializationCode": "TX",
+    "CertifiedSpecializationDescription": "Tax Law"
+  },
+  {
+    "CertifiedSpecializationCode": "WC",
+    "CertifiedSpecializationDescription": "Workers' Compensation Law"
+  }
+]

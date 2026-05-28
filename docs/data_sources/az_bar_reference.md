@@ -2,6 +2,11 @@
 
 Technical reference for the Arizona State Bar's online member directory. Pair this with `claude_code_context.md` when implementing the AZ Bar scraper.
 
+> **Reconnaissance status (2026-05-28).** All endpoints below have been
+> sampled with the production scraper. Fixtures are committed under
+> `tests/fixtures/az_bar/recon/`. Findings inlined as `**CONFIRMED**`
+> annotations.
+
 ## Mental model
 
 The Arizona Bar's member directory at `www.azbar.org` is a thin JavaScript front-end over a REST-like JSON API hosted at `api-proxy.azbar.org`. Almost no useful data lives in the HTML — when the browser renders an attorney page, JavaScript fetches JSON from the API and injects it into the DOM client-side.
@@ -20,15 +25,25 @@ All endpoints are paths under this host. The `api-proxy` subdomain is what the s
 
 ## Required request headers
 
-Every API call must include these headers. Missing the `Password` header will likely return 401/403.
+**CONFIRMED via recon 2026-05-28.** The minimum working header set is:
 
 ```
 Accept: application/json, text/javascript, */*; q=0.01
 Content-Type: application/json; charset=UTF-8
 Password: <static UUID — see below>
+Userid: publictools
+Origin: https://www.azbar.org
 Referer: https://www.azbar.org/
 User-Agent: <polite project-identifying string>
 ```
+
+**Critical gotcha.** Missing **either** `Password` OR `Userid` returns 401
+Unauthorized with an empty body. The doc originally listed only Password
+as required; that was incomplete. Always check for both when 401 appears.
+
+**Do NOT add `X-Requested-With: XMLHttpRequest`.** Real browser requests
+to this API do not include it. Sending it may flag the request as
+non-browser.
 
 ### The Password header
 
@@ -88,6 +103,7 @@ Parameters:
 
 Key observations:
 - `TotalCount = 25944` at time of writing → roughly **1,038 pages** at PageSize=25 for the full directory.
+- **CONFIRMED 2026-05-28:** `TotalCount = 35860`. Directory has grown ~38%. At PageSize=200 (also confirmed accepted, see below) this is **180 list pages** for a full sweep.
 - `Results` is the array of attorney summary records (shape below).
 - Always check `IsSuccess` and `Error` before processing `Result`.
 
@@ -99,7 +115,67 @@ GET https://api-proxy.azbar.org/MemberSearch/Search?EntityNumber={ID}&RequestorE
 
 Same path as list, but with `EntityNumber` instead of pagination params. **GET, not POST.** Returns the full record for one attorney (presumably including practice areas, certifications, biography, additional phone numbers).
 
-**Response shape: NOT YET CONFIRMED.** This endpoint must be sampled during reconnaissance before parser code is written. Save the response to `tests/fixtures/az_bar/sample_detail.json` and update this doc with the field list.
+**CONFIRMED 2026-05-28** (fixture: `tests/fixtures/az_bar/recon/detail_48199.json`). Response uses the standard envelope. `Result` is a single object with these keys:
+
+```
+NamePrefix, NameSuffix
+FirstName, MiddleName, LastName
+BarNumber, EntityNumber
+Company, FirmURL, FirmLogoURL
+Address                       # same shape as list response
+Email, PrimaryPhone, PhoneNumbers
+ProfilePicUrl, BioPicUrl, Bio
+MemberStatus, MemberStatusToolTip, MemberType, BillCode
+InactiveDate, AzAdmitDate, AdmittedYear
+LawSchool, Languages          # arrays of strings
+Jurisdictions                 # array of strings like "Arizona (Active)"
+Sections                      # array of section codes (empty for most)
+Specializations               # array of CertifiedSpecializationCode values (often empty)
+SpecializationToolTip
+LicenseAreas
+AreasOfLawAndPractice         # NESTED DICT — see below
+ABSStatus, PLIStatus
+LiabilityInsurance, LiabilityInsuranceDescription, LiabilityInsuranceToolTip
+AcceptsCC, ContingencyFee, FixedFee, FreeConsultations, HourlyRate
+IsProBonoCounsel
+DisciplineHTML                # HTML+JS blob — discard for now
+```
+
+**`AreasOfLawAndPractice` shape** — this is the most important field for
+practice-area matching, and it is NOT a flat list:
+
+```json
+{
+  "Intellectual Property": [
+    "Artistic Property",
+    "Biochemical Patents",
+    "Copyright Litigation",
+    ...
+  ],
+  "Personal Injury": [
+    "Auto Accidents",
+    "Medical Malpractice",
+    ...
+  ]
+}
+```
+
+Top-level keys are broad practice categories; values are lists of
+specific sub-areas. The parser should:
+
+1. Treat each top-level key as a candidate practice-area string (match
+   against the canonical taxonomy).
+2. Treat each sub-area string as a candidate too — the canonical
+   `auto-accidents` slug, for example, will match the "Auto Accidents"
+   sub-string under "Personal Injury".
+3. Roll up so that any sub-area match implies its top-level category.
+   (Our taxonomy's `parent_id` does this at query time, so we just
+   record the most specific match per attorney.)
+
+**`DisciplineHTML` is rendered HTML with embedded JavaScript.** Do NOT
+try to parse it for structured data. The field can be ignored for v1;
+if we ever want discipline status, parse the `MemberStatus` field and
+look for "Disciplined" / "Suspended" / "Disbarred" instead.
 
 ### Specializations (reference data)
 
@@ -138,7 +214,13 @@ GET https://api-proxy.azbar.org/MemberSearch/ABS?IncludeInactive=true&{}
 
 Returns the list of AZ-registered ABS firms (Arizona allows non-lawyer ownership of law firms — a state-specific rule effective 2021). The `IncludeInactive=true` parameter includes ABS firms that have ceased operating.
 
-**Response shape: NOT YET CONFIRMED.** Sample during reconnaissance. Save to `tests/fixtures/az_bar/sample_abs.json`. Use the result to mark `Firm.is_abs = true` on the canonical firm table during the loader phase.
+**CONFIRMED 2026-05-28** (fixture: `tests/fixtures/az_bar/recon/reference_abs.json`). Bare array, 172 entries with `IncludeInactive=true`. Each entry has only three keys:
+
+```json
+{"IsActive": true, "Key": "<firm identifier>", "Value": "<firm name>"}
+```
+
+No registration date, license number, or ownership structure exposed. A boolean `Firm.is_abs` flag is sufficient; the loader joins on `Value` (firm name) or by matching the `Key` against another endpoint if one is identified later.
 
 ### Reference dropdowns
 
@@ -154,6 +236,17 @@ GET https://api-proxy.azbar.org/MemberSearch/Sections?{}
 ```
 
 Sizes (compressed, from DevTools): States 3.8 KB, Counties 724 B, Jurisdictions 15.3 KB, Languages 4.3 KB, LawSchools 21.6 KB, Sections 3.7 KB. Small reference data — fetch sequentially, no concurrency needed.
+
+**CONFIRMED 2026-05-28** (fixtures: `tests/fixtures/az_bar/recon/reference_*.json`). All six dropdowns return **bare arrays** (no envelope), matching the Specializations pattern. Row counts and key shapes:
+
+| Endpoint | Count | Per-row keys |
+|---|---|---|
+| `States` | 73 | `StateCode`, `StateDescription` |
+| `Counties` | 16 | `CountyCode`, `CountyName` |
+| `Jurisdictions` | 104 | `JurisdictionCode`, `JurisdictionDescription`, `PublicOption`, `child_sort`, `parent_name`, `parent_sort` |
+| `Languages` | 81 | `LanguageCode`, `LanguageDescription` |
+| `LawSchools` | 322 | `LawSchoolCode`, `LawSchoolDescription` |
+| `Sections` | 29 | `DuesAmount`, `SectionCode`, `SectionDescription`, `glAccount` |
 
 `Sections` refers to **AZ Bar sections** (Family Law Section, Litigation Section, etc.) — voluntary professional groupings within the bar association. Different concept from "Areas of Law." May be useful as a secondary signal of an attorney's focus.
 
@@ -238,6 +331,12 @@ What needs to be confirmed during reconnaissance:
 - Whether `Shuffle=false` produces stable ordering across requests (matters for resumable scraping).
 - Maximum allowed `PageSize` — larger pages mean fewer HTTP roundtrips. Try 100 or 200; back off if rejected.
 
+**CONFIRMED 2026-05-28.**
+
+- Page past the end (probed `Page=1485` when last page is ~1435 at PageSize=25): the envelope still returns `IsSuccess=true` and `len(Results) = 0`. Clean stop signal; combine with the "len < PageSize" belt-and-suspenders check.
+- `PageSize=100` and `PageSize=200` both accepted with `IsSuccess=true` and full result arrays. **Use `PageSize=200`** for production sweeps — cuts list-page count from ~1,435 (at 25) to ~180.
+- `Shuffle=false` ordering: not formally verified for stability across requests, but the same record (Anders Aannestad, EntityNumber=48199) appeared as `Results[0]` on both an unfiltered list call and a `CertifiedSpecializationCode=PI` call → ordering looks alphabetical-by-last-name and stable. Safe to use for resumable pagination.
+
 Recommended loop logic:
 
 ```python
@@ -302,6 +401,8 @@ Do these before writing any production scraper logic. Save outputs as fixtures s
 4. **Test pagination edges.** Fetch page 1, page 1038 (or near the last page), and page 1100 (well past the end). Document the behavior at the edge.
 5. **Test the larger `PageSize` values.** Try 100 and 200. If the API accepts them, the full scrape needs many fewer HTTP roundtrips.
 6. **Try filtering by `CertifiedSpecializationCode`.** Add `&CertifiedSpecializationCode=PI` to a list call; see if it filters. If yes, this is a fast path to the priority subset of attorneys (~few hundred PI-certified) without scraping the full 26K.
+
+**CONFIRMED 2026-05-28: filter is silently ignored.** `Result.TotalCount` returned the global `35860`, and `Result.Results` returned the same alphabetical-by-last-name attorneys (Anders Aannestad first, none of whom hold the PI specialization). Don't rely on this filter — derive PI relevance from each attorney's detail-response `AreasOfLawAndPractice` or `Specializations` after the full sweep instead.
 7. **Sample one reference dropdown** (e.g., `Sections?{}`) and check whether its response uses the standard envelope or a bare array (as `Specializations` does).
 
 ## Suggested scrape phase ordering

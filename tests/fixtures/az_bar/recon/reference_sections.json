@@ -1,0 +1,176 @@
+[
+  {
+    "SectionCode": "AD ",
+    "SectionDescription": "Administrative Law and Regulatory Practice Section",
+    "DuesAmount": 25.0,
+    "glAccount": "T-627-4450-001"
+  },
+  {
+    "SectionCode": "DR ",
+    "SectionDescription": "Alternative Dispute Resolution Section",
+    "DuesAmount": 35.0,
+    "glAccount": "T-625-4450-001"
+  },
+  {
+    "SectionCode": "AN ",
+    "SectionDescription": "Animal Law Section",
+    "DuesAmount": 35.0,
+    "glAccount": "T-629-4450-001"
+  },
+  {
+    "SectionCode": "AP ",
+    "SectionDescription": "Appellate Practice Section",
+    "DuesAmount": 35.0,
+    "glAccount": "T-626-4450-001"
+  },
+  {
+    "SectionCode": "BY ",
+    "SectionDescription": "Bankruptcy Law Section",
+    "DuesAmount": 35.0,
+    "glAccount": "T-602-4450-001"
+  },
+  {
+    "SectionCode": "BS ",
+    "SectionDescription": "Business Law Section",
+    "DuesAmount": 30.0,
+    "glAccount": "T-604-4450-001"
+  },
+  {
+    "SectionCode": "CS ",
+    "SectionDescription": "Construction Law Section",
+    "DuesAmount": 35.0,
+    "glAccount": "T-603-4450-001"
+  },
+  {
+    "SectionCode": "CR ",
+    "SectionDescription": "Criminal Justice Section",
+    "DuesAmount": 30.0,
+    "glAccount": "T-605-4450-001"
+  },
+  {
+    "SectionCode": "ME ",
+    "SectionDescription": "Elder Law, Mental Health and Special Needs Planning Section",
+    "DuesAmount": 35.0,
+    "glAccount": "T-624-4450-001"
+  },
+  {
+    "SectionCode": "LA ",
+    "SectionDescription": "Employment and Labor Law Section",
+    "DuesAmount": 40.0,
+    "glAccount": "T-610-4450-001"
+  },
+  {
+    "SectionCode": "EV ",
+    "SectionDescription": "Environmental and Natural Resource Law Section",
+    "DuesAmount": 30.0,
+    "glAccount": "T-606-4450-001"
+  },
+  {
+    "SectionCode": "FA ",
+    "SectionDescription": "Family Law Section",
+    "DuesAmount": 35.0,
+    "glAccount": "T-607-4450-001"
+  },
+  {
+    "SectionCode": "IM ",
+    "SectionDescription": "Immigration Law Section",
+    "DuesAmount": 30.0,
+    "glAccount": "T-608-4450-001"
+  },
+  {
+    "SectionCode": "IH ",
+    "SectionDescription": "In-House Counsel Section",
+    "DuesAmount": 30.0,
+    "glAccount": "T-631-4450-001"
+  },
+  {
+    "SectionCode": "ID ",
+    "SectionDescription": "Indian Law Section",
+    "DuesAmount": 35.0,
+    "glAccount": "T-622-4450-001"
+  },
+  {
+    "SectionCode": "IP ",
+    "SectionDescription": "Intellectual Property Law Section",
+    "DuesAmount": 35.0,
+    "glAccount": "T-612-4450-001"
+  },
+  {
+    "SectionCode": "IT ",
+    "SectionDescription": "International Law Section",
+    "DuesAmount": 35.0,
+    "glAccount": "T-609-4450-001"
+  },
+  {
+    "SectionCode": "IE ",
+    "SectionDescription": "Internet, E-Commerce and Technology Law Section",
+    "DuesAmount": 40.0,
+    "glAccount": "T-628-4450-001"
+  },
+  {
+    "SectionCode": "JV ",
+    "SectionDescription": "Juvenile Law Section",
+    "DuesAmount": 35.0,
+    "glAccount": "T-623-4450-001"
+  },
+  {
+    "SectionCode": "PT ",
+    "SectionDescription": "Probate and Trust Law Section",
+    "DuesAmount": 40.0,
+    "glAccount": "T-613-4450-001"
+  },
+  {
+    "SectionCode": "PU ",
+    "SectionDescription": "Public Lawyers Section",
+    "DuesAmount": 25.0,
+    "glAccount": "T-614-4450-001"
+  },
+  {
+    "SectionCode": "RP ",
+    "SectionDescription": "Real Property Law Section",
+    "DuesAmount": 35.0,
+    "glAccount": "T-615-4450-001"
+  },
+  {
+    "SectionCode": "RL ",
+    "SectionDescription": "Religious Liberty Law Section",
+    "DuesAmount": 35.0,
+    "glAccount": "T-630-4450-001"
+  },
+  {
+    "SectionCode": "RS ",
+    "SectionDescription": "Securities Regulation Section",
+    "DuesAmount": 30.0,
+    "glAccount": "T-616-4450-001"
+  },
+  {
+    "SectionCode": "XP ",
+    "SectionDescription": "Sole Practitioner/Small Firm Section",
+    "DuesAmount": 35.0,
+    "glAccount": "T-621-4450-001"
+  },
+  {
+    "SectionCode": "TX ",
+    "SectionDescription": "Tax Law Section",
+    "DuesAmount": 35.0,
+    "glAccount": "T-617-4450-001"
+  },
+  {
+    "SectionCode": "TP ",
+    "SectionDescription": "Trial Practice Section",
+    "DuesAmount": 25.0,
+    "glAccount": "T-618-4450-001"
+  },
+  {
+    "SectionCode": "WC ",
+    "SectionDescription": "Workers' Compensation Section",
+    "DuesAmount": 20.0,
+    "glAccount": "T-619-4450-001"
+  },
+  {
+    "SectionCode": "WP ",
+    "SectionDescription": "World Peace Through Law Section",
+    "DuesAmount": 35.0,
+    "glAccount": "T-620-4450-001"
+  }
+]

@@ -1,0 +1,66 @@
+[
+  {
+    "CountyCode": "01",
+    "CountyName": "Apache"
+  },
+  {
+    "CountyCode": "02",
+    "CountyName": "Cochise"
+  },
+  {
+    "CountyCode": "03",
+    "CountyName": "Coconino"
+  },
+  {
+    "CountyCode": "04",
+    "CountyName": "Gila"
+  },
+  {
+    "CountyCode": "05",
+    "CountyName": "Graham"
+  },
+  {
+    "CountyCode": "06",
+    "CountyName": "Greenlee"
+  },
+  {
+    "CountyCode": "15",
+    "CountyName": "La Paz"
+  },
+  {
+    "CountyCode": "07",
+    "CountyName": "Maricopa"
+  },
+  {
+    "CountyCode": "08",
+    "CountyName": "Mohave"
+  },
+  {
+    "CountyCode": "09",
+    "CountyName": "Navajo"
+  },
+  {
+    "CountyCode": "00",
+    "CountyName": "Out of State"
+  },
+  {
+    "CountyCode": "10",
+    "CountyName": "Pima"
+  },
+  {
+    "CountyCode": "11",
+    "CountyName": "Pinal"
+  },
+  {
+    "CountyCode": "12",
+    "CountyName": "Santa Cruz"
+  },
+  {
+    "CountyCode": "13",
+    "CountyName": "Yavapai"
+  },
+  {
+    "CountyCode": "14",
+    "CountyName": "Yuma"
+  }
+]

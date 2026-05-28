@@ -1,0 +1,862 @@
+[
+  {
+    "IsActive": true,
+    "Key": "245119",
+    "Value": "10xLaw.com, Inc."
+  },
+  {
+    "IsActive": true,
+    "Key": "245143",
+    "Value": "1787 Legal Group, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245169",
+    "Value": "ABPV, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245193",
+    "Value": "Access Justice Group, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245185",
+    "Value": "Accident Recovery Law Firm, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245130",
+    "Value": "Aiken Farrell Kroloff, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245165",
+    "Value": "All Access Advocates, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245199",
+    "Value": "Alperstein & Associates, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245149",
+    "Value": "Amborella Law, PLLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245104",
+    "Value": "API Law of Arizona"
+  },
+  {
+    "IsActive": true,
+    "Key": "245166",
+    "Value": "Aprio Legal, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245177",
+    "Value": "Aracor Law, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245093",
+    "Value": "Arete Financial Solutions"
+  },
+  {
+    "IsActive": true,
+    "Key": "245139",
+    "Value": "Arizona Immigration and Legal Services"
+  },
+  {
+    "IsActive": true,
+    "Key": "247272",
+    "Value": "Ask a Pro Law, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245163",
+    "Value": "Aspey, Watkins, and Diesel Attorneys at Law, PLLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245150",
+    "Value": "Aurum Law Group, PLLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245140",
+    "Value": "Auxana OGC, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245091",
+    "Value": "Axiom Advice and Counsel, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245175",
+    "Value": "AZ Law Now, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245094",
+    "Value": "Bad Drug Law Firm PLLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245120",
+    "Value": "Bar Pilot, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245121",
+    "Value": "Bay Point Legal Partners, LLC."
+  },
+  {
+    "IsActive": true,
+    "Key": "245200",
+    "Value": "Bergman Basha, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245154",
+    "Value": "Bespoke Legal Service, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245092",
+    "Value": "Big Auto-Accident Attorneys PLLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245235",
+    "Value": "Big League Law, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245222",
+    "Value": "BLS Law, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245095",
+    "Value": "BOSS Advisors, PLLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "248034",
+    "Value": "Boundless Legal, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "246870",
+    "Value": "Cactus Blossom Legal, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245204",
+    "Value": "CAO Legal, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245137",
+    "Value": "Cartiga Legal, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245164",
+    "Value": "CE Acceleration Studio, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245220",
+    "Value": "Centurion Law, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245172",
+    "Value": "Charter Law Group, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245186",
+    "Value": "Claimshero"
+  },
+  {
+    "IsActive": true,
+    "Key": "245215",
+    "Value": "Colexit Law, PLLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245216",
+    "Value": "Conduit Law, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245180",
+    "Value": "Constant Legal Group, LLC"
+  },
+  {
+    "IsActive": false,
+    "Key": "245179",
+    "Value": "Consumer Defense Partners, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245162",
+    "Value": "Copper State Legal, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245129",
+    "Value": "Copper Wren Law, LLC"
+  },
+  {
+    "IsActive": false,
+    "Key": "245208",
+    "Value": "Corporate Immigration Attorneys, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "249142",
+    "Value": "Creative Planning Legal Services"
+  },
+  {
+    "IsActive": true,
+    "Key": "248035",
+    "Value": "Crimson Talent Immigration, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245176",
+    "Value": "DB Justice Group, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245233",
+    "Value": "DC Legal Law Firm, PLLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245209",
+    "Value": "Delta Legal Services, INC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245161",
+    "Value": "EAAZ Law, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245098",
+    "Value": "eLegacy Law LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245210",
+    "Value": "Eleos Law, LLP"
+  },
+  {
+    "IsActive": true,
+    "Key": "245099",
+    "Value": "ElevateNext US LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245100",
+    "Value": "Elias Mendoza Hill Law Group"
+  },
+  {
+    "IsActive": true,
+    "Key": "245770",
+    "Value": "Ellis Legal, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245206",
+    "Value": "Elysium Legal-AZ, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245224",
+    "Value": "Enumero Law, Inc"
+  },
+  {
+    "IsActive": true,
+    "Key": "245122",
+    "Value": "Eos Law, LLC."
+  },
+  {
+    "IsActive": true,
+    "Key": "245101",
+    "Value": "Esquire Law LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245173",
+    "Value": "Ethic Alliance Legal Group, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245236",
+    "Value": "Eudia Counsel, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "247500",
+    "Value": "Family Office Advisory, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245097",
+    "Value": "Fidelity Legal, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "249143",
+    "Value": "For All Legal, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245211",
+    "Value": "Freeway Law, PC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245102",
+    "Value": "G Law Services LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245132",
+    "Value": "Genesis Legal Group"
+  },
+  {
+    "IsActive": true,
+    "Key": "245386",
+    "Value": "Get Right Legal, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245181",
+    "Value": "GFO Law, LLC"
+  },
+  {
+    "IsActive": false,
+    "Key": "245174",
+    "Value": "Greenlight Path, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245217",
+    "Value": "Harmony Law, PLLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245160",
+    "Value": "Healthcare Law Group, PLLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245138",
+    "Value": "Heritage Family Offices LLP"
+  },
+  {
+    "IsActive": true,
+    "Key": "245218",
+    "Value": "Homefront Group, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245771",
+    "Value": "Hunterbrook Law, LLC"
+  },
+  {
+    "IsActive": false,
+    "Key": "245221",
+    "Value": "Inmigracion Al Dia AZ, PLLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "249144",
+    "Value": "Innovation Legal Services AZ, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245194",
+    "Value": "iVisa Legal, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245223",
+    "Value": "J.O. Law Group, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245125",
+    "Value": "Jacoby & Meyers Mass Torts Law Firm, PLLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245205",
+    "Value": "Justice on Demand,PLLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245157",
+    "Value": "JusticeDirect Law Firm"
+  },
+  {
+    "IsActive": true,
+    "Key": "245387",
+    "Value": "Justpoint Law, LLP"
+  },
+  {
+    "IsActive": true,
+    "Key": "245188",
+    "Value": "K2D Law Corp"
+  },
+  {
+    "IsActive": true,
+    "Key": "245190",
+    "Value": "Kaplan Law, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245228",
+    "Value": "Keller Swan, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245207",
+    "Value": "KPMG Law US, LLC"
+  },
+  {
+    "IsActive": false,
+    "Key": "246869",
+    "Value": "KWP Estate Planning"
+  },
+  {
+    "IsActive": true,
+    "Key": "249145",
+    "Value": "Landmark Law Partners, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "249146",
+    "Value": "Law Bear, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245131",
+    "Value": "Law Leaders"
+  },
+  {
+    "IsActive": true,
+    "Key": "247274",
+    "Value": "Law Max Group, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245118",
+    "Value": "Law on Call LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245141",
+    "Value": "Lawfty Legal PLLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245113",
+    "Value": "LawHive Legal"
+  },
+  {
+    "IsActive": true,
+    "Key": "245105",
+    "Value": "LegaFi Law LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245106",
+    "Value": "Legal Help Partners PLLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245182",
+    "Value": "Legalsifter Law, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245191",
+    "Value": "Level Up Law, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245202",
+    "Value": "Lex Generalis, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245197",
+    "Value": "Litco ABS, Inc"
+  },
+  {
+    "IsActive": true,
+    "Key": "245772",
+    "Value": "Litix Legal, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245126",
+    "Value": "LS5 Legal, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245107",
+    "Value": "LZ Legal Services LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245123",
+    "Value": "Magic Law Group, Inc."
+  },
+  {
+    "IsActive": true,
+    "Key": "245195",
+    "Value": "Manifest Legal Services, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245148",
+    "Value": "Mariner Law Firm, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245231",
+    "Value": "Mayfair Legal, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245212",
+    "Value": "McCarthy Family Law, PLLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245133",
+    "Value": "McCormick Law, Car Wreck Attorneys PLLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245151",
+    "Value": "McRae Management Services, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245146",
+    "Value": "Meta-Attorney, PC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245108",
+    "Value": "Motion Law LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245178",
+    "Value": "My Visa Source Legal Corp"
+  },
+  {
+    "IsActive": true,
+    "Key": "245155",
+    "Value": "National Injury Attorneys, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245234",
+    "Value": "National Justice Partners, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245158",
+    "Value": "National Niner, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245201",
+    "Value": "Next League Executive Board, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245136",
+    "Value": "Nextpoint Law Group LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "249147",
+    "Value": "Northern Arizona Legacy Law Group"
+  },
+  {
+    "IsActive": true,
+    "Key": "245109",
+    "Value": "Novus Lex LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "249148",
+    "Value": "OCK Law Firm"
+  },
+  {
+    "IsActive": true,
+    "Key": "245226",
+    "Value": "Open Law Group, LTD"
+  },
+  {
+    "IsActive": true,
+    "Key": "245156",
+    "Value": "Outreach Legal, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245117",
+    "Value": "PatentVest Inc"
+  },
+  {
+    "IsActive": true,
+    "Key": "245159",
+    "Value": "Patriot Law Group, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245227",
+    "Value": "PDH Law, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245189",
+    "Value": "Pickett Unizaj, PLLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245144",
+    "Value": "Premiere Injury Groups, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245110",
+    "Value": "Radix Professional Services LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245152",
+    "Value": "Rasa Legal, PLLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245153",
+    "Value": "Red Rock Securities Law, Inc"
+  },
+  {
+    "IsActive": true,
+    "Key": "245116",
+    "Value": "Redwood Grove Law"
+  },
+  {
+    "IsActive": true,
+    "Key": "245142",
+    "Value": "Reliant Law Group, PLLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "248616",
+    "Value": "Replacement needed"
+  },
+  {
+    "IsActive": true,
+    "Key": "245187",
+    "Value": "Rocket Legal Professional Services, Inc."
+  },
+  {
+    "IsActive": true,
+    "Key": "245167",
+    "Value": "RP Legal Group, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245170",
+    "Value": "Ryan Legal Services, PLLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245111",
+    "Value": "Saddle Rock Legal Group LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "248615",
+    "Value": "Sage and Atlas Management Group, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245213",
+    "Value": "San Novus Trademark, LLP"
+  },
+  {
+    "IsActive": true,
+    "Key": "245112",
+    "Value": "Scout Law Group LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245134",
+    "Value": "Shared Practices, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245214",
+    "Value": "Shine Lawyers US, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "247275",
+    "Value": "SiliconPath, PLLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245229",
+    "Value": "Simply Legal, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "247273",
+    "Value": "Skyview Legal Group, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245198",
+    "Value": "Sterling Shield Legal, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "249149",
+    "Value": "Summit National Law Group, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245128",
+    "Value": "Sunridge Law Group, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245147",
+    "Value": "Swyft Legal, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "246835",
+    "Value": "Test"
+  },
+  {
+    "IsActive": true,
+    "Key": "246911",
+    "Value": "Test 2"
+  },
+  {
+    "IsActive": true,
+    "Key": "245219",
+    "Value": "The American Advocate, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245196",
+    "Value": "The Auto Injury Firm, PLLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245124",
+    "Value": "The Meadow Law Firm, LLC."
+  },
+  {
+    "IsActive": true,
+    "Key": "245203",
+    "Value": "The Turner Law Firm, PLLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245171",
+    "Value": "Tice Mendes Law, PLLC"
+  },
+  {
+    "IsActive": false,
+    "Key": "245184",
+    "Value": "Trademarkia Venture Partners"
+  },
+  {
+    "IsActive": true,
+    "Key": "245114",
+    "Value": "Trajan Estate LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245183",
+    "Value": "Trident Legal, PLLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245145",
+    "Value": "TRT Legal, PLLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245225",
+    "Value": "Turquoise Law Group, PLLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245230",
+    "Value": "United Alliance Law, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245115",
+    "Value": "Vantage Law Firm LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245168",
+    "Value": "Vertical Advocacy, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245232",
+    "Value": "Veterans Legacy Counsel"
+  },
+  {
+    "IsActive": true,
+    "Key": "245103",
+    "Value": "VisaPlace Legal"
+  },
+  {
+    "IsActive": true,
+    "Key": "245096",
+    "Value": "Wall and Olson, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245192",
+    "Value": "Watcher"
+  },
+  {
+    "IsActive": true,
+    "Key": "245135",
+    "Value": "WesternTrust Law, LLC"
+  },
+  {
+    "IsActive": true,
+    "Key": "245127",
+    "Value": "Wilkie Puchi, LLP"
+  }
+]

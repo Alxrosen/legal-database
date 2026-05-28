@@ -1,0 +1,326 @@
+[
+  {
+    "LanguageCode": 2,
+    "LanguageDescription": "Afrikaans"
+  },
+  {
+    "LanguageCode": 79,
+    "LanguageDescription": "Albanian"
+  },
+  {
+    "LanguageCode": 67,
+    "LanguageDescription": "Amharic"
+  },
+  {
+    "LanguageCode": 48,
+    "LanguageDescription": "Apache"
+  },
+  {
+    "LanguageCode": 34,
+    "LanguageDescription": "Arabic"
+  },
+  {
+    "LanguageCode": 69,
+    "LanguageDescription": "Aramaic"
+  },
+  {
+    "LanguageCode": 29,
+    "LanguageDescription": "Armenian"
+  },
+  {
+    "LanguageCode": 28,
+    "LanguageDescription": "Aymara"
+  },
+  {
+    "LanguageCode": 38,
+    "LanguageDescription": "Bengali"
+  },
+  {
+    "LanguageCode": 71,
+    "LanguageDescription": "Bosnian"
+  },
+  {
+    "LanguageCode": 49,
+    "LanguageDescription": "Brazilian"
+  },
+  {
+    "LanguageCode": 77,
+    "LanguageDescription": "Bulgarian"
+  },
+  {
+    "LanguageCode": 50,
+    "LanguageDescription": "Cantonese"
+  },
+  {
+    "LanguageCode": 81,
+    "LanguageDescription": "Cebuano"
+  },
+  {
+    "LanguageCode": 3,
+    "LanguageDescription": "Chinese"
+  },
+  {
+    "LanguageCode": 66,
+    "LanguageDescription": "Croatian"
+  },
+  {
+    "LanguageCode": 4,
+    "LanguageDescription": "Czech"
+  },
+  {
+    "LanguageCode": 5,
+    "LanguageDescription": "Danish"
+  },
+  {
+    "LanguageCode": 6,
+    "LanguageDescription": "Dutch"
+  },
+  {
+    "LanguageCode": 52,
+    "LanguageDescription": "Estonian"
+  },
+  {
+    "LanguageCode": 42,
+    "LanguageDescription": "Farsi"
+  },
+  {
+    "LanguageCode": 25,
+    "LanguageDescription": "Fijian"
+  },
+  {
+    "LanguageCode": 32,
+    "LanguageDescription": "Finnish"
+  },
+  {
+    "LanguageCode": 45,
+    "LanguageDescription": "Flemish"
+  },
+  {
+    "LanguageCode": 7,
+    "LanguageDescription": "French"
+  },
+  {
+    "LanguageCode": 36,
+    "LanguageDescription": "Gaelic"
+  },
+  {
+    "LanguageCode": 8,
+    "LanguageDescription": "German"
+  },
+  {
+    "LanguageCode": 9,
+    "LanguageDescription": "Greek"
+  },
+  {
+    "LanguageCode": 55,
+    "LanguageDescription": "Guarani"
+  },
+  {
+    "LanguageCode": 10,
+    "LanguageDescription": "Gujarati- India"
+  },
+  {
+    "LanguageCode": 72,
+    "LanguageDescription": "Haitian Creole"
+  },
+  {
+    "LanguageCode": 22,
+    "LanguageDescription": "Hebrew"
+  },
+  {
+    "LanguageCode": 39,
+    "LanguageDescription": "Hindi"
+  },
+  {
+    "LanguageCode": 11,
+    "LanguageDescription": "Hungarian"
+  },
+  {
+    "LanguageCode": 46,
+    "LanguageDescription": "Igbo (Nigerian Language)"
+  },
+  {
+    "LanguageCode": 57,
+    "LanguageDescription": "Indonesian"
+  },
+  {
+    "LanguageCode": 12,
+    "LanguageDescription": "Italian"
+  },
+  {
+    "LanguageCode": 13,
+    "LanguageDescription": "Japanese"
+  },
+  {
+    "LanguageCode": 37,
+    "LanguageDescription": "Korean"
+  },
+  {
+    "LanguageCode": 78,
+    "LanguageDescription": "Kurdish"
+  },
+  {
+    "LanguageCode": 65,
+    "LanguageDescription": "Laotian"
+  },
+  {
+    "LanguageCode": 51,
+    "LanguageDescription": "Latin"
+  },
+  {
+    "LanguageCode": 63,
+    "LanguageDescription": "Latvian"
+  },
+  {
+    "LanguageCode": 80,
+    "LanguageDescription": "Lithuanian"
+  },
+  {
+    "LanguageCode": 76,
+    "LanguageDescription": "Macedonian"
+  },
+  {
+    "LanguageCode": 59,
+    "LanguageDescription": "Malayalam"
+  },
+  {
+    "LanguageCode": 56,
+    "LanguageDescription": "Mandarin"
+  },
+  {
+    "LanguageCode": 24,
+    "LanguageDescription": "Maori"
+  },
+  {
+    "LanguageCode": 27,
+    "LanguageDescription": "Navajo"
+  },
+  {
+    "LanguageCode": 14,
+    "LanguageDescription": "Norwegian"
+  },
+  {
+    "LanguageCode": 74,
+    "LanguageDescription": "O'Odham"
+  },
+  {
+    "LanguageCode": 60,
+    "LanguageDescription": "Papago"
+  },
+  {
+    "LanguageCode": 68,
+    "LanguageDescription": "Persian"
+  },
+  {
+    "LanguageCode": 15,
+    "LanguageDescription": "Polish"
+  },
+  {
+    "LanguageCode": 16,
+    "LanguageDescription": "Portuguese"
+  },
+  {
+    "LanguageCode": 73,
+    "LanguageDescription": "Punjabi"
+  },
+  {
+    "LanguageCode": 40,
+    "LanguageDescription": "Quiche"
+  },
+  {
+    "LanguageCode": 47,
+    "LanguageDescription": "Romanian"
+  },
+  {
+    "LanguageCode": 17,
+    "LanguageDescription": "Russian"
+  },
+  {
+    "LanguageCode": 31,
+    "LanguageDescription": "Serbo/Croatian"
+  },
+  {
+    "LanguageCode": 23,
+    "LanguageDescription": "Sign Language"
+  },
+  {
+    "LanguageCode": 54,
+    "LanguageDescription": "Sinhala"
+  },
+  {
+    "LanguageCode": 64,
+    "LanguageDescription": "Slovak"
+  },
+  {
+    "LanguageCode": 18,
+    "LanguageDescription": "Spanish"
+  },
+  {
+    "LanguageCode": 41,
+    "LanguageDescription": "Swahili"
+  },
+  {
+    "LanguageCode": 19,
+    "LanguageDescription": "Swedish"
+  },
+  {
+    "LanguageCode": 70,
+    "LanguageDescription": "Tagalog"
+  },
+  {
+    "LanguageCode": 33,
+    "LanguageDescription": "Tahitian"
+  },
+  {
+    "LanguageCode": 58,
+    "LanguageDescription": "Taiwanese"
+  },
+  {
+    "LanguageCode": 53,
+    "LanguageDescription": "Tamil"
+  },
+  {
+    "LanguageCode": 75,
+    "LanguageDescription": "Telugu"
+  },
+  {
+    "LanguageCode": 35,
+    "LanguageDescription": "Thai"
+  },
+  {
+    "LanguageCode": 44,
+    "LanguageDescription": "Tongan"
+  },
+  {
+    "LanguageCode": 43,
+    "LanguageDescription": "Turkish"
+  },
+  {
+    "LanguageCode": 83,
+    "LanguageDescription": "Twi"
+  },
+  {
+    "LanguageCode": 26,
+    "LanguageDescription": "Ukrainian"
+  },
+  {
+    "LanguageCode": 62,
+    "LanguageDescription": "Urdu (Pakistan)"
+  },
+  {
+    "LanguageCode": 61,
+    "LanguageDescription": "Vietnamese"
+  },
+  {
+    "LanguageCode": 82,
+    "LanguageDescription": "Visayan"
+  },
+  {
+    "LanguageCode": 21,
+    "LanguageDescription": "Yiddish"
+  },
+  {
+    "LanguageCode": 30,
+    "LanguageDescription": "Yugoslavian"
+  }
+]

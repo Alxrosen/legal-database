@@ -1,0 +1,15 @@
+{
+  "IsSuccess": true,
+  "IsWarning": false,
+  "EntityNumber": null,
+  "Message": "",
+  "IsResult": true,
+  "Error": "",
+  "Result": {
+    "Seed": null,
+    "Page": 1485,
+    "PageSize": 25,
+    "TotalCount": 35860,
+    "Results": []
+  }
+}

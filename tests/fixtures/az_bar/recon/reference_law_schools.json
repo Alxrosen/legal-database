@@ -1,0 +1,1290 @@
+[
+  {
+    "LawSchoolCode": "2946",
+    "LawSchoolDescription": "Albany"
+  },
+  {
+    "LawSchoolCode": "5007",
+    "LawSchoolDescription": "American"
+  },
+  {
+    "LawSchoolCode": "4215",
+    "LawSchoolDescription": "American College - CA"
+  },
+  {
+    "LawSchoolCode": "5032",
+    "LawSchoolDescription": "Antioch"
+  },
+  {
+    "LawSchoolCode": "9919",
+    "LawSchoolDescription": "Appalachian School of Law"
+  },
+  {
+    "LawSchoolCode": "4007",
+    "LawSchoolDescription": "Arizona State"
+  },
+  {
+    "LawSchoolCode": "9935",
+    "LawSchoolDescription": "Arizona Summit Law School"
+  },
+  {
+    "LawSchoolCode": "9924",
+    "LawSchoolDescription": "Ave Maria"
+  },
+  {
+    "LawSchoolCode": "9940",
+    "LawSchoolDescription": "Barry U"
+  },
+  {
+    "LawSchoolCode": "6032",
+    "LawSchoolDescription": "Baylor"
+  },
+  {
+    "LawSchoolCode": "9982",
+    "LawSchoolDescription": "Belmont University"
+  },
+  {
+    "LawSchoolCode": "7608",
+    "LawSchoolDescription": "Blackstone Illinois"
+  },
+  {
+    "LawSchoolCode": "9945",
+    "LawSchoolDescription": "Bond University (Australia)"
+  },
+  {
+    "LawSchoolCode": "3083",
+    "LawSchoolDescription": "Boston College"
+  },
+  {
+    "LawSchoolCode": "3087",
+    "LawSchoolDescription": "Boston U"
+  },
+  {
+    "LawSchoolCode": "5916",
+    "LawSchoolDescription": "BPP Law School"
+  },
+  {
+    "LawSchoolCode": "4019",
+    "LawSchoolDescription": "Brigham Young"
+  },
+  {
+    "LawSchoolCode": "2047",
+    "LawSchoolDescription": "Brooklyn"
+  },
+  {
+    "LawSchoolCode": "9546",
+    "LawSchoolDescription": "California Southern"
+  },
+  {
+    "LawSchoolCode": "4802",
+    "LawSchoolDescription": "California Western"
+  },
+  {
+    "LawSchoolCode": "5100",
+    "LawSchoolDescription": "Campbell"
+  },
+  {
+    "LawSchoolCode": "6805",
+    "LawSchoolDescription": "Cape Town (South Africa)"
+  },
+  {
+    "LawSchoolCode": "1099",
+    "LawSchoolDescription": "Capital"
+  },
+  {
+    "LawSchoolCode": "2990",
+    "LawSchoolDescription": "Cardozo"
+  },
+  {
+    "LawSchoolCode": "1105",
+    "LawSchoolDescription": "Case Western Reserve"
+  },
+  {
+    "LawSchoolCode": "5104",
+    "LawSchoolDescription": "Catholic-America"
+  },
+  {
+    "LawSchoolCode": "8061",
+    "LawSchoolDescription": "Chapman"
+  },
+  {
+    "LawSchoolCode": "1333",
+    "LawSchoolDescription": "Charleston School of Law"
+  },
+  {
+    "LawSchoolCode": "2008",
+    "LawSchoolDescription": "Charlotte"
+  },
+  {
+    "LawSchoolCode": "2585",
+    "LawSchoolDescription": "City U of NY"
+  },
+  {
+    "LawSchoolCode": "1221",
+    "LawSchoolDescription": "Cleveland Marshall"
+  },
+  {
+    "LawSchoolCode": "8076",
+    "LawSchoolDescription": "Cleveland State"
+  },
+  {
+    "LawSchoolCode": "9926",
+    "LawSchoolDescription": "College Management Academic"
+  },
+  {
+    "LawSchoolCode": "6810",
+    "LawSchoolDescription": "College of Wales"
+  },
+  {
+    "LawSchoolCode": "2163",
+    "LawSchoolDescription": "Columbia"
+  },
+  {
+    "LawSchoolCode": "9937",
+    "LawSchoolDescription": "Concord"
+  },
+  {
+    "LawSchoolCode": "2098",
+    "LawSchoolDescription": "Cornell"
+  },
+  {
+    "LawSchoolCode": "6121",
+    "LawSchoolDescription": "Creighton"
+  },
+  {
+    "LawSchoolCode": "1302",
+    "LawSchoolDescription": "Cumberland - Samford"
+  },
+  {
+    "LawSchoolCode": "0915",
+    "LawSchoolDescription": "Dalhousie (Canada)"
+  },
+  {
+    "LawSchoolCode": "8086",
+    "LawSchoolDescription": "DC School of Law"
+  },
+  {
+    "LawSchoolCode": "5161",
+    "LawSchoolDescription": "Delaware - Widener"
+  },
+  {
+    "LawSchoolCode": "9942",
+    "LawSchoolDescription": "Denver U"
+  },
+  {
+    "LawSchoolCode": "1165",
+    "LawSchoolDescription": "DePaul"
+  },
+  {
+    "LawSchoolCode": "1168",
+    "LawSchoolDescription": "Detroit"
+  },
+  {
+    "LawSchoolCode": "8022",
+    "LawSchoolDescription": "Detroit College"
+  },
+  {
+    "LawSchoolCode": "2187",
+    "LawSchoolDescription": "Dickinson"
+  },
+  {
+    "LawSchoolCode": "6168",
+    "LawSchoolDescription": "Drake"
+  },
+  {
+    "LawSchoolCode": "9943",
+    "LawSchoolDescription": "Drexel"
+  },
+  {
+    "LawSchoolCode": "5156",
+    "LawSchoolDescription": "Duke"
+  },
+  {
+    "LawSchoolCode": "2196",
+    "LawSchoolDescription": "Duquesne"
+  },
+  {
+    "LawSchoolCode": "9976",
+    "LawSchoolDescription": "Elon University School of Law"
+  },
+  {
+    "LawSchoolCode": "5187",
+    "LawSchoolDescription": "Emory"
+  },
+  {
+    "LawSchoolCode": "4275",
+    "LawSchoolDescription": "Empire College"
+  },
+  {
+    "LawSchoolCode": "6814",
+    "LawSchoolDescription": "England & Cambridge (England)"
+  },
+  {
+    "LawSchoolCode": "2006",
+    "LawSchoolDescription": "Faulkner"
+  },
+  {
+    "LawSchoolCode": "9939",
+    "LawSchoolDescription": "Florida A&M"
+  },
+  {
+    "LawSchoolCode": "9938",
+    "LawSchoolDescription": "Florida Coastal"
+  },
+  {
+    "LawSchoolCode": "4806",
+    "LawSchoolDescription": "Florida International University's College of Law"
+  },
+  {
+    "LawSchoolCode": "5219",
+    "LawSchoolDescription": "Florida State"
+  },
+  {
+    "LawSchoolCode": "2259",
+    "LawSchoolDescription": "Fordham"
+  },
+  {
+    "LawSchoolCode": "1978",
+    "LawSchoolDescription": "Galway U (Ireland)"
+  },
+  {
+    "LawSchoolCode": "5827",
+    "LawSchoolDescription": "George Mason"
+  },
+  {
+    "LawSchoolCode": "5246",
+    "LawSchoolDescription": "George Washington"
+  },
+  {
+    "LawSchoolCode": "5244",
+    "LawSchoolDescription": "Georgetown"
+  },
+  {
+    "LawSchoolCode": "5251",
+    "LawSchoolDescription": "Georgia State"
+  },
+  {
+    "LawSchoolCode": "8017",
+    "LawSchoolDescription": "Georgia State"
+  },
+  {
+    "LawSchoolCode": "4321",
+    "LawSchoolDescription": "Glendale College"
+  },
+  {
+    "LawSchoolCode": "4329",
+    "LawSchoolDescription": "Golden Gate"
+  },
+  {
+    "LawSchoolCode": "4330",
+    "LawSchoolDescription": "Gonzaga"
+  },
+  {
+    "LawSchoolCode": "3457",
+    "LawSchoolDescription": "Harvard"
+  },
+  {
+    "LawSchoolCode": "2295",
+    "LawSchoolDescription": "Hofstra"
+  },
+  {
+    "LawSchoolCode": "6804",
+    "LawSchoolDescription": "Hon Society - Kings Inn"
+  },
+  {
+    "LawSchoolCode": "5297",
+    "LawSchoolDescription": "Howard"
+  },
+  {
+    "LawSchoolCode": "1115",
+    "LawSchoolDescription": "IIT Chicago-Kent"
+  },
+  {
+    "LawSchoolCode": "9916",
+    "LawSchoolDescription": "Indiana U"
+  },
+  {
+    "LawSchoolCode": "1324",
+    "LawSchoolDescription": "Indiana U - Bloomington"
+  },
+  {
+    "LawSchoolCode": "1325",
+    "LawSchoolDescription": "Indiana U - Indianapolis"
+  },
+  {
+    "LawSchoolCode": "9920",
+    "LawSchoolDescription": "Inter American PR"
+  },
+  {
+    "LawSchoolCode": "7019",
+    "LawSchoolDescription": "Ireland University College"
+  },
+  {
+    "LawSchoolCode": "4365",
+    "LawSchoolDescription": "John F Kennedy U"
+  },
+  {
+    "LawSchoolCode": "8054",
+    "LawSchoolDescription": "John Marshall"
+  },
+  {
+    "LawSchoolCode": "5344",
+    "LawSchoolDescription": "John Marshall - Atlanta"
+  },
+  {
+    "LawSchoolCode": "1344",
+    "LawSchoolDescription": "John Marshall - Chicago"
+  },
+  {
+    "LawSchoolCode": "9931",
+    "LawSchoolDescription": "La Verne"
+  },
+  {
+    "LawSchoolCode": "4384",
+    "LawSchoolDescription": "Lewis & Clark"
+  },
+  {
+    "LawSchoolCode": "1404",
+    "LawSchoolDescription": "Lewis U - Illinois"
+  },
+  {
+    "LawSchoolCode": "9933",
+    "LawSchoolDescription": "Liberty U"
+  },
+  {
+    "LawSchoolCode": "4419",
+    "LawSchoolDescription": "Lincoln"
+  },
+  {
+    "LawSchoolCode": "6373",
+    "LawSchoolDescription": "Louisiana State"
+  },
+  {
+    "LawSchoolCode": "9201",
+    "LawSchoolDescription": "Loyola"
+  },
+  {
+    "LawSchoolCode": "1412",
+    "LawSchoolDescription": "Loyola - Chicago"
+  },
+  {
+    "LawSchoolCode": "8099",
+    "LawSchoolDescription": "Loyola - LA"
+  },
+  {
+    "LawSchoolCode": "6374",
+    "LawSchoolDescription": "Loyola - New Orleans"
+  },
+  {
+    "LawSchoolCode": "4403",
+    "LawSchoolDescription": "Loyola U - California"
+  },
+  {
+    "LawSchoolCode": "1448",
+    "LawSchoolDescription": "Marquette"
+  },
+  {
+    "LawSchoolCode": "9922",
+    "LawSchoolDescription": "Massachusetts School of Law - Andover"
+  },
+  {
+    "LawSchoolCode": "7600",
+    "LawSchoolDescription": "Massely Law - GA"
+  },
+  {
+    "LawSchoolCode": "4065",
+    "LawSchoolDescription": "McGeorge - Pacific"
+  },
+  {
+    "LawSchoolCode": "0983",
+    "LawSchoolDescription": "McGill University (Canada)"
+  },
+  {
+    "LawSchoolCode": "9979",
+    "LawSchoolDescription": "Members Concordia University School of Law"
+  },
+  {
+    "LawSchoolCode": "1459",
+    "LawSchoolDescription": "Memphis State"
+  },
+  {
+    "LawSchoolCode": "5409",
+    "LawSchoolDescription": "Mercer"
+  },
+  {
+    "LawSchoolCode": "9923",
+    "LawSchoolDescription": "Michigan State"
+  },
+  {
+    "LawSchoolCode": "1332",
+    "LawSchoolDescription": "Mississippi College"
+  },
+  {
+    "LawSchoolCode": "6513",
+    "LawSchoolDescription": "Mitchell Hamline"
+  },
+  {
+    "LawSchoolCode": "4522",
+    "LawSchoolDescription": "Monterey College"
+  },
+  {
+    "LawSchoolCode": "9918",
+    "LawSchoolDescription": "Nacional Auton"
+  },
+  {
+    "LawSchoolCode": "1550",
+    "LawSchoolDescription": "Nashville School of Law"
+  },
+  {
+    "LawSchoolCode": "4557",
+    "LawSchoolDescription": "National"
+  },
+  {
+    "LawSchoolCode": "8941",
+    "LawSchoolDescription": "National Chung Cheng University"
+  },
+  {
+    "LawSchoolCode": "4555",
+    "LawSchoolDescription": "New College of CA"
+  },
+  {
+    "LawSchoolCode": "3288",
+    "LawSchoolDescription": "New England"
+  },
+  {
+    "LawSchoolCode": "8092",
+    "LawSchoolDescription": "New York Law School"
+  },
+  {
+    "LawSchoolCode": "9978",
+    "LawSchoolDescription": "New York University Law School"
+  },
+  {
+    "LawSchoolCode": "5495",
+    "LawSchoolDescription": "North Carolina Central"
+  },
+  {
+    "LawSchoolCode": "3667",
+    "LawSchoolDescription": "Northeastern U"
+  },
+  {
+    "LawSchoolCode": "1559",
+    "LawSchoolDescription": "Northern IL"
+  },
+  {
+    "LawSchoolCode": "1709",
+    "LawSchoolDescription": "Northern Kentucky - Chase"
+  },
+  {
+    "LawSchoolCode": "1565",
+    "LawSchoolDescription": "Northwestern"
+  },
+  {
+    "LawSchoolCode": "9999",
+    "LawSchoolDescription": "Not Applicable"
+  },
+  {
+    "LawSchoolCode": "8042",
+    "LawSchoolDescription": "Notre Dame"
+  },
+  {
+    "LawSchoolCode": "5514",
+    "LawSchoolDescription": "Nova"
+  },
+  {
+    "LawSchoolCode": "8055",
+    "LawSchoolDescription": "Nova Southeastern"
+  },
+  {
+    "LawSchoolCode": "2552",
+    "LawSchoolDescription": "NY Law School"
+  },
+  {
+    "LawSchoolCode": "2599",
+    "LawSchoolDescription": "NYU"
+  },
+  {
+    "LawSchoolCode": "1591",
+    "LawSchoolDescription": "Ohio Northern"
+  },
+  {
+    "LawSchoolCode": "1592",
+    "LawSchoolDescription": "Ohio State"
+  },
+  {
+    "LawSchoolCode": "6543",
+    "LawSchoolDescription": "Oklahoma City U"
+  },
+  {
+    "LawSchoolCode": "4234",
+    "LawSchoolDescription": "Old College"
+  },
+  {
+    "LawSchoolCode": "6552",
+    "LawSchoolDescription": "Oral Roberts"
+  },
+  {
+    "LawSchoolCode": "0894",
+    "LawSchoolDescription": "Osgoode Hall York U (Canada)"
+  },
+  {
+    "LawSchoolCode": "2644",
+    "LawSchoolDescription": "Pace"
+  },
+  {
+    "LawSchoolCode": "4615",
+    "LawSchoolDescription": "Peninsula U"
+  },
+  {
+    "LawSchoolCode": "9917",
+    "LawSchoolDescription": "Pennsylvania State"
+  },
+  {
+    "LawSchoolCode": "4326",
+    "LawSchoolDescription": "Pepperdine"
+  },
+  {
+    "LawSchoolCode": "9977",
+    "LawSchoolDescription": "Phoenix School of Law"
+  },
+  {
+    "LawSchoolCode": "8031",
+    "LawSchoolDescription": "Puget Sound"
+  },
+  {
+    "LawSchoolCode": "9928",
+    "LawSchoolDescription": "Queens U of Belfast (Ireland)"
+  },
+  {
+    "LawSchoolCode": "3716",
+    "LawSchoolDescription": "Quinnipiac"
+  },
+  {
+    "LawSchoolCode": "8105",
+    "LawSchoolDescription": "Regent"
+  },
+  {
+    "LawSchoolCode": "5787",
+    "LawSchoolDescription": "Regent VA Beach"
+  },
+  {
+    "LawSchoolCode": "9930",
+    "LawSchoolDescription": "Rhodes U (South Africa)"
+  },
+  {
+    "LawSchoolCode": "3729",
+    "LawSchoolDescription": "Roger Williams"
+  },
+  {
+    "LawSchoolCode": "9200",
+    "LawSchoolDescription": "Rutgers"
+  },
+  {
+    "LawSchoolCode": "2092",
+    "LawSchoolDescription": "Rutgers - Camden"
+  },
+  {
+    "LawSchoolCode": "2512",
+    "LawSchoolDescription": "Rutgers - Newark"
+  },
+  {
+    "LawSchoolCode": "2799",
+    "LawSchoolDescription": "Saint Johns"
+  },
+  {
+    "LawSchoolCode": "6629",
+    "LawSchoolDescription": "Saint Louis"
+  },
+  {
+    "LawSchoolCode": "6637",
+    "LawSchoolDescription": "Saint Mary's "
+  },
+  {
+    "LawSchoolCode": "5132",
+    "LawSchoolDescription": "Saint Thomas"
+  },
+  {
+    "LawSchoolCode": "9934",
+    "LawSchoolDescription": "Samford"
+  },
+  {
+    "LawSchoolCode": "4873",
+    "LawSchoolDescription": "San Fernando Valley"
+  },
+  {
+    "LawSchoolCode": "4712",
+    "LawSchoolDescription": "San Francisco"
+  },
+  {
+    "LawSchoolCode": "9984",
+    "LawSchoolDescription": "San Joaquin College"
+  },
+  {
+    "LawSchoolCode": "4149",
+    "LawSchoolDescription": "Santa Barbara"
+  },
+  {
+    "LawSchoolCode": "4851",
+    "LawSchoolDescription": "Santa Clara"
+  },
+  {
+    "LawSchoolCode": "8044",
+    "LawSchoolDescription": "Seattle"
+  },
+  {
+    "LawSchoolCode": "9402",
+    "LawSchoolDescription": "Seattle U"
+  },
+  {
+    "LawSchoolCode": "2811",
+    "LawSchoolDescription": "Seton Hall"
+  },
+  {
+    "LawSchoolCode": "9948",
+    "LawSchoolDescription": "SMU Dedman School of Law"
+  },
+  {
+    "LawSchoolCode": "8100",
+    "LawSchoolDescription": "So Methodist"
+  },
+  {
+    "LawSchoolCode": "6654",
+    "LawSchoolDescription": "South Texas College of Law"
+  },
+  {
+    "LawSchoolCode": "9946",
+    "LawSchoolDescription": "Southern Cross University (Australia)"
+  },
+  {
+    "LawSchoolCode": "1726",
+    "LawSchoolDescription": "Southern Illinois "
+  },
+  {
+    "LawSchoolCode": "6660",
+    "LawSchoolDescription": "Southern Methodist"
+  },
+  {
+    "LawSchoolCode": "6663",
+    "LawSchoolDescription": "Southern U"
+  },
+  {
+    "LawSchoolCode": "4703",
+    "LawSchoolDescription": "Southwestern U"
+  },
+  {
+    "LawSchoolCode": "8050",
+    "LawSchoolDescription": "St Louis"
+  },
+  {
+    "LawSchoolCode": "8039",
+    "LawSchoolDescription": "St Mary's"
+  },
+  {
+    "LawSchoolCode": "8109",
+    "LawSchoolDescription": "St Mary's U"
+  },
+  {
+    "LawSchoolCode": "7601",
+    "LawSchoolDescription": "St Paul College of Law"
+  },
+  {
+    "LawSchoolCode": "8036",
+    "LawSchoolDescription": "St Thomas"
+  },
+  {
+    "LawSchoolCode": "4704",
+    "LawSchoolDescription": "Stanford"
+  },
+  {
+    "LawSchoolCode": "2925",
+    "LawSchoolDescription": "State U of NY - Buffalo"
+  },
+  {
+    "LawSchoolCode": "5630",
+    "LawSchoolDescription": "Stetson"
+  },
+  {
+    "LawSchoolCode": "9941",
+    "LawSchoolDescription": "Sturn College"
+  },
+  {
+    "LawSchoolCode": "3771",
+    "LawSchoolDescription": "Suffolk"
+  },
+  {
+    "LawSchoolCode": "8082",
+    "LawSchoolDescription": "SUNY @ Buffalo"
+  },
+  {
+    "LawSchoolCode": "2823",
+    "LawSchoolDescription": "Syracuse"
+  },
+  {
+    "LawSchoolCode": "9493",
+    "LawSchoolDescription": "Tel Aviv University - Israel"
+  },
+  {
+    "LawSchoolCode": "2906",
+    "LawSchoolDescription": "Temple"
+  },
+  {
+    "LawSchoolCode": "9975",
+    "LawSchoolDescription": "Texas A&M University"
+  },
+  {
+    "LawSchoolCode": "6824",
+    "LawSchoolDescription": "Texas Southern U"
+  },
+  {
+    "LawSchoolCode": "6827",
+    "LawSchoolDescription": "Texas Tech"
+  },
+  {
+    "LawSchoolCode": "8080",
+    "LawSchoolDescription": "Texas Tech"
+  },
+  {
+    "LawSchoolCode": "6828",
+    "LawSchoolDescription": "Texas Wesleyan"
+  },
+  {
+    "LawSchoolCode": "9516",
+    "LawSchoolDescription": "Thomas Jefferson"
+  },
+  {
+    "LawSchoolCode": "9518",
+    "LawSchoolDescription": "Thomas Jefferson - Western San Diego"
+  },
+  {
+    "LawSchoolCode": "9947",
+    "LawSchoolDescription": "Thurgood Marshall School of Law"
+  },
+  {
+    "LawSchoolCode": "2902",
+    "LawSchoolDescription": "Touro"
+  },
+  {
+    "LawSchoolCode": "9449",
+    "LawSchoolDescription": "Trinity Law School"
+  },
+  {
+    "LawSchoolCode": "6832",
+    "LawSchoolDescription": "Tulane"
+  },
+  {
+    "LawSchoolCode": "1829",
+    "LawSchoolDescription": "U of Akron"
+  },
+  {
+    "LawSchoolCode": "1830",
+    "LawSchoolDescription": "U of Alabama"
+  },
+  {
+    "LawSchoolCode": "0967",
+    "LawSchoolDescription": "U of Alberta (Canada)"
+  },
+  {
+    "LawSchoolCode": "4832",
+    "LawSchoolDescription": "U of Arizona"
+  },
+  {
+    "LawSchoolCode": "6866",
+    "LawSchoolDescription": "U of Arkansas - Fayetteville"
+  },
+  {
+    "LawSchoolCode": "6368",
+    "LawSchoolDescription": "U of Arkansas - Little Rock"
+  },
+  {
+    "LawSchoolCode": "5810",
+    "LawSchoolDescription": "U of Baltimore"
+  },
+  {
+    "LawSchoolCode": "9944",
+    "LawSchoolDescription": "U of Basel (Switzerland)"
+  },
+  {
+    "LawSchoolCode": "0833",
+    "LawSchoolDescription": "U of Bombay (India)"
+  },
+  {
+    "LawSchoolCode": "3973",
+    "LawSchoolDescription": "U of Bridgeport"
+  },
+  {
+    "LawSchoolCode": "0965",
+    "LawSchoolDescription": "U of British Columbia (Canada)"
+  },
+  {
+    "LawSchoolCode": "9932",
+    "LawSchoolDescription": "U of Calgary (Canada)"
+  },
+  {
+    "LawSchoolCode": "9909",
+    "LawSchoolDescription": "U of California"
+  },
+  {
+    "LawSchoolCode": "4833",
+    "LawSchoolDescription": "U of California - Berkeley"
+  },
+  {
+    "LawSchoolCode": "4834",
+    "LawSchoolDescription": "U of California - Davis"
+  },
+  {
+    "LawSchoolCode": "4342",
+    "LawSchoolDescription": "U of California - Hastings"
+  },
+  {
+    "LawSchoolCode": "4837",
+    "LawSchoolDescription": "U of California - LA"
+  },
+  {
+    "LawSchoolCode": "1832",
+    "LawSchoolDescription": "U of Chicago"
+  },
+  {
+    "LawSchoolCode": "1833",
+    "LawSchoolDescription": "U of Cincinnati"
+  },
+  {
+    "LawSchoolCode": "4841",
+    "LawSchoolDescription": "U of Colorado"
+  },
+  {
+    "LawSchoolCode": "3915",
+    "LawSchoolDescription": "U of Connecticut"
+  },
+  {
+    "LawSchoolCode": "1834",
+    "LawSchoolDescription": "U of Dayton"
+  },
+  {
+    "LawSchoolCode": "4842",
+    "LawSchoolDescription": "U of Denver"
+  },
+  {
+    "LawSchoolCode": "1835",
+    "LawSchoolDescription": "U of Detroit"
+  },
+  {
+    "LawSchoolCode": "7362",
+    "LawSchoolDescription": "U Of District Of Columbia"
+  },
+  {
+    "LawSchoolCode": "0953",
+    "LawSchoolDescription": "U of Exeter (UK)"
+  },
+  {
+    "LawSchoolCode": "5812",
+    "LawSchoolDescription": "U of Florida"
+  },
+  {
+    "LawSchoolCode": "1997",
+    "LawSchoolDescription": "U of Frieburg, Germany"
+  },
+  {
+    "LawSchoolCode": "5813",
+    "LawSchoolDescription": "U of Georgia"
+  },
+  {
+    "LawSchoolCode": "4867",
+    "LawSchoolDescription": "U of Hawaii"
+  },
+  {
+    "LawSchoolCode": "6870",
+    "LawSchoolDescription": "U of Houston"
+  },
+  {
+    "LawSchoolCode": "4843",
+    "LawSchoolDescription": "U of Idaho"
+  },
+  {
+    "LawSchoolCode": "1836",
+    "LawSchoolDescription": "U of Illinois"
+  },
+  {
+    "LawSchoolCode": "6681",
+    "LawSchoolDescription": "U of Iowa"
+  },
+  {
+    "LawSchoolCode": "6871",
+    "LawSchoolDescription": "U of Kansas"
+  },
+  {
+    "LawSchoolCode": "1837",
+    "LawSchoolDescription": "U of Kentucky"
+  },
+  {
+    "LawSchoolCode": "1838",
+    "LawSchoolDescription": "U of Louisville"
+  },
+  {
+    "LawSchoolCode": "3691",
+    "LawSchoolDescription": "U of Maine"
+  },
+  {
+    "LawSchoolCode": "0973",
+    "LawSchoolDescription": "U of Manitoba (Canada)"
+  },
+  {
+    "LawSchoolCode": "5814",
+    "LawSchoolDescription": "U of Maryland"
+  },
+  {
+    "LawSchoolCode": "1850",
+    "LawSchoolDescription": "U of Memphis"
+  },
+  {
+    "LawSchoolCode": "5815",
+    "LawSchoolDescription": "U of Miami"
+  },
+  {
+    "LawSchoolCode": "1839",
+    "LawSchoolDescription": "U of Michigan"
+  },
+  {
+    "LawSchoolCode": "6874",
+    "LawSchoolDescription": "U of Minnesota"
+  },
+  {
+    "LawSchoolCode": "1840",
+    "LawSchoolDescription": "U of Mississippi"
+  },
+  {
+    "LawSchoolCode": "9202",
+    "LawSchoolDescription": "U of Missouri"
+  },
+  {
+    "LawSchoolCode": "6875",
+    "LawSchoolDescription": "U of Missouri - Columbia"
+  },
+  {
+    "LawSchoolCode": "6872",
+    "LawSchoolDescription": "U of Missouri - Kansas City"
+  },
+  {
+    "LawSchoolCode": "4489",
+    "LawSchoolDescription": "U of Montana"
+  },
+  {
+    "LawSchoolCode": "6877",
+    "LawSchoolDescription": "U of Nebraska"
+  },
+  {
+    "LawSchoolCode": "1979",
+    "LawSchoolDescription": "U of Nevada Las Vegas"
+  },
+  {
+    "LawSchoolCode": "0976",
+    "LawSchoolDescription": "U of New Brunswick (Canada)"
+  },
+  {
+    "LawSchoolCode": "4845",
+    "LawSchoolDescription": "U of New Mexico"
+  },
+  {
+    "LawSchoolCode": "5816",
+    "LawSchoolDescription": "U of North Carolina"
+  },
+  {
+    "LawSchoolCode": "6878",
+    "LawSchoolDescription": "U of North Dakota"
+  },
+  {
+    "LawSchoolCode": "9936",
+    "LawSchoolDescription": "U of Northern California"
+  },
+  {
+    "LawSchoolCode": "1841",
+    "LawSchoolDescription": "U of Notre Dame"
+  },
+  {
+    "LawSchoolCode": "6879",
+    "LawSchoolDescription": "U of Oklahoma"
+  },
+  {
+    "LawSchoolCode": "4846",
+    "LawSchoolDescription": "U of Oregon"
+  },
+  {
+    "LawSchoolCode": "0993",
+    "LawSchoolDescription": "U of Ottawa (Canada)"
+  },
+  {
+    "LawSchoolCode": "2926",
+    "LawSchoolDescription": "U of Pennsylvania"
+  },
+  {
+    "LawSchoolCode": "2927",
+    "LawSchoolDescription": "U of Pittsburgh"
+  },
+  {
+    "LawSchoolCode": "0979",
+    "LawSchoolDescription": "U of Puerto Rico"
+  },
+  {
+    "LawSchoolCode": "4067",
+    "LawSchoolDescription": "U of Puget Sound (Renamed 8/10/94)"
+  },
+  {
+    "LawSchoolCode": "5808",
+    "LawSchoolDescription": "U of Richmond"
+  },
+  {
+    "LawSchoolCode": "4849",
+    "LawSchoolDescription": "U of San Diego"
+  },
+  {
+    "LawSchoolCode": "4850",
+    "LawSchoolDescription": "U of San Francisco"
+  },
+  {
+    "LawSchoolCode": "0980",
+    "LawSchoolDescription": "U of Saskatchewan (Canada)"
+  },
+  {
+    "LawSchoolCode": "5818",
+    "LawSchoolDescription": "U of South Carolina"
+  },
+  {
+    "LawSchoolCode": "6881",
+    "LawSchoolDescription": "U of South Dakota"
+  },
+  {
+    "LawSchoolCode": "4852",
+    "LawSchoolDescription": "U of Southern California"
+  },
+  {
+    "LawSchoolCode": "1976",
+    "LawSchoolDescription": "U of Sydney (Australia)"
+  },
+  {
+    "LawSchoolCode": "1843",
+    "LawSchoolDescription": "U of Tennessee"
+  },
+  {
+    "LawSchoolCode": "6882",
+    "LawSchoolDescription": "U of Texas"
+  },
+  {
+    "LawSchoolCode": "1977",
+    "LawSchoolDescription": "U of the Pacific"
+  },
+  {
+    "LawSchoolCode": "1845",
+    "LawSchoolDescription": "U of Toledo"
+  },
+  {
+    "LawSchoolCode": "0982",
+    "LawSchoolDescription": "U of Toronto (Canada)"
+  },
+  {
+    "LawSchoolCode": "6883",
+    "LawSchoolDescription": "U of Tulsa"
+  },
+  {
+    "LawSchoolCode": "9925",
+    "LawSchoolDescription": "U of Victoria (Canada)"
+  },
+  {
+    "LawSchoolCode": "5820",
+    "LawSchoolDescription": "U of Virginia"
+  },
+  {
+    "LawSchoolCode": "4854",
+    "LawSchoolDescription": "U of Washington"
+  },
+  {
+    "LawSchoolCode": "4872",
+    "LawSchoolDescription": "U of West Los Angeles"
+  },
+  {
+    "LawSchoolCode": "9927",
+    "LawSchoolDescription": "U of Western Ontario (Canada)"
+  },
+  {
+    "LawSchoolCode": "1846",
+    "LawSchoolDescription": "U of Wisconsin"
+  },
+  {
+    "LawSchoolCode": "9500",
+    "LawSchoolDescription": "U of Witwatersrand (South Africa)"
+  },
+  {
+    "LawSchoolCode": "4855",
+    "LawSchoolDescription": "U of Wyoming"
+  },
+  {
+    "LawSchoolCode": "9929",
+    "LawSchoolDescription": "Universidad"
+  },
+  {
+    "LawSchoolCode": "9950",
+    "LawSchoolDescription": "Universidad Católica del Uruguay"
+  },
+  {
+    "LawSchoolCode": "9981",
+    "LawSchoolDescription": "Universidad de Monterrey"
+  },
+  {
+    "LawSchoolCode": "1303",
+    "LawSchoolDescription": "Universidad de Montevideo"
+  },
+  {
+    "LawSchoolCode": "8334",
+    "LawSchoolDescription": "Universidad de Sonora (Mexico)"
+  },
+  {
+    "LawSchoolCode": "9949",
+    "LawSchoolDescription": "Universidad Pablo de Olavide"
+  },
+  {
+    "LawSchoolCode": "1272",
+    "LawSchoolDescription": "Universidade Católica Portuguesa"
+  },
+  {
+    "LawSchoolCode": "4995",
+    "LawSchoolDescription": "University of Cordilleras"
+  },
+  {
+    "LawSchoolCode": "9983",
+    "LawSchoolDescription": "University of Dundee"
+  },
+  {
+    "LawSchoolCode": "5167",
+    "LawSchoolDescription": "University of KwaZulu Natal"
+  },
+  {
+    "LawSchoolCode": "6609",
+    "LawSchoolDescription": "University of Law, UK"
+  },
+  {
+    "LawSchoolCode": "2553",
+    "LawSchoolDescription": "University of Massachusetts School of Law"
+  },
+  {
+    "LawSchoolCode": "3395",
+    "LawSchoolDescription": "University of New Hampshire School of Law"
+  },
+  {
+    "LawSchoolCode": "7401",
+    "LawSchoolDescription": "University of New South Wales"
+  },
+  {
+    "LawSchoolCode": "8583",
+    "LawSchoolDescription": "University of Oslo"
+  },
+  {
+    "LawSchoolCode": "9980",
+    "LawSchoolDescription": "University of Tirana, Albania"
+  },
+  {
+    "LawSchoolCode": "4853",
+    "LawSchoolDescription": "University of Utah"
+  },
+  {
+    "LawSchoolCode": "0000",
+    "LawSchoolDescription": "UNKNOWN"
+  },
+  {
+    "LawSchoolCode": "1874",
+    "LawSchoolDescription": "Valparaiso"
+  },
+  {
+    "LawSchoolCode": "1871",
+    "LawSchoolDescription": "Vanderbilt"
+  },
+  {
+    "LawSchoolCode": "4933",
+    "LawSchoolDescription": "Ventura"
+  },
+  {
+    "LawSchoolCode": "3946",
+    "LawSchoolDescription": "Vermont"
+  },
+  {
+    "LawSchoolCode": "2959",
+    "LawSchoolDescription": "Villanova"
+  },
+  {
+    "LawSchoolCode": "5885",
+    "LawSchoolDescription": "Wake Forest"
+  },
+  {
+    "LawSchoolCode": "6928",
+    "LawSchoolDescription": "Washburn"
+  },
+  {
+    "LawSchoolCode": "5887",
+    "LawSchoolDescription": "Washington  & Lee"
+  },
+  {
+    "LawSchoolCode": "6929",
+    "LawSchoolDescription": "Washington U"
+  },
+  {
+    "LawSchoolCode": "1898",
+    "LawSchoolDescription": "Wayne State"
+  },
+  {
+    "LawSchoolCode": "5904",
+    "LawSchoolDescription": "West Virginia"
+  },
+  {
+    "LawSchoolCode": "3962",
+    "LawSchoolDescription": "Western New England"
+  },
+  {
+    "LawSchoolCode": "3756",
+    "LawSchoolDescription": "Western Sierra Law School"
+  },
+  {
+    "LawSchoolCode": "8083",
+    "LawSchoolDescription": "Western State"
+  },
+  {
+    "LawSchoolCode": "4969",
+    "LawSchoolDescription": "Western State - Fullerton"
+  },
+  {
+    "LawSchoolCode": "4973",
+    "LawSchoolDescription": "Western State - San Diego"
+  },
+  {
+    "LawSchoolCode": "4028",
+    "LawSchoolDescription": "Whittier"
+  },
+  {
+    "LawSchoolCode": "8067",
+    "LawSchoolDescription": "Widener"
+  },
+  {
+    "LawSchoolCode": "4954",
+    "LawSchoolDescription": "Willamette"
+  },
+  {
+    "LawSchoolCode": "5115",
+    "LawSchoolDescription": "Wm & Mary"
+  },
+  {
+    "LawSchoolCode": "6942",
+    "LawSchoolDescription": "Wm Mitchell"
+  },
+  {
+    "LawSchoolCode": "1796",
+    "LawSchoolDescription": "WMU Thomas M Cooley"
+  },
+  {
+    "LawSchoolCode": "3987",
+    "LawSchoolDescription": "Yale"
+  },
+  {
+    "LawSchoolCode": "9921",
+    "LawSchoolDescription": "Yeshiva"
+  },
+  {
+    "LawSchoolCode": "1975",
+    "LawSchoolDescription": "Youngstown State"
+  }
+]

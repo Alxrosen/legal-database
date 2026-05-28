@@ -1,0 +1,294 @@
+[
+  {
+    "StateCode": "AL",
+    "StateDescription": "Alabama"
+  },
+  {
+    "StateCode": "AK",
+    "StateDescription": "Alaska"
+  },
+  {
+    "StateCode": "AS",
+    "StateDescription": "American Samoa"
+  },
+  {
+    "StateCode": "AZ",
+    "StateDescription": "Arizona"
+  },
+  {
+    "StateCode": "AR",
+    "StateDescription": "Arkansas"
+  },
+  {
+    "StateCode": "AA",
+    "StateDescription": "Armed Forces Americas"
+  },
+  {
+    "StateCode": "AE",
+    "StateDescription": "Armed Forces Europe"
+  },
+  {
+    "StateCode": "AP",
+    "StateDescription": "Armed Forces Pacific"
+  },
+  {
+    "StateCode": "CA",
+    "StateDescription": "California"
+  },
+  {
+    "StateCode": "CO",
+    "StateDescription": "Colorado"
+  },
+  {
+    "StateCode": "CT",
+    "StateDescription": "Connecticut"
+  },
+  {
+    "StateCode": "DE",
+    "StateDescription": "Delaware"
+  },
+  {
+    "StateCode": "FL",
+    "StateDescription": "Florida"
+  },
+  {
+    "StateCode": "GA",
+    "StateDescription": "Georgia"
+  },
+  {
+    "StateCode": "GU",
+    "StateDescription": "Guam"
+  },
+  {
+    "StateCode": "HI",
+    "StateDescription": "Hawaii"
+  },
+  {
+    "StateCode": "ID",
+    "StateDescription": "Idaho"
+  },
+  {
+    "StateCode": "IL",
+    "StateDescription": "Illinois"
+  },
+  {
+    "StateCode": "IN",
+    "StateDescription": "Indiana"
+  },
+  {
+    "StateCode": "IA",
+    "StateDescription": "Iowa"
+  },
+  {
+    "StateCode": "KS",
+    "StateDescription": "Kansas"
+  },
+  {
+    "StateCode": "KY",
+    "StateDescription": "Kentucky"
+  },
+  {
+    "StateCode": "LA",
+    "StateDescription": "Louisiana"
+  },
+  {
+    "StateCode": "ME",
+    "StateDescription": "Maine"
+  },
+  {
+    "StateCode": "MD",
+    "StateDescription": "Maryland"
+  },
+  {
+    "StateCode": "MA",
+    "StateDescription": "Massachussetts"
+  },
+  {
+    "StateCode": "MI",
+    "StateDescription": "Michigan"
+  },
+  {
+    "StateCode": "MN",
+    "StateDescription": "Minnesota"
+  },
+  {
+    "StateCode": "MS",
+    "StateDescription": "Mississippi"
+  },
+  {
+    "StateCode": "MO",
+    "StateDescription": "Missouri"
+  },
+  {
+    "StateCode": "MT",
+    "StateDescription": "Montana"
+  },
+  {
+    "StateCode": "NE",
+    "StateDescription": "Nebraska"
+  },
+  {
+    "StateCode": "NV",
+    "StateDescription": "Nevada"
+  },
+  {
+    "StateCode": "NH",
+    "StateDescription": "New Hampshire"
+  },
+  {
+    "StateCode": "NJ",
+    "StateDescription": "New Jersey"
+  },
+  {
+    "StateCode": "NM",
+    "StateDescription": "New Mexico"
+  },
+  {
+    "StateCode": "NY",
+    "StateDescription": "New York"
+  },
+  {
+    "StateCode": "NC",
+    "StateDescription": "North Carolina"
+  },
+  {
+    "StateCode": "ND",
+    "StateDescription": "North Dakota"
+  },
+  {
+    "StateCode": "MP",
+    "StateDescription": "Northern Mariana Islands"
+  },
+  {
+    "StateCode": "OH",
+    "StateDescription": "Ohio"
+  },
+  {
+    "StateCode": "OK",
+    "StateDescription": "Oklahoma"
+  },
+  {
+    "StateCode": "OR",
+    "StateDescription": "Oregon"
+  },
+  {
+    "StateCode": "PW",
+    "StateDescription": "Palau"
+  },
+  {
+    "StateCode": "PA",
+    "StateDescription": "Pennsylvania"
+  },
+  {
+    "StateCode": "PR",
+    "StateDescription": "Puerto Rico"
+  },
+  {
+    "StateCode": "RI",
+    "StateDescription": "Rhode Island"
+  },
+  {
+    "StateCode": "SC",
+    "StateDescription": "South Carolina"
+  },
+  {
+    "StateCode": "SD",
+    "StateDescription": "South Dakota"
+  },
+  {
+    "StateCode": "TN",
+    "StateDescription": "Tennessee"
+  },
+  {
+    "StateCode": "TX",
+    "StateDescription": "Texas"
+  },
+  {
+    "StateCode": "UT",
+    "StateDescription": "Utah"
+  },
+  {
+    "StateCode": "VT",
+    "StateDescription": "Vermont"
+  },
+  {
+    "StateCode": "VI",
+    "StateDescription": "Virgin Islands"
+  },
+  {
+    "StateCode": "VA",
+    "StateDescription": "Virginia"
+  },
+  {
+    "StateCode": "WA",
+    "StateDescription": "Washington"
+  },
+  {
+    "StateCode": "DC",
+    "StateDescription": "Washington DC"
+  },
+  {
+    "StateCode": "WV",
+    "StateDescription": "West Virginia"
+  },
+  {
+    "StateCode": "WI",
+    "StateDescription": "Wisconsin"
+  },
+  {
+    "StateCode": "WY",
+    "StateDescription": "Wyoming"
+  },
+  {
+    "StateCode": "AB",
+    "StateDescription": "Alberta"
+  },
+  {
+    "StateCode": "BC",
+    "StateDescription": "British Columbia"
+  },
+  {
+    "StateCode": "MB",
+    "StateDescription": "Manitoba"
+  },
+  {
+    "StateCode": "NB",
+    "StateDescription": "New Brunswick"
+  },
+  {
+    "StateCode": "NL",
+    "StateDescription": "Newfoundland and Labrador"
+  },
+  {
+    "StateCode": "NT",
+    "StateDescription": "Northwest Territories"
+  },
+  {
+    "StateCode": "NS",
+    "StateDescription": "Nova Scotia"
+  },
+  {
+    "StateCode": "NU",
+    "StateDescription": "Nunavut"
+  },
+  {
+    "StateCode": "ON",
+    "StateDescription": "Ontario"
+  },
+  {
+    "StateCode": "PE",
+    "StateDescription": "Prince Edward Island"
+  },
+  {
+    "StateCode": "QC",
+    "StateDescription": "Quebec"
+  },
+  {
+    "StateCode": "SK",
+    "StateDescription": "Saskatchewan"
+  },
+  {
+    "StateCode": "YT",
+    "StateDescription": "Yukon"
+  }
+]
