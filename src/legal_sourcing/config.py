@@ -26,11 +26,12 @@ class Settings(BaseSettings):
     raw_data_dir: Path = Field(default=Path("./data/raw"))
     processed_data_dir: Path = Field(default=Path("./data/processed"))
 
-    # HTTP / scraping
-    user_agent: str = Field(
-        default="legal-sourcing-research/0.1 (+contact: you@example.com)"
-    )
-    rate_limit_rps: float = Field(default=1.0, ge=0.0)
+    # HTTP / scraping — these are GLOBAL FALLBACKS. Each scraper is
+    # expected to override `rate_limit_rps` and `max_workers` based on the
+    # target server's capacity. See docs/assumptions.md.
+    user_agent: str = Field(default="legal-sourcing-research/0.1")
+    rate_limit_rps: float = Field(default=4.0, ge=0.0)
+    max_workers: int = Field(default=4, ge=1)
     request_timeout_seconds: float = Field(default=30.0, gt=0.0)
 
     # Logging

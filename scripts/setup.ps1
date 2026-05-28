@@ -43,7 +43,6 @@ if (-not $uv) {
 } else {
     Write-Host "uv already installed at $($uv.Source)" -ForegroundColor Green
 }
-
 & uv --version
 
 # 2. Sync deps (creates .venv, installs runtime + dev extras).
@@ -57,12 +56,17 @@ if (-not (Test-Path ".\.env")) {
     Copy-Item ".\.env.example" ".\.env"
     Write-Host "Created .env from .env.example. Edit it before running scrapers." -ForegroundColor Green
 } else {
-    Write-Host ".env already exists — leaving it alone." -ForegroundColor Green
+    Write-Host ".env already exists - leaving it alone." -ForegroundColor Green
 }
 
 Write-Step "Done."
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Cyan
-Write-Host "  * Confirm settings load:   uv run python -c 'from legal_sourcing.config import get_settings; print(get_settings())'"
-Write-Host "  * Run tests:               make test    (or  uv run pytest)"
-Write-Host "  * Generate first migration (after schema review): uv run alembic revision --autogenerate -m 'initial schema'"
+
+# Use a single-quoted here-string so embedded quotes and parens are taken literally.
+$nextSteps = @'
+  * Confirm settings load:   uv run python -c "from legal_sourcing.config import get_settings; print(get_settings())"
+  * Run tests:               make test    (or  uv run pytest)
+  * Generate first migration (after schema review): uv run alembic revision --autogenerate -m "initial schema"
+'@
+Write-Host $nextSteps

@@ -345,3 +345,43 @@ groups, an auto-reject heuristic for clearly-junk strings.
 **Enforced where.** `src/legal_sourcing/scripts/review_practice_areas.py`
 (added in M3+). Behavior is testable against fixture
 `unmatched_practice_areas` rows.
+
+---
+
+## 2026-05-28 — Per-site worker pools and rate limits; global values are fallbacks only
+
+**Assumption.** Scraping is multi-threaded per source. The number of
+concurrent workers and the per-second request cap are chosen *per site*
+based on the target server's capacity, not from a single global value.
+
+- `RATE_LIMIT_RPS` and `MAX_WORKERS` in `.env` / `Settings` are GLOBAL
+  FALLBACKS only — used by ad-hoc scripts and by sources that have not
+  declared their own limits yet.
+- Each scraper module declares its own `RATE_LIMIT_RPS` and `WORKERS`
+  constants (or equivalent class attributes on the base scraper from
+  M3). These override the global defaults when that scraper runs.
+- Limits should be tuned empirically: start conservative (≤ the global
+  default), watch for 429/503/connection-resets, raise until errors
+  appear, back off ~30%.
+- The base scraper (M3) is responsible for enforcing both the rate
+  limit and the concurrency cap, and for honoring `Retry-After`
+  headers on 429 responses.
+
+**Why.** A single global RPS either throttles fast-capacity sites
+unnecessarily (multi-hour scrapes for no reason) or hammers slow sites
+into rate-limiting / IP blocks. Per-site tuning is the only honest
+approach. Multi-threading is required to make pilot-scale scrapes
+finish in tens of minutes rather than hours.
+
+**Trigger to revisit.** We add a managed crawler service that handles
+rate limiting globally, OR a single source becomes large enough that
+its concurrency settings need finer control than module-level
+constants (e.g. time-of-day variation, dynamic backoff based on
+response latency). At that point, lift the per-site limits into a
+config table.
+
+**Enforced where.**
+- Defaults: `.env.example`, `src/legal_sourcing/config.py` (`Settings`).
+- Per-site overrides: each `src/legal_sourcing/scrapers/<source>.py`
+  module (added M4+) declares its own constants on top of the base
+  class (added M3).
