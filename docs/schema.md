@@ -73,6 +73,9 @@ Key columns:
 | `name_raw`, `name_normalized` | str     | raw display name + normalized comparison form      |
 | `website_raw`, `website_normalized` | str? | bare-domain normalization form for matching      |
 | `phone_raw`, `phone_normalized`     | str? | E.164 normalization                              |
+| `year_founded`                | int?    | source-reported, when supplied                     |
+| `attorney_count`              | int?    | numeric firm-size; descriptor strings stay in `additional_data` |
+| `source_last_updated_at`      | dt UTC? | source's own "last updated"; distinct from `scraped_at` |
 | `contacts`                    | JSON    | list of contact objects (see model docstring)      |
 | `offices`                     | JSON    | list of office objects (see model docstring)       |
 | `practice_areas_raw`          | JSON    | source-supplied strings verbatim                   |
@@ -95,6 +98,8 @@ or more source records.
 | `name`, `name_normalized`           | str  | best current values                         |
 | `website`, `website_normalized`     | str? |                                             |
 | `phone`, `phone_normalized`         | str? |                                             |
+| `year_founded`                      | int? |                                             |
+| `attorney_count`                    | int? | numeric size only; descriptor strings stay in source-record `additional_data` |
 | `field_provenance`                  | JSON | see below                                   |
 | `created_at`, `updated_at`          | dt UTC |                                           |
 

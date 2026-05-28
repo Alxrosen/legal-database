@@ -45,6 +45,10 @@ class Firm(Base, TimestampMixin):
     phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
     phone_normalized: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
 
+    # Firm metadata (nullable).
+    year_founded: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    attorney_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     # Free-form per-field provenance.
     field_provenance: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
 

@@ -98,6 +98,16 @@ class FirmSourceRecord(Base, TimestampMixin):
     phone_raw: Mapped[str | None] = mapped_column(String(64), nullable=True)
     phone_normalized: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
 
+    # Firm metadata (nullable — most sources won't supply these).
+    year_founded: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    attorney_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Source-reported "last updated" / publish date for this firm's entry.
+    # Distinct from `scraped_at` (when *we* fetched the page).
+    source_last_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # Composite / multi-valued fields as JSON. See docstring for shapes.
     contacts: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
     offices: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
