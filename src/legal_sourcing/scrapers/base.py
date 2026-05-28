@@ -82,6 +82,9 @@ class BaseScraper:
     # ---- Optional per-source overrides --------------------------------
     # None -> fall back to Settings (see config.py).
     RATE_LIMIT_RPS: float | None = None
+    # Token-bucket burst capacity. None -> defaults to max(1, RPS) inside
+    # the limiter, i.e. ~1 second of full-rate headroom after idle.
+    BURST_CAPACITY: float | None = None
     WORKERS: int | None = None
     USER_AGENT: str | None = None
     TIMEOUT_SECONDS: float | None = None
@@ -122,7 +125,7 @@ class BaseScraper:
         self._timeout = self.TIMEOUT_SECONDS or s.request_timeout_seconds
         self._raw_root: Path = s.raw_data_dir
 
-        self._rate_limiter = RateLimiter(self._rps)
+        self._rate_limiter = RateLimiter(self._rps, burst=self.BURST_CAPACITY)
         self._client = httpx.Client(
             headers={"User-Agent": self._user_agent},
             timeout=self._timeout,
