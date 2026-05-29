@@ -381,21 +381,26 @@ def upsert_firm_source_records(
 # Orchestrators
 
 
-def run_pilot() -> None:
-    """Pilot: fetch first PageSize=25 list page + each of those 25
-    attorneys' details, parse, aggregate, upsert.
+def run_pilot(*, page: int = 1, page_size: int = 25) -> None:
+    """Pilot: fetch one PageSize=N list page + each of those attorneys'
+    details, parse, aggregate, upsert.
+
+    `page` defaults to 1 (alphabetical start). Pass a higher value
+    (e.g. 500, 1000) to sample further into the directory — the
+    alphabetical start has many solo / unaffiliated attorneys; deeper
+    pages exercise the firm-aggregation path better.
     """
     settings = get_settings()
     configure_logging()
 
     with AZBarScraper() as scraper:
-        log.info("pipeline.start", mode="pilot")
+        log.info("pipeline.start", mode="pilot", page=page, page_size=page_size)
 
         # Reference phase — small and informational.
         fetch_reference(scraper)
 
-        # One list page (size 25) to pick our pilot cohort.
-        envelope = fetch_list_page(scraper, page=1, page_size=25)
+        # One list page (size N) to pick our pilot cohort.
+        envelope = fetch_list_page(scraper, page=page, page_size=page_size)
         attorneys = (envelope.get("Result") or {}).get("Results") or []
         entity_numbers = [a["EntityNumber"] for a in attorneys if a.get("EntityNumber")]
         log.info("pipeline.list_done", entity_count=len(entity_numbers))
@@ -486,11 +491,24 @@ def run_full() -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "mode", choices=("pilot", "full"), help="Scrape scope (pilot=first 25)."
+        "mode", choices=("pilot", "full"), help="Scrape scope (pilot=one page)."
+    )
+    parser.add_argument(
+        "--page",
+        type=int,
+        default=1,
+        help="List page to pilot from (default 1). Higher values sample "
+        "further into the alphabetical directory.",
+    )
+    parser.add_argument(
+        "--page-size",
+        type=int,
+        default=25,
+        help="PageSize for the pilot list call (default 25).",
     )
     args = parser.parse_args()
     if args.mode == "pilot":
-        run_pilot()
+        run_pilot(page=args.page, page_size=args.page_size)
     else:
         run_full()
     return 0
