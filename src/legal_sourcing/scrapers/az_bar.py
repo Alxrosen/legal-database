@@ -57,16 +57,17 @@ class AZBarScraper(BaseScraper):
     SOURCE_NAME = "az_bar"
     BASE_URL = _API_HOST
 
-    # Polite-startup ramp: begin at 3 RPS with a 3-token burst, then
-    # linearly interpolate up to the documented target (15 RPS) over
-    # 2 minutes. Workers stay at 10 across the ramp — the RPS gate is
-    # what determines wire-rate, so an unramped worker count just means
-    # idle threads wait at the limiter during warmup.
-    RATE_LIMIT_RPS = 15.0
-    INITIAL_RATE_LIMIT_RPS = 3.0
-    RATE_RAMP_SECONDS = 120.0
-    BURST_CAPACITY = 3.0
-    WORKERS = 10
+    # Polite-startup ramp, relaxed for production scale. Begin at 6 RPS
+    # with a 5-token burst, linearly ramp to 20 RPS over 60s. Workers
+    # at 12. Bumped from the original (3 RPS -> 15 RPS over 120s,
+    # 10 workers) once recon confirmed the API tolerates the documented
+    # 15 RPS cap. Watch for 429s during the first long sweep; back off
+    # the target if they appear.
+    RATE_LIMIT_RPS = 20.0
+    INITIAL_RATE_LIMIT_RPS = 6.0
+    RATE_RAMP_SECONDS = 60.0
+    BURST_CAPACITY = 5.0
+    WORKERS = 12
 
     # The Password header is a static UUID; we're effectively
     # impersonating the official front-end. Hard-blocking on robots

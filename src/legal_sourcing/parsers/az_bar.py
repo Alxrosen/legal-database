@@ -19,6 +19,24 @@ from typing import Any
 from legal_sourcing.parsers.base import BaseParser
 
 
+# Company-field values that signal the attorney is not actively
+# affiliated with a firm. Mapped to a canonical lowercase token.
+_DEACTIVATION_MARKERS: dict[str, str] = {
+    "retired": "retired",
+    "inactive": "inactive",
+    "deceased": "deceased",
+    "deceased member": "deceased",
+    "disbarred": "disbarred",
+    "resigned": "resigned",
+    "suspended": "suspended",
+}
+
+# Company values that mean "no firm" without implying deactivation.
+_ABSENT_MARKERS: frozenset[str] = frozenset(
+    {"n/a", "na", "none", "-", "--", "self", "self employed", "self-employed"}
+)
+
+
 def _flatten_areas_of_law(areas: Any) -> list[str]:
     """Flatten AZ Bar's nested ``AreasOfLawAndPractice`` into a flat
     list of category + sub-area strings.
@@ -149,10 +167,31 @@ def _record_to_firm_dict(
 
     The pipeline normalizes and aggregates across attorneys at the
     same firm/office.
+
+    AZ Bar attorneys sometimes use status placeholders in the Company
+    field. We strip those and surface them on `deactivation_status`:
+
+        "Retired"   -> deactivation_status="retired",  name_raw=None
+        "Inactive"  -> deactivation_status="inactive", name_raw=None
+        "Deceased"  -> deactivation_status="deceased", name_raw=None
+        "N/A"       -> name_raw=None  (no deactivation marker — just absent)
+
+    Without this, "Retired" was getting normalized as a firm name and
+    aggregation collapsed unrelated attorneys.
     """
     company_raw = record.get("Company")
     if company_raw is not None:
         company_raw = company_raw.strip() or None
+
+    deactivation_status: str | None = None
+    if company_raw is not None:
+        cleaned = company_raw.strip().lower().rstrip(".")
+        if cleaned in _DEACTIVATION_MARKERS:
+            deactivation_status = _DEACTIVATION_MARKERS[cleaned]
+            company_raw = None
+        elif cleaned in _ABSENT_MARKERS:
+            # "N/A" and friends: not a firm, not a deactivation either.
+            company_raw = None
 
     contact = _attorney_contact(record)
     office = _office_dict(record.get("Address"))
@@ -187,6 +226,7 @@ def _record_to_firm_dict(
 
     return {
         "name_raw": company_raw,
+        "deactivation_status": deactivation_status,
         "website_raw": (record.get("FirmURL") or "").strip() or None,
         # Firm-level phone takes the same primary phone as the contact;
         # aggregation may overwrite if a later attorney supplies a

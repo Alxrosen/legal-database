@@ -53,3 +53,31 @@ def test_junior_associate_outranks_associate_negatively():
     assert classify_title("Junior Associate") == 30
     assert classify_title("Associate") == 40
     assert classify_title("Junior Associate") < classify_title("Associate")
+
+
+@pytest.mark.parametrize(
+    "title, expected",
+    [
+        # General counsel (in-house senior) — rank 70 alongside Of Counsel
+        ("General Counsel", 70),
+        ("Gen. Counsel", 70),
+        ("Gen. Coun.", 70),  # Martindale abbreviation observed in recon
+        ("In-House Counsel", 70),
+        # Abbreviations on existing ranks
+        ("Sr. Partner", 90),  # senior partner
+        ("Mng. Dir.", 100),  # managing director
+        ("Jr. Associate", 30),
+        ("Sr. Associate", 50),
+        ("Sr. Attorney", 50),
+        # "Member" was already at rank 80 — confirm Martindale's heavy
+        # use of it doesn't accidentally regress.
+        ("Member", 80),
+        # Judicial titles intentionally return None — not a firm role.
+        # The classifier doesn't have a "judge" bucket; these stay
+        # unclassified, surfaced through the unmatched-titles report.
+        ("Dist. J.", None),
+        ("District Judge", None),
+    ],
+)
+def test_extended_classifier(title, expected):
+    assert classify_title(title) == expected

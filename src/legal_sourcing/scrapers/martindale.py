@@ -59,13 +59,16 @@ class MartindaleScraper(BaseScraper):
     SOURCE_NAME = "martindale"
     BASE_URL = "https://www.martindale.com"
 
-    # Doc-recommended pilot rate. The Cloudflare layer in front of
-    # Martindale is sensitive; start slow, ramp briefly.
-    RATE_LIMIT_RPS = 0.5
-    INITIAL_RATE_LIMIT_RPS = 0.25
-    RATE_RAMP_SECONDS = 60.0
-    BURST_CAPACITY = 2.0
-    WORKERS = 2
+    # Relaxed from the doc's 0.5 RPS pilot rate. Martindale sits behind
+    # Cloudflare so we still treat it as the most-sensitive source —
+    # but recon completed cleanly at 0.5 RPS so we step up. New
+    # target 1.0 RPS, ramp 0.5 -> 1.0 over 30s, 3 workers, burst 3.
+    # First sign of 429/503/interstitial: stop and revisit.
+    RATE_LIMIT_RPS = 1.0
+    INITIAL_RATE_LIMIT_RPS = 0.5
+    RATE_RAMP_SECONDS = 30.0
+    BURST_CAPACITY = 3.0
+    WORKERS = 3
 
     ROBOTS_POLICY = "warn"  # project default; deny list below is the real gate
     MAX_RETRIES = 5

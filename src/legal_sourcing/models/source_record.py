@@ -70,10 +70,11 @@ class FirmSourceRecord(Base, TimestampMixin):
 
     __tablename__ = "firm_source_records"
     __table_args__ = (
-        # A source's own ID for a firm is the strongest dedupe key when available.
+        # A source's own ID for a firm is the unique dedupe key.
+        # We do NOT enforce uniqueness on (source, source_url) because
+        # aggregated firms from sources like Martindale share a common
+        # city-listing URL; the URL is informational, not identity.
         UniqueConstraint("source", "source_firm_id", name="uq_source_record_source_id"),
-        # Fallback: if no source-side ID, the URL itself is unique per source.
-        UniqueConstraint("source", "source_url", name="uq_source_record_url"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -101,6 +102,16 @@ class FirmSourceRecord(Base, TimestampMixin):
     # Firm metadata (nullable — most sources won't supply these).
     year_founded: Mapped[int | None] = mapped_column(Integer, nullable=True)
     attorney_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Set when the source's firm-name field is a status placeholder
+    # (e.g. "Retired", "Inactive", "Deceased") instead of an actual
+    # firm. In that case name_raw is nulled and this captures the
+    # word so we can filter / report on dormant entries without
+    # losing the signal. Lowercase canonical form ("retired" /
+    # "inactive" / "deceased" / source-specific synonyms).
+    deactivation_status: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, index=True
+    )
 
     # Source-reported "last updated" / publish date for this firm's entry.
     # Distinct from `scraped_at` (when *we* fetched the page).

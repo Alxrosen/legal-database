@@ -193,6 +193,55 @@ def test_aggregate_splits_different_firms():
     assert len(agg) == 2
 
 
+def test_company_deactivation_markers_set_status_and_null_name():
+    """Regression: "Retired" / "Inactive" / "Deceased" in the Company
+    field should NOT be treated as a firm name. They should set
+    deactivation_status and clear name_raw.
+    """
+    from legal_sourcing.parsers.az_bar import _record_to_firm_dict
+
+    for raw, expected_status in (
+        ("Retired", "retired"),
+        ("RETIRED", "retired"),
+        ("Inactive", "inactive"),
+        ("Deceased", "deceased"),
+        ("Deceased Member", "deceased"),
+        ("Disbarred", "disbarred"),
+        ("Resigned", "resigned"),
+    ):
+        rec = _record_to_firm_dict(
+            {
+                "EntityNumber": 1,
+                "FirstName": "Test",
+                "LastName": "User",
+                "BarNumber": "000001",
+                "Company": raw,
+                "Address": {},
+            },
+            source_url="x",
+        )
+        assert rec["name_raw"] is None, raw
+        assert rec["deactivation_status"] == expected_status, raw
+
+
+def test_company_absent_markers_null_name_without_deactivation():
+    from legal_sourcing.parsers.az_bar import _record_to_firm_dict
+
+    for raw in ("N/A", "n/a", "NONE", "None", "-", "Self", "self-employed"):
+        rec = _record_to_firm_dict(
+            {
+                "EntityNumber": 2,
+                "FirstName": "T",
+                "LastName": "U",
+                "Company": raw,
+                "Address": {},
+            },
+            source_url="x",
+        )
+        assert rec["name_raw"] is None, raw
+        assert rec["deactivation_status"] is None, raw
+
+
 def test_aggregate_does_not_collapse_unaffiliated_attorneys():
     """Regression: pilot run #1 collapsed 8 attorneys with empty
     Company into a single row because their aggregation key was

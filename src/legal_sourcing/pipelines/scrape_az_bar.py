@@ -250,6 +250,8 @@ def aggregate_by_firm(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
             }
             seed["contacts"] = list(r.get("contacts", []))
             seed["offices"] = list(r.get("offices", []))
+            # Preserve any source-supplied deactivation marker.
+            seed.setdefault("deactivation_status", r.get("deactivation_status"))
             seed["practice_areas_raw"] = list(r.get("practice_areas_raw") or [])
             seed["practice_areas_matched"] = list(r.get("practice_areas_matched") or [])
             seed["practice_areas_unmatched"] = list(
@@ -357,6 +359,7 @@ def upsert_firm_source_records(
             year_founded=r.get("year_founded"),
             attorney_count=r.get("attorney_count"),
             source_last_updated_at=r.get("source_last_updated_at"),
+            deactivation_status=r.get("deactivation_status"),
             contacts=r.get("contacts", []),
             offices=r.get("offices", []),
             practice_areas_raw=r.get("practice_areas_raw", []),
