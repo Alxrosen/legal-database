@@ -60,12 +60,30 @@ uv run python -m legal_sourcing.pipelines.scrape_martindale enrich
 uv run python -m legal_sourcing.pipelines.scrape_findlaw pilot \
     --max-pages-per-combo 5
 
-# Entity resolution (no rescrape needed)
+# Entity resolution (no rescrape needed) — populate MatchReviewQueue
 uv run python -m legal_sourcing.resolution.run resolve
+
+# Apply decisions — build canonical Firm + FirmSourceRecordLink rows
+uv run python -m legal_sourcing.resolution.apply
 
 # Inspect
 uv run python scripts/show_all_sources.py
 uv run python scripts/show_match_queue.py
+```
+
+### Running full sweeps
+
+The polite-rate scrapers take 30 min to multiple hours per source.
+Run them sequentially (NOT in parallel — they'd contend on the
+shared SQLite at upsert time). Recommended chain:
+
+```bash
+uv run python -m legal_sourcing.pipelines.scrape_az_bar full
+uv run python -m legal_sourcing.pipelines.scrape_martindale pilot --max-pages-per-city 0
+uv run python -m legal_sourcing.pipelines.scrape_martindale enrich
+uv run python -m legal_sourcing.pipelines.scrape_findlaw pilot --max-pages-per-combo 20
+uv run python -m legal_sourcing.resolution.run resolve
+uv run python -m legal_sourcing.resolution.apply
 ```
 
 ### Tests + lint

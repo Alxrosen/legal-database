@@ -114,9 +114,12 @@ uv run python -m legal_sourcing.pipelines.scrape_martindale enrich
 uv run python -m legal_sourcing.pipelines.scrape_findlaw pilot \
     --max-pages-per-combo 5
 
-# Entity resolution
+# Entity resolution — populate MatchReviewQueue
 uv run python -m legal_sourcing.resolution.run resolve \
     --auto-merge 85 --review 60 --store-min 40
+
+# Apply resolution decisions — build canonical Firm + Link rows
+uv run python -m legal_sourcing.resolution.apply
 
 # Migrations
 uv run alembic revision --autogenerate -m "..."
@@ -213,6 +216,24 @@ them in `normalize_record` so they match Martindale's "Phoenix".
   for last_page + `a.fl-pagination-button[rel="next"]` for next.
   Page size is 40 (not 20 as the doc speculated).
 
+### Canonical apply step
+
+`resolution/apply.py` is the only writer of the `firms` and
+`firm_source_record_links` tables. It clears + rebuilds both on
+every run. **Do not write to these tables from anywhere else** —
+the source of truth is `MatchReviewQueue` + per-source
+`FirmSourceRecord`.
+
+Source priority for per-field selection is hardcoded in
+`DEFAULT_SOURCE_PRIORITY` (Martindale > FindLaw > AZ Bar today).
+Override per field via `FIELD_PRECEDENCE_OVERRIDES` if a future
+source clearly wins on a specific signal.
+
+`attorney_count` is the MAX across source members (FindLaw cards
+are firm-level with 0; Martindale carries firm-wide headcount;
+AZ Bar contributes 1 per attorney). This is the best signal short
+of a real cross-source attorney unique-ID.
+
 ### Rate limiting
 
 - `RateLimiter` is a token bucket with optional ramp (`initial_rps`,
@@ -241,27 +262,51 @@ log a warning but the fetch proceeds. Per-source override to
 
 ## What's done so far (state at last commit)
 
-- 3 sources scaffolded and run: AZ Bar (581 firms), Martindale
-  (568 firms, 289 enriched with profile data), FindLaw
-  (349 firms across the PI practice-area cluster).
-- 1,498 total `FirmSourceRecord` rows.
-- M6 (resolution) initial pass: 1,477 candidate pairs, 1,024 stored
-  decisions in `MatchReviewQueue` (71 auto-approved, 732 pending,
-  221 rejected-stored at the default 85/60/40 thresholds).
-- 188 passing tests.
+- 3 sources scaffolded and run end-to-end: AZ Bar, Martindale (with
+  subscriber-profile enrichment), FindLaw (practice-area cluster
+  pilot).
+- M6 resolution: blocking + scoring + queue populated. Default
+  thresholds 85 / 60 / 40 — user-confirmed.
+- **Canonical Firm + FirmSourceRecordLink apply step** built and
+  run. `resolution/apply.py` walks `MatchReviewQueue` rows with
+  status in {`auto_approved`, `approved`}, union-finds clusters,
+  creates one Firm per cluster plus links. Idempotent (clears and
+  rebuilds canonical tables each run).
+- 192 passing tests.
+- AGENTS.md and DEVELOPER.md committed and pushed.
 
 ## What's intentionally NOT done
 
-- Canonical `Firm` + `FirmSourceRecordLink` row creation (deferred
-  post-M6 sign-off).
 - Practice-area review CLI (spec'd in `docs/assumptions.md`, not
   implemented).
-- Full-directory sweeps (only pilot-sized slices have been run).
 - Justia and Avvo (not yet scoped).
 - Geocoding, year-founded enrichment beyond Martindale subscriber
   pages.
 - Postgres migration (SQLite is the pilot DB; schema is
   Postgres-portable).
+- Interactive human-review CLI for the `pending` band of the match
+  queue (732 pairs sitting there at default thresholds).
+
+## Running full sweeps in background
+
+The polite-rate scrapers take 30 min to multiple hours per source.
+Use background bash via `run_in_background: true` and chain the
+sequence in a shell script — do not launch them in parallel because
+all three pipelines upsert to the SAME SQLite at the end and
+SQLite serializes writes (occasional contention is fine, but
+overlapping upserts have caused `database is locked` errors).
+
+Recommended chain (used in this repo on 2026-06-01):
+
+```
+AZ Bar full -> Martindale pilot --max-pages-per-city 0
+            -> Martindale enrich
+            -> FindLaw pilot --max-pages-per-combo 20
+```
+
+Order matters: Martindale's `enrich` step only operates on rows
+already in the DB, so it must run after Martindale's pilot has
+inserted them.
 
 ## Test discipline
 
