@@ -152,6 +152,13 @@ class BaseScraper:
         Accept tweaks). Returns {} by default."""
         return {}
 
+    def _check_for_block_response(self, response: httpx.Response) -> None:
+        """Subclass hook for soft-block detection. Override to inspect a
+        2xx response and raise (typically `ScrapeError`) if the body is
+        actually an anti-bot challenge or interstitial. The default is
+        a no-op; sources behind CDNs / WAFs should subclass."""
+        return None
+
     # ---- Public API ----------------------------------------------------
 
     def iter_target_urls(self) -> Iterable[str]:
@@ -307,6 +314,10 @@ class BaseScraper:
                 continue
 
             if response.status_code < 400:
+                # Subclass hook for soft-block detection (e.g. Cloudflare
+                # challenge pages that return 200 with challenge HTML).
+                # The default is a no-op; FindLaw overrides to raise.
+                self._check_for_block_response(response)
                 return response
 
             # Retryable status codes: 429 (rate limited) + 5xx

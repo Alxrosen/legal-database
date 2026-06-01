@@ -53,13 +53,16 @@ from legal_sourcing.utils.logging import configure_logging, get_logger
 log = get_logger(__name__)
 
 
-# Default cohort for the pilot. Small + medium + large mix; one Arizona
-# city for cross-source comparison with AZ Bar.
+# Default cohort for the pilot. Small + medium + large mix; the two
+# Arizona cities give us cross-source overlap with AZ Bar for the
+# eventual M6 resolution pass.
 PILOT_CITIES: list[tuple[str, str]] = [
     # (state_slug, city_slug)
-    ("alabama", "abbeville"),
-    ("alabama", "birmingham"),
-    ("arizona", "phoenix"),
+    ("alabama", "abbeville"),  # tiny — confirms single-page path
+    ("alabama", "birmingham"),  # big city, AL
+    ("alabama", "mobile"),  # medium AL city
+    ("arizona", "phoenix"),  # big city, AZ — overlap with AZ Bar
+    ("arizona", "tucson"),  # medium AZ city — overlap with AZ Bar
 ]
 
 

@@ -1,0 +1,60 @@
+{
+  "robots_url": "https://lawyers.findlaw.com/robots.txt",
+  "robots_first_400_chars": "# lawyers.findLaw.com\n#  _____ _           _ _\n# |  ___(_)_ __   __| | |    __ ___      _____ ___  _ __ ___\n# | |_  | | '_ \\ / _` | |   / _` \\ \\ /\\ / / __/ _ \\| '_ ` _ \\\n# |  _| | | | | | (_| | |__| (_| |\\ V  V / (_| (_) | | | | | |\n# |_|   |_|_| |_|\\__,_|_____\\__,_| \\_/\\_(_)___\\___/|_| |_| |_|\n#\n# Directory\nUser-agent: *\nDisallow: /ld-solr/\nDisallow: /dummy/\nDisallow: /ps/\nDisallow: /cdn-cgi/\nDis",
+  "sitemap_urls": [
+    "https://lawyers.findlaw.com/v1/sitemap/sitemap-srps.xml",
+    "https://lawyers.findlaw.com/v1/sitemap/sitemap-srps-common.xml",
+    "https://lawyers.findlaw.com/v1/sitemap/sitemap-upper.xml",
+    "https://lawyers.findlaw.com/v1/sitemap/sitemap-paid-profiles.xml"
+  ],
+  "sitemaps": [
+    {
+      "url": "https://lawyers.findlaw.com/v1/sitemap/sitemap-srps.xml",
+      "bytes": 62069,
+      "loc_count": 455,
+      "sample_urls": [
+        "https://lawyers.findlaw.com/v1/sitemap/sitemap-srps-p1-1.xml",
+        "https://lawyers.findlaw.com/v1/sitemap/sitemap-srps-p1-2.xml",
+        "https://lawyers.findlaw.com/v1/sitemap/sitemap-srps-p1-3.xml",
+        "https://lawyers.findlaw.com/v1/sitemap/sitemap-srps-p1-4.xml",
+        "https://lawyers.findlaw.com/v1/sitemap/sitemap-srps-p1-5.xml"
+      ]
+    },
+    {
+      "url": "https://lawyers.findlaw.com/v1/sitemap/sitemap-srps-common.xml",
+      "bytes": 6675,
+      "loc_count": 46,
+      "sample_urls": [
+        "https://lawyers.findlaw.com/v1/sitemap/sitemap-srps-common-p1-1.xml",
+        "https://lawyers.findlaw.com/v1/sitemap/sitemap-srps-common-p1-2.xml",
+        "https://lawyers.findlaw.com/v1/sitemap/sitemap-srps-common-p1-3.xml",
+        "https://lawyers.findlaw.com/v1/sitemap/sitemap-srps-common-p1-4.xml",
+        "https://lawyers.findlaw.com/v1/sitemap/sitemap-srps-common-p1-5.xml"
+      ]
+    },
+    {
+      "url": "https://lawyers.findlaw.com/v1/sitemap/sitemap-upper.xml",
+      "bytes": 1185,
+      "loc_count": 8,
+      "sample_urls": [
+        "https://lawyers.findlaw.com/v1/sitemap/sitemap-upper-1.xml",
+        "https://lawyers.findlaw.com/v1/sitemap/sitemap-upper-2.xml",
+        "https://lawyers.findlaw.com/v1/sitemap/sitemap-upper-3.xml",
+        "https://lawyers.findlaw.com/v1/sitemap/sitemap-upper-4.xml",
+        "https://lawyers.findlaw.com/v1/sitemap/sitemap-upper-5.xml"
+      ]
+    },
+    {
+      "url": "https://lawyers.findlaw.com/v1/sitemap/sitemap-paid-profiles.xml",
+      "bytes": 1674,
+      "loc_count": 11,
+      "sample_urls": [
+        "https://lawyers.findlaw.com/v1/sitemap/sitemap-paid-profiles-1.xml",
+        "https://lawyers.findlaw.com/v1/sitemap/sitemap-paid-profiles-2.xml",
+        "https://lawyers.findlaw.com/v1/sitemap/sitemap-paid-profiles-3.xml",
+        "https://lawyers.findlaw.com/v1/sitemap/sitemap-paid-profiles-4.xml",
+        "https://lawyers.findlaw.com/v1/sitemap/sitemap-paid-profiles-5.xml"
+      ]
+    }
+  ]
+}

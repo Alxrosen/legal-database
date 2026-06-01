@@ -1,0 +1,257 @@
+[
+  {
+    "slug": "alabama",
+    "name": "Alabama",
+    "url": "https://lawyers.findlaw.com/alabama/"
+  },
+  {
+    "slug": "alaska",
+    "name": "Alaska",
+    "url": "https://lawyers.findlaw.com/alaska/"
+  },
+  {
+    "slug": "arizona",
+    "name": "Arizona",
+    "url": "https://lawyers.findlaw.com/arizona/"
+  },
+  {
+    "slug": "arkansas",
+    "name": "Arkansas",
+    "url": "https://lawyers.findlaw.com/arkansas/"
+  },
+  {
+    "slug": "california",
+    "name": "California",
+    "url": "https://lawyers.findlaw.com/california/"
+  },
+  {
+    "slug": "colorado",
+    "name": "Colorado",
+    "url": "https://lawyers.findlaw.com/colorado/"
+  },
+  {
+    "slug": "connecticut",
+    "name": "Connecticut",
+    "url": "https://lawyers.findlaw.com/connecticut/"
+  },
+  {
+    "slug": "delaware",
+    "name": "Delaware",
+    "url": "https://lawyers.findlaw.com/delaware/"
+  },
+  {
+    "slug": "florida",
+    "name": "Florida",
+    "url": "https://lawyers.findlaw.com/florida/"
+  },
+  {
+    "slug": "georgia",
+    "name": "Georgia",
+    "url": "https://lawyers.findlaw.com/georgia/"
+  },
+  {
+    "slug": "hawaii",
+    "name": "Hawaii",
+    "url": "https://lawyers.findlaw.com/hawaii/"
+  },
+  {
+    "slug": "idaho",
+    "name": "Idaho",
+    "url": "https://lawyers.findlaw.com/idaho/"
+  },
+  {
+    "slug": "illinois",
+    "name": "Illinois",
+    "url": "https://lawyers.findlaw.com/illinois/"
+  },
+  {
+    "slug": "indiana",
+    "name": "Indiana",
+    "url": "https://lawyers.findlaw.com/indiana/"
+  },
+  {
+    "slug": "iowa",
+    "name": "Iowa",
+    "url": "https://lawyers.findlaw.com/iowa/"
+  },
+  {
+    "slug": "kansas",
+    "name": "Kansas",
+    "url": "https://lawyers.findlaw.com/kansas/"
+  },
+  {
+    "slug": "kentucky",
+    "name": "Kentucky",
+    "url": "https://lawyers.findlaw.com/kentucky/"
+  },
+  {
+    "slug": "louisiana",
+    "name": "Louisiana",
+    "url": "https://lawyers.findlaw.com/louisiana/"
+  },
+  {
+    "slug": "maine",
+    "name": "Maine",
+    "url": "https://lawyers.findlaw.com/maine/"
+  },
+  {
+    "slug": "maryland",
+    "name": "Maryland",
+    "url": "https://lawyers.findlaw.com/maryland/"
+  },
+  {
+    "slug": "massachusetts",
+    "name": "Massachusetts",
+    "url": "https://lawyers.findlaw.com/massachusetts/"
+  },
+  {
+    "slug": "michigan",
+    "name": "Michigan",
+    "url": "https://lawyers.findlaw.com/michigan/"
+  },
+  {
+    "slug": "minnesota",
+    "name": "Minnesota",
+    "url": "https://lawyers.findlaw.com/minnesota/"
+  },
+  {
+    "slug": "mississippi",
+    "name": "Mississippi",
+    "url": "https://lawyers.findlaw.com/mississippi/"
+  },
+  {
+    "slug": "missouri",
+    "name": "Missouri",
+    "url": "https://lawyers.findlaw.com/missouri/"
+  },
+  {
+    "slug": "montana",
+    "name": "Montana",
+    "url": "https://lawyers.findlaw.com/montana/"
+  },
+  {
+    "slug": "nebraska",
+    "name": "Nebraska",
+    "url": "https://lawyers.findlaw.com/nebraska/"
+  },
+  {
+    "slug": "nevada",
+    "name": "Nevada",
+    "url": "https://lawyers.findlaw.com/nevada/"
+  },
+  {
+    "slug": "new-hampshire",
+    "name": "New Hampshire",
+    "url": "https://lawyers.findlaw.com/new-hampshire/"
+  },
+  {
+    "slug": "new-jersey",
+    "name": "New Jersey",
+    "url": "https://lawyers.findlaw.com/new-jersey/"
+  },
+  {
+    "slug": "new-mexico",
+    "name": "New Mexico",
+    "url": "https://lawyers.findlaw.com/new-mexico/"
+  },
+  {
+    "slug": "new-york",
+    "name": "New York",
+    "url": "https://lawyers.findlaw.com/new-york/"
+  },
+  {
+    "slug": "north-carolina",
+    "name": "North Carolina",
+    "url": "https://lawyers.findlaw.com/north-carolina/"
+  },
+  {
+    "slug": "north-dakota",
+    "name": "North Dakota",
+    "url": "https://lawyers.findlaw.com/north-dakota/"
+  },
+  {
+    "slug": "ohio",
+    "name": "Ohio",
+    "url": "https://lawyers.findlaw.com/ohio/"
+  },
+  {
+    "slug": "oklahoma",
+    "name": "Oklahoma",
+    "url": "https://lawyers.findlaw.com/oklahoma/"
+  },
+  {
+    "slug": "oregon",
+    "name": "Oregon",
+    "url": "https://lawyers.findlaw.com/oregon/"
+  },
+  {
+    "slug": "pennsylvania",
+    "name": "Pennsylvania",
+    "url": "https://lawyers.findlaw.com/pennsylvania/"
+  },
+  {
+    "slug": "rhode-island",
+    "name": "Rhode Island",
+    "url": "https://lawyers.findlaw.com/rhode-island/"
+  },
+  {
+    "slug": "south-carolina",
+    "name": "South Carolina",
+    "url": "https://lawyers.findlaw.com/south-carolina/"
+  },
+  {
+    "slug": "south-dakota",
+    "name": "South Dakota",
+    "url": "https://lawyers.findlaw.com/south-dakota/"
+  },
+  {
+    "slug": "tennessee",
+    "name": "Tennessee",
+    "url": "https://lawyers.findlaw.com/tennessee/"
+  },
+  {
+    "slug": "texas",
+    "name": "Texas",
+    "url": "https://lawyers.findlaw.com/texas/"
+  },
+  {
+    "slug": "utah",
+    "name": "Utah",
+    "url": "https://lawyers.findlaw.com/utah/"
+  },
+  {
+    "slug": "vermont",
+    "name": "Vermont",
+    "url": "https://lawyers.findlaw.com/vermont/"
+  },
+  {
+    "slug": "virginia",
+    "name": "Virginia",
+    "url": "https://lawyers.findlaw.com/virginia/"
+  },
+  {
+    "slug": "washington",
+    "name": "Washington",
+    "url": "https://lawyers.findlaw.com/washington/"
+  },
+  {
+    "slug": "district-of-columbia",
+    "name": "Washington DC",
+    "url": "https://lawyers.findlaw.com/district-of-columbia/washington/"
+  },
+  {
+    "slug": "west-virginia",
+    "name": "West Virginia",
+    "url": "https://lawyers.findlaw.com/west-virginia/"
+  },
+  {
+    "slug": "wisconsin",
+    "name": "Wisconsin",
+    "url": "https://lawyers.findlaw.com/wisconsin/"
+  },
+  {
+    "slug": "wyoming",
+    "name": "Wyoming",
+    "url": "https://lawyers.findlaw.com/wyoming/"
+  }
+]

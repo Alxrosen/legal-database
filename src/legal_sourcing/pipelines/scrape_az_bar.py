@@ -384,28 +384,53 @@ def upsert_firm_source_records(
 # Orchestrators
 
 
-def run_pilot(*, page: int = 1, page_size: int = 25) -> None:
-    """Pilot: fetch one PageSize=N list page + each of those attorneys'
-    details, parse, aggregate, upsert.
+def run_pilot(
+    *,
+    page: int = 1,
+    page_size: int = 25,
+    num_pages: int = 1,
+) -> None:
+    """Pilot: fetch `num_pages` consecutive list pages starting at
+    `page` (PageSize=`page_size`) and the detail of every attorney
+    they surface, then parse / aggregate / upsert.
 
-    `page` defaults to 1 (alphabetical start). Pass a higher value
-    (e.g. 500, 1000) to sample further into the directory — the
-    alphabetical start has many solo / unaffiliated attorneys; deeper
-    pages exercise the firm-aggregation path better.
+    Defaults reproduce the original 1-page-of-25 pilot. Bump
+    `num_pages` and/or `page_size` to sweep a larger slice of the
+    directory.
     """
     settings = get_settings()
     configure_logging()
 
     with AZBarScraper() as scraper:
-        log.info("pipeline.start", mode="pilot", page=page, page_size=page_size)
+        log.info(
+            "pipeline.start",
+            mode="pilot",
+            page=page,
+            page_size=page_size,
+            num_pages=num_pages,
+        )
 
         # Reference phase — small and informational.
         fetch_reference(scraper)
 
-        # One list page (size N) to pick our pilot cohort.
-        envelope = fetch_list_page(scraper, page=page, page_size=page_size)
-        attorneys = (envelope.get("Result") or {}).get("Results") or []
-        entity_numbers = [a["EntityNumber"] for a in attorneys if a.get("EntityNumber")]
+        # Multi-page list sweep: walk `num_pages` consecutive list pages
+        # accumulating EntityNumbers. Stop early on empty Results.
+        entity_numbers: list[int] = []
+        for offset in range(num_pages):
+            p = page + offset
+            envelope = fetch_list_page(scraper, page=p, page_size=page_size)
+            attorneys = (envelope.get("Result") or {}).get("Results") or []
+            ens = [a["EntityNumber"] for a in attorneys if a.get("EntityNumber")]
+            entity_numbers.extend(ens)
+            log.info(
+                "pipeline.list_page",
+                page=p,
+                got=len(ens),
+                cumulative=len(entity_numbers),
+            )
+            if not ens:
+                log.info("pipeline.list_short_or_empty", page=p)
+                break
         log.info("pipeline.list_done", entity_count=len(entity_numbers))
 
         # Detail phase — concurrent.
@@ -509,9 +534,19 @@ def main() -> int:
         default=25,
         help="PageSize for the pilot list call (default 25).",
     )
+    parser.add_argument(
+        "--num-pages",
+        type=int,
+        default=1,
+        help="How many consecutive list pages to walk from --page (default 1).",
+    )
     args = parser.parse_args()
     if args.mode == "pilot":
-        run_pilot(page=args.page, page_size=args.page_size)
+        run_pilot(
+            page=args.page,
+            page_size=args.page_size,
+            num_pages=args.num_pages,
+        )
     else:
         run_full()
     return 0

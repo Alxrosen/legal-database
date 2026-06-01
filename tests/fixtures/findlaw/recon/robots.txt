@@ -1,0 +1,46 @@
+# lawyers.findLaw.com
+#  _____ _           _ _
+# |  ___(_)_ __   __| | |    __ ___      _____ ___  _ __ ___
+# | |_  | | '_ \ / _` | |   / _` \ \ /\ / / __/ _ \| '_ ` _ \
+# |  _| | | | | | (_| | |__| (_| |\ V  V / (_| (_) | | | | | |
+# |_|   |_|_| |_|\__,_|_____\__,_| \_/\_(_)___\___/|_| |_| |_|
+#
+# Directory
+User-agent: *
+Disallow: /ld-solr/
+Disallow: /dummy/
+Disallow: /ps/
+Disallow: /cdn-cgi/
+Disallow: /lawyer/lawyer_dir/search/jsp/stdSearch_process.jsp
+Disallow: *?*stype=
+Disallow: *?*target=
+Disallow: *?*lnasid=
+Disallow: */r?e=
+Disallow: *?sLastName=&sOfficeName=
+Disallow: *?sFirstName=&sLastName=
+Disallow: *?*dpa=
+#
+# Profiles
+User-agent: *
+Disallow: /profile/*view*print=
+Disallow: /profile/*view*noconfirm=
+Disallow: /profile/*view*channel=LP
+Disallow: /profile/*view*channel=CCC
+Disallow: /profile/*view*internal=1
+Disallow: /profile/*view*internal=2
+Disallow: /profile/*view*internal=3
+Disallow: /profile/*view*internal=4
+Disallow: /profile/*view*internal=5
+Disallow: /profile/*view*internal=6
+Disallow: /profile/*view*internal=7
+Disallow: /profile/*view*lnasid=
+Disallow: /profile/*view*channel=***
+Disallow: /profile/*view*channel=ccc
+Disallow: /profile/*view*channel=lp
+Disallow: /profile/*view*channel=CC
+Disallow: /profile/*view*channel=MYCA
+#
+Sitemap: https://lawyers.findlaw.com/v1/sitemap/sitemap-srps.xml
+Sitemap: https://lawyers.findlaw.com/v1/sitemap/sitemap-srps-common.xml
+Sitemap: https://lawyers.findlaw.com/v1/sitemap/sitemap-upper.xml
+Sitemap: https://lawyers.findlaw.com/v1/sitemap/sitemap-paid-profiles.xml

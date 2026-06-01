@@ -1,0 +1,622 @@
+[
+  {
+    "slug": "name-search",
+    "name": "Name Search",
+    "url": "https://lawyers.findlaw.com/name-search/"
+  },
+  {
+    "slug": "legal-issues",
+    "name": "Browse Legal Issues",
+    "url": "https://lawyers.findlaw.com/legal-issues/"
+  },
+  {
+    "slug": "profile",
+    "name": "Browse Law Firms",
+    "url": "https://lawyers.findlaw.com/profile/lawfirm/a/1.html"
+  },
+  {
+    "slug": "lawyer",
+    "name": "Support",
+    "url": "https://lawyers.findlaw.com/lawyer/help/"
+  },
+  {
+    "slug": "aviation-mass-transit-accidents",
+    "name": "Airplane, Bus and Helicopter Accidents",
+    "url": "https://lawyers.findlaw.com/aviation-mass-transit-accidents/"
+  },
+  {
+    "slug": "animal-bites-plaintiff",
+    "name": "Animal and Dog Bites",
+    "url": "https://lawyers.findlaw.com/animal-bites-plaintiff/"
+  },
+  {
+    "slug": "asbestos-mesothelioma",
+    "name": "Asbestos Mesothelioma",
+    "url": "https://lawyers.findlaw.com/asbestos-mesothelioma/"
+  },
+  {
+    "slug": "assault-battery-plaintiff",
+    "name": "Assault and Battery (Plaintiff)",
+    "url": "https://lawyers.findlaw.com/assault-battery-plaintiff/"
+  },
+  {
+    "slug": "birth-injury",
+    "name": "Birth Injury",
+    "url": "https://lawyers.findlaw.com/birth-injury/"
+  },
+  {
+    "slug": "brain-injury",
+    "name": "Brain Injury",
+    "url": "https://lawyers.findlaw.com/brain-injury/"
+  },
+  {
+    "slug": "motor-vehicle-accidents-plaintiff",
+    "name": "Car Accidents",
+    "url": "https://lawyers.findlaw.com/motor-vehicle-accidents-plaintiff/"
+  },
+  {
+    "slug": "construction-accident",
+    "name": "Construction Accident",
+    "url": "https://lawyers.findlaw.com/construction-accident/"
+  },
+  {
+    "slug": "products-liability-law",
+    "name": "Dangerous Products",
+    "url": "https://lawyers.findlaw.com/products-liability-law/"
+  },
+  {
+    "slug": "defamation",
+    "name": "Defamation",
+    "url": "https://lawyers.findlaw.com/defamation/"
+  },
+  {
+    "slug": "drugs-medical-devices",
+    "name": "Drugs and Medical Devices",
+    "url": "https://lawyers.findlaw.com/drugs-medical-devices/"
+  },
+  {
+    "slug": "medical-malpractice",
+    "name": "Medical Malpractice",
+    "url": "https://lawyers.findlaw.com/medical-malpractice/"
+  },
+  {
+    "slug": "motor-vehicle-defects",
+    "name": "Motor Vehicle Defects",
+    "url": "https://lawyers.findlaw.com/motor-vehicle-defects/"
+  },
+  {
+    "slug": "personal-injury-plaintiff",
+    "name": "Personal Injury",
+    "url": "https://lawyers.findlaw.com/personal-injury-plaintiff/"
+  },
+  {
+    "slug": "personal-injury-defense",
+    "name": "Personal Injury Defense",
+    "url": "https://lawyers.findlaw.com/personal-injury-defense/"
+  },
+  {
+    "slug": "premises-liability-plaintiff",
+    "name": "Premises Liability",
+    "url": "https://lawyers.findlaw.com/premises-liability-plaintiff/"
+  },
+  {
+    "slug": "railroad-worker-injury-fela",
+    "name": "Railroad Worker Injury and FELA",
+    "url": "https://lawyers.findlaw.com/railroad-worker-injury-fela/"
+  },
+  {
+    "slug": "sexual-abuse-plaintiff",
+    "name": "Sexual Abuse",
+    "url": "https://lawyers.findlaw.com/sexual-abuse-plaintiff/"
+  },
+  {
+    "slug": "toxic-mold",
+    "name": "Toxic Mold",
+    "url": "https://lawyers.findlaw.com/toxic-mold/"
+  },
+  {
+    "slug": "toxic-torts",
+    "name": "Toxic Torts",
+    "url": "https://lawyers.findlaw.com/toxic-torts/"
+  },
+  {
+    "slug": "truck-accident",
+    "name": "Truck Accident",
+    "url": "https://lawyers.findlaw.com/truck-accident/"
+  },
+  {
+    "slug": "workers-compensation-law",
+    "name": "Workers' Compensation",
+    "url": "https://lawyers.findlaw.com/workers-compensation-law/"
+  },
+  {
+    "slug": "wrongful-death-plaintiff",
+    "name": "Wrongful Death",
+    "url": "https://lawyers.findlaw.com/wrongful-death-plaintiff/"
+  },
+  {
+    "slug": "bankruptcy-law",
+    "name": "Bankruptcy",
+    "url": "https://lawyers.findlaw.com/bankruptcy-law/"
+  },
+  {
+    "slug": "collections",
+    "name": "Collections",
+    "url": "https://lawyers.findlaw.com/collections/"
+  },
+  {
+    "slug": "credit-repair",
+    "name": "Credit Repair",
+    "url": "https://lawyers.findlaw.com/credit-repair/"
+  },
+  {
+    "slug": "debtor-creditor",
+    "name": "Debtor and Creditor",
+    "url": "https://lawyers.findlaw.com/debtor-creditor/"
+  },
+  {
+    "slug": "administrative-law",
+    "name": "Administrative Law",
+    "url": "https://lawyers.findlaw.com/administrative-law/"
+  },
+  {
+    "slug": "admiralty-maritime-law",
+    "name": "Admiralty and Maritime",
+    "url": "https://lawyers.findlaw.com/admiralty-maritime-law/"
+  },
+  {
+    "slug": "agriculture-law",
+    "name": "Agriculture",
+    "url": "https://lawyers.findlaw.com/agriculture-law/"
+  },
+  {
+    "slug": "antitrust-trade-regulation",
+    "name": "Antitrust",
+    "url": "https://lawyers.findlaw.com/antitrust-trade-regulation/"
+  },
+  {
+    "slug": "aviation",
+    "name": "Aviation",
+    "url": "https://lawyers.findlaw.com/aviation/"
+  },
+  {
+    "slug": "banking-finance-law",
+    "name": "Banking and Finance Law",
+    "url": "https://lawyers.findlaw.com/banking-finance-law/"
+  },
+  {
+    "slug": "business-commercial-law",
+    "name": "Business and Commercial Law",
+    "url": "https://lawyers.findlaw.com/business-commercial-law/"
+  },
+  {
+    "slug": "business-organizations",
+    "name": "Business Organizations",
+    "url": "https://lawyers.findlaw.com/business-organizations/"
+  },
+  {
+    "slug": "cannabis-law",
+    "name": "Cannabis Law",
+    "url": "https://lawyers.findlaw.com/cannabis-law/"
+  },
+  {
+    "slug": "communications-media-law",
+    "name": "Communications and Media Law",
+    "url": "https://lawyers.findlaw.com/communications-media-law/"
+  },
+  {
+    "slug": "contracts",
+    "name": "Contracts",
+    "url": "https://lawyers.findlaw.com/contracts/"
+  },
+  {
+    "slug": "employment-law-employer",
+    "name": "Employment Law (Employer)",
+    "url": "https://lawyers.findlaw.com/employment-law-employer/"
+  },
+  {
+    "slug": "franchising",
+    "name": "Franchising",
+    "url": "https://lawyers.findlaw.com/franchising/"
+  },
+  {
+    "slug": "government-contracts",
+    "name": "Government Contracts",
+    "url": "https://lawyers.findlaw.com/government-contracts/"
+  },
+  {
+    "slug": "mergers-acquisitions",
+    "name": "Mergers and Acquisitions",
+    "url": "https://lawyers.findlaw.com/mergers-acquisitions/"
+  },
+  {
+    "slug": "energy-law",
+    "name": "Oil, Gas and Energy",
+    "url": "https://lawyers.findlaw.com/energy-law/"
+  },
+  {
+    "slug": "securities-law",
+    "name": "Securities",
+    "url": "https://lawyers.findlaw.com/securities-law/"
+  },
+  {
+    "slug": "tax-increment-financing",
+    "name": "Tax Increment Financing",
+    "url": "https://lawyers.findlaw.com/tax-increment-financing/"
+  },
+  {
+    "slug": "taxation-law",
+    "name": "Tax Law",
+    "url": "https://lawyers.findlaw.com/taxation-law/"
+  },
+  {
+    "slug": "transportation-law",
+    "name": "Transportation",
+    "url": "https://lawyers.findlaw.com/transportation-law/"
+  },
+  {
+    "slug": "civil-rights",
+    "name": "Civil Rights",
+    "url": "https://lawyers.findlaw.com/civil-rights/"
+  },
+  {
+    "slug": "constitutional-law",
+    "name": "Constitutional Law",
+    "url": "https://lawyers.findlaw.com/constitutional-law/"
+  },
+  {
+    "slug": "discrimination",
+    "name": "Discrimination",
+    "url": "https://lawyers.findlaw.com/discrimination/"
+  },
+  {
+    "slug": "native-peoples-law",
+    "name": "Native Peoples",
+    "url": "https://lawyers.findlaw.com/native-peoples-law/"
+  },
+  {
+    "slug": "auto-dealer-fraud",
+    "name": "Auto Dealer Fraud",
+    "url": "https://lawyers.findlaw.com/auto-dealer-fraud/"
+  },
+  {
+    "slug": "consumer-protection",
+    "name": "Consumer Protection",
+    "url": "https://lawyers.findlaw.com/consumer-protection/"
+  },
+  {
+    "slug": "legal-malpractice",
+    "name": "Legal Malpractice",
+    "url": "https://lawyers.findlaw.com/legal-malpractice/"
+  },
+  {
+    "slug": "lemon-law",
+    "name": "Lemon Law",
+    "url": "https://lawyers.findlaw.com/lemon-law/"
+  },
+  {
+    "slug": "professional-malpractice-law",
+    "name": "Professional Malpractice",
+    "url": "https://lawyers.findlaw.com/professional-malpractice-law/"
+  },
+  {
+    "slug": "criminal-law",
+    "name": "Criminal Defense",
+    "url": "https://lawyers.findlaw.com/criminal-law/"
+  },
+  {
+    "slug": "dui-dwi",
+    "name": "DUI and DWI",
+    "url": "https://lawyers.findlaw.com/dui-dwi/"
+  },
+  {
+    "slug": "drug-crime",
+    "name": "Drug Crime",
+    "url": "https://lawyers.findlaw.com/drug-crime/"
+  },
+  {
+    "slug": "white-collar-crimes",
+    "name": "Federal and White Collar Crimes",
+    "url": "https://lawyers.findlaw.com/white-collar-crimes/"
+  },
+  {
+    "slug": "sex-crime",
+    "name": "Sex Crime",
+    "url": "https://lawyers.findlaw.com/sex-crime/"
+  },
+  {
+    "slug": "traffic-violations",
+    "name": "Traffic Ticket",
+    "url": "https://lawyers.findlaw.com/traffic-violations/"
+  },
+  {
+    "slug": "disability",
+    "name": "Disability Insurance",
+    "url": "https://lawyers.findlaw.com/disability/"
+  },
+  {
+    "slug": "social-security-disability",
+    "name": "Social Security Disability",
+    "url": "https://lawyers.findlaw.com/social-security-disability/"
+  },
+  {
+    "slug": "adoption",
+    "name": "Adoption",
+    "url": "https://lawyers.findlaw.com/adoption/"
+  },
+  {
+    "slug": "custody-visitation",
+    "name": "Child Custody",
+    "url": "https://lawyers.findlaw.com/custody-visitation/"
+  },
+  {
+    "slug": "child-support",
+    "name": "Child Support",
+    "url": "https://lawyers.findlaw.com/child-support/"
+  },
+  {
+    "slug": "collaborative-law",
+    "name": "Collaborative Law",
+    "url": "https://lawyers.findlaw.com/collaborative-law/"
+  },
+  {
+    "slug": "divorce",
+    "name": "Divorce and Separation",
+    "url": "https://lawyers.findlaw.com/divorce/"
+  },
+  {
+    "slug": "domestic-violence",
+    "name": "Domestic Violence",
+    "url": "https://lawyers.findlaw.com/domestic-violence/"
+  },
+  {
+    "slug": "family-law",
+    "name": "Family Law",
+    "url": "https://lawyers.findlaw.com/family-law/"
+  },
+  {
+    "slug": "fathers-rights",
+    "name": "Father's Rights",
+    "url": "https://lawyers.findlaw.com/fathers-rights/"
+  },
+  {
+    "slug": "military-divorce",
+    "name": "Military Divorce",
+    "url": "https://lawyers.findlaw.com/military-divorce/"
+  },
+  {
+    "slug": "same-sex",
+    "name": "Same Sex",
+    "url": "https://lawyers.findlaw.com/same-sex/"
+  },
+  {
+    "slug": "employment-law-employee",
+    "name": "Employment Rights",
+    "url": "https://lawyers.findlaw.com/employment-law-employee/"
+  },
+  {
+    "slug": "labor-law",
+    "name": "Labor Law",
+    "url": "https://lawyers.findlaw.com/labor-law/"
+  },
+  {
+    "slug": "sexual-harassment",
+    "name": "Sexual Harassment",
+    "url": "https://lawyers.findlaw.com/sexual-harassment/"
+  },
+  {
+    "slug": "wage-hour",
+    "name": "Wage and Hour",
+    "url": "https://lawyers.findlaw.com/wage-hour/"
+  },
+  {
+    "slug": "whistleblower-qui-tam",
+    "name": "Whistleblower and Qui Tam",
+    "url": "https://lawyers.findlaw.com/whistleblower-qui-tam/"
+  },
+  {
+    "slug": "wrongful-termination",
+    "name": "Wrongful Termination",
+    "url": "https://lawyers.findlaw.com/wrongful-termination/"
+  },
+  {
+    "slug": "estate-planning",
+    "name": "Estate Planning",
+    "url": "https://lawyers.findlaw.com/estate-planning/"
+  },
+  {
+    "slug": "probate-estate-administration",
+    "name": "Probate",
+    "url": "https://lawyers.findlaw.com/probate-estate-administration/"
+  },
+  {
+    "slug": "trusts",
+    "name": "Trusts",
+    "url": "https://lawyers.findlaw.com/trusts/"
+  },
+  {
+    "slug": "wills",
+    "name": "Wills",
+    "url": "https://lawyers.findlaw.com/wills/"
+  },
+  {
+    "slug": "elder-law",
+    "name": "Elder Law",
+    "url": "https://lawyers.findlaw.com/elder-law/"
+  },
+  {
+    "slug": "health-health-care-law",
+    "name": "Health Care Law",
+    "url": "https://lawyers.findlaw.com/health-health-care-law/"
+  },
+  {
+    "slug": "nursing-home-abuse",
+    "name": "Nursing Home Abuse",
+    "url": "https://lawyers.findlaw.com/nursing-home-abuse/"
+  },
+  {
+    "slug": "immigration-naturalization-law",
+    "name": "Immigration",
+    "url": "https://lawyers.findlaw.com/immigration-naturalization-law/"
+  },
+  {
+    "slug": "bad-faith-insurance",
+    "name": "Bad Faith Insurance",
+    "url": "https://lawyers.findlaw.com/bad-faith-insurance/"
+  },
+  {
+    "slug": "insurance-defense",
+    "name": "Insurance Defense",
+    "url": "https://lawyers.findlaw.com/insurance-defense/"
+  },
+  {
+    "slug": "insurance-law",
+    "name": "Insurance Law",
+    "url": "https://lawyers.findlaw.com/insurance-law/"
+  },
+  {
+    "slug": "intellectual-property-law",
+    "name": "Copyrights",
+    "url": "https://lawyers.findlaw.com/intellectual-property-law/"
+  },
+  {
+    "slug": "patents",
+    "name": "Patents",
+    "url": "https://lawyers.findlaw.com/patents/"
+  },
+  {
+    "slug": "trademarks",
+    "name": "Trademarks",
+    "url": "https://lawyers.findlaw.com/trademarks/"
+  },
+  {
+    "slug": "alternative-dispute-resolution",
+    "name": "ADR, Arbitration and Mediation",
+    "url": "https://lawyers.findlaw.com/alternative-dispute-resolution/"
+  },
+  {
+    "slug": "class-actions-plaintiff",
+    "name": "Class Actions",
+    "url": "https://lawyers.findlaw.com/class-actions-plaintiff/"
+  },
+  {
+    "slug": "litigation-appeals",
+    "name": "Litigation and Appeals",
+    "url": "https://lawyers.findlaw.com/litigation-appeals/"
+  },
+  {
+    "slug": "construction-law",
+    "name": "Construction",
+    "url": "https://lawyers.findlaw.com/construction-law/"
+  },
+  {
+    "slug": "eminent-domain",
+    "name": "Eminent Domain",
+    "url": "https://lawyers.findlaw.com/eminent-domain/"
+  },
+  {
+    "slug": "foreclosure-alternatives",
+    "name": "Foreclosure and Alternatives",
+    "url": "https://lawyers.findlaw.com/foreclosure-alternatives/"
+  },
+  {
+    "slug": "housing-construction-defects",
+    "name": "Housing and Construction Defects",
+    "url": "https://lawyers.findlaw.com/housing-construction-defects/"
+  },
+  {
+    "slug": "land-use-zoning",
+    "name": "Land Use and Zoning",
+    "url": "https://lawyers.findlaw.com/land-use-zoning/"
+  },
+  {
+    "slug": "landlord-tenant",
+    "name": "Landlord and Tenant",
+    "url": "https://lawyers.findlaw.com/landlord-tenant/"
+  },
+  {
+    "slug": "real-estate-law",
+    "name": "Real Estate",
+    "url": "https://lawyers.findlaw.com/real-estate-law/"
+  },
+  {
+    "slug": "erisa",
+    "name": "ERISA",
+    "url": "https://lawyers.findlaw.com/erisa/"
+  },
+  {
+    "slug": "social-security",
+    "name": "Social Security",
+    "url": "https://lawyers.findlaw.com/social-security/"
+  },
+  {
+    "slug": "education-law",
+    "name": "Education",
+    "url": "https://lawyers.findlaw.com/education-law/"
+  },
+  {
+    "slug": "election-campaign-political-law",
+    "name": "Election Campaign and Political Law",
+    "url": "https://lawyers.findlaw.com/election-campaign-political-law/"
+  },
+  {
+    "slug": "entertainment-sports-leisure-law",
+    "name": "Entertainment, Sports and Leisure Law",
+    "url": "https://lawyers.findlaw.com/entertainment-sports-leisure-law/"
+  },
+  {
+    "slug": "environmental-law",
+    "name": "Environmental Law",
+    "url": "https://lawyers.findlaw.com/environmental-law/"
+  },
+  {
+    "slug": "ethics-professional-responsibility",
+    "name": "Ethics and Professional Responsibility",
+    "url": "https://lawyers.findlaw.com/ethics-professional-responsibility/"
+  },
+  {
+    "slug": "gaming-law",
+    "name": "Gaming",
+    "url": "https://lawyers.findlaw.com/gaming-law/"
+  },
+  {
+    "slug": "government-agencies-programs",
+    "name": "Government Agencies and Programs",
+    "url": "https://lawyers.findlaw.com/government-agencies-programs/"
+  },
+  {
+    "slug": "international-law",
+    "name": "International Law",
+    "url": "https://lawyers.findlaw.com/international-law/"
+  },
+  {
+    "slug": "internet-cyberspace",
+    "name": "Internet",
+    "url": "https://lawyers.findlaw.com/internet-cyberspace/"
+  },
+  {
+    "slug": "military-law",
+    "name": "Military",
+    "url": "https://lawyers.findlaw.com/military-law/"
+  },
+  {
+    "slug": "natural-resources-law",
+    "name": "Natural Resources",
+    "url": "https://lawyers.findlaw.com/natural-resources-law/"
+  },
+  {
+    "slug": "science-technology-law",
+    "name": "Science and Technology Law",
+    "url": "https://lawyers.findlaw.com/science-technology-law/"
+  },
+  {
+    "slug": "state-local-municipal-law",
+    "name": "State, Local and Municipal Law",
+    "url": "https://lawyers.findlaw.com/state-local-municipal-law/"
+  },
+  {
+    "slug": "veterans-benefit",
+    "name": "Veteran's Benefits",
+    "url": "https://lawyers.findlaw.com/veterans-benefit/"
+  }
+]
