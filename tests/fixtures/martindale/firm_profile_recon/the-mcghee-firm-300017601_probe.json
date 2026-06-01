@@ -1,0 +1,123 @@
+{
+  "masthead_list_items_count": 4,
+  "masthead_list_items": [
+    {
+      "class": "masthead-list__item masthead-list__item--bold",
+      "text": "Dothan, AL",
+      "is_bold": true
+    },
+    {
+      "class": "masthead-list__item",
+      "text": "424 South Oates Street, Dothan, AL 36301",
+      "is_bold": false
+    },
+    {
+      "class": "masthead-list__item",
+      "text": "Peer ReviewsNo Reviews",
+      "is_bold": false
+    },
+    {
+      "class": "masthead-list__item",
+      "text": "Profile Visibility[ i ]#8in weekly profile views out of91Law Firms in Dothan, AL#7,848in weekly profile views out of314,963total Law Firms Overall",
+      "is_bold": false
+    }
+  ],
+  "aop_list_count": 63,
+  "aop_list_items": [
+    "Criminal Defense",
+    "Personal Crimes",
+    "Capital Murder",
+    "Murder",
+    "Homicide",
+    "Violent Crimes",
+    "Assault and Battery",
+    "Arson",
+    "Child Abuse",
+    "Domestic Abuse",
+    "Kidnapping",
+    "Rape",
+    "Statutory Rape",
+    "Inchoate Crimes",
+    "Aiding and Abetting",
+    "Attempt",
+    "Conspiracy",
+    "Property Crimes",
+    "Theft Crimes",
+    "Burglary",
+    "Larceny",
+    "Robbery",
+    "Auto Theft",
+    "Shoplifting",
+    "Statutory Crimes",
+    "DUI/DWI",
+    "Open Container Violations",
+    "Minor in Possession of Alcohol",
+    "Public Intoxication",
+    "Underage DUI",
+    "Boating DUI",
+    "Selling and Supplying Alcohol to Minors",
+    "Refusing to Perform a Field Sobriety Test",
+    "Refusing to Perform a Breathalyzer or Provide a Blood Sample",
+    "Drug Possession",
+    "Drug Manufacturing",
+    "Drug Trafficking",
+    "Medical Marijuana Crimes",
+    "Driving on a Suspended License",
+    "Hit-and-run Accidents",
+    "Reckless Driving",
+    "Vehicular Assault",
+    "Federal Crimes",
+    "State Crimes",
+    "Financial Crimes",
+    "Family/ Domestic Law",
+    "Contested High Conflict Divorce",
+    "Uncontested Cooperative Divorce",
+    "Child Custody",
+    "Child Support & Spousal Support",
+    "Property and Asset Division",
+    "Prenuptial & Asset Division",
+    "Domestic Violence and Family Offense",
+    "Post-Divorce and modification of Support",
+    "Personal Injury Law",
+    "Car Accidents",
+    "Construction Accidents",
+    "Product Liability",
+    "Mass Disasters",
+    "Medical Malpractice",
+    "Workplace Injuries",
+    "Premises Liability",
+    "Nursing Home Abuse"
+  ],
+  "toggle_area_header_counts": [
+    {
+      "header": "Areas of Practice(63)",
+      "count_text": "(63)"
+    },
+    {
+      "header": "People(1)",
+      "count_text": "(1)"
+    }
+  ],
+  "truncate_text_blocks": [
+    {
+      "header": null,
+      "text_sample": "Experience. Respect. Results.By choosing The McGhee Firm, you get more than professional legal representation. We are a full service Law Firm with over 20 years of experience offering expertise in various legal areas. Specializing in Criminal Defense, Family and Domestic Law, and Personal Injury Law",
+      "text_length": 333
+    },
+    {
+      "header": null,
+      "text_sample": "Criminal DefensePersonal CrimesCapital MurderMurderHomicideViolent CrimesAssault and BatteryArsonChild AbuseDomestic AbuseKidnappingRapeStatutory RapeInchoate CrimesAiding and AbettingAttemptConspiracyProperty CrimesTheft CrimesBurglaryLarcenyRobberyAuto TheftShopliftingStatutory CrimesDUI/DWIOpen C",
+      "text_length": 1144
+    }
+  ],
+  "year_established_regex": null,
+  "office_count_regex": 1,
+  "near_year_label_text": [],
+  "preeminent_present": true,
+  "peer_reviews_present": true,
+  "_firm_name": "The McGhee Firm",
+  "_firm_profile_url": "https://www.martindale.com/organization/the-mcghee-firm-300017601/dothan-alabama-300023481-f/",
+  "_slug": "the-mcghee-firm-300017601",
+  "_attorney_count_srp": 1,
+  "_state_slug": "alabama"
+}

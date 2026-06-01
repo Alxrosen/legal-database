@@ -611,6 +611,91 @@ cities × ~2 pages avg ≈ 20k attorney requests + ~5–10k firm requests.
 We will increase the rps for that run. Same nod-before-full-sweep posture as
 AZ Bar.
 
+## 9.5 Firm-profile enrichment (subscriber firms only)
+
+> **Reconnaissance complete 2026-06-01.** Probed 5 firm profiles
+> across small / medium / large firms in AL and AZ. Fixtures under
+> `tests/fixtures/martindale/firm_profile_recon/`.
+
+Sample firms probed: The McGhee Firm (1 attorney AL), Prim & Mendheim
+(3 attorneys AL), Hale Sides (6 attorneys AL), Starnes Davis Florie
+(56 attorneys AL), Sargon Law Group (~8 attorneys AZ).
+
+### Confirmed selectors
+
+**Masthead block (`ul.masthead-list > li.masthead-list__item`):**
+4 or 5 items per firm, in this order:
+
+| Position | Class | Content | Always present |
+|---|---|---|---|
+| 0 | `masthead-list__item--bold` | `"Dothan, AL"` — city, state | yes |
+| 1 | (plain) | full street/PO-box/zip line | yes |
+| 2 | (plain) | short tagline / blurb | **NO** — The McGhee Firm has no tagline |
+| 3 | (plain) | `"Peer Reviews4.4/5.0(57)"` or `"Peer ReviewsNo Reviews"` | yes |
+| 4 | (plain) | "Profile Visibility..." stats (noise) | yes |
+
+Parser implication: do NOT assume position 2 is the short
+description. Detect it by content: not bold, not containing
+`"Peer Reviews"`, not containing `"Profile Visibility"`.
+
+**Address line variants observed:**
+- Clean: `"100 Brookwood Place, 7th Floor, Birmingham, AL 35209"` (Starnes)
+- With PO box: `"103 Jamestown Boulevard, P.O. Box 2147, 36302, Dothan, AL 36301"` (Prim & Mendheim — two zips!)
+- Simple: `"424 South Oates Street, Dothan, AL 36301"` (McGhee)
+
+Parser will extract the **last** ZIP and the city+state pair (also
+available verbatim in the bold item at position 0). The PO box and
+duplicate zips are noise; we use the bold "City, ST" for canonical
+city/state.
+
+**`ul#aopList`:** practice areas, one `<li>` per item. Counts vary
+wildly:
+- The McGhee Firm: **63** items (generalist; real list, not template
+  defaults — first 8 are `Criminal Defense, Personal Crimes, Capital
+  Murder, Murder, Homicide, Violent Crimes, Assault and Battery,
+  Arson`)
+- Prim & Mendheim: 5 items (`Civil Litigation, Personal Injury, Fraud,
+  Real Estate, Collections`)
+- Hale Sides: 18 items
+- Starnes Davis Florie: 44 items
+- Sargon Law Group: 8 items
+
+**`span.toggle-area__header-count`:** count text in parens (`"(5)"`).
+The adjacent `<h2>` text ALREADY contains the count (e.g.
+`"Areas of Practice(5)"`, `"People(56)"`). Two such pairs per page:
+"Areas of Practice" and "People".
+
+**`div.truncate-text` blocks under headings:** description bodies.
+Two or three per page:
+
+- 1 firm-wide description ("Our Firm" heading or similar)
+- 1+ office-specific descriptions ("About our Dothan, AL office")
+- 1 noise block that's just the AOP list rendered as text (we
+  filter this by detecting `<= 100 chars` or matching the AOP items)
+
+Parser implication: pair each `truncate-text` with the **nearest
+preceding `h2`** in DOM order (not just `parent.find("h2")` which
+missed in the recon probe). Store each as `{heading, text}`.
+
+**Year Established:** `Year Established:2006` text appears in a
+`<div>` (no specific class observed). Present on Prim & Mendheim
+(2006), Hale Sides (2009), Starnes Davis Florie (1975). **Absent on
+The McGhee Firm and Sargon Law Group** — many firms simply don't
+publish a founding year. Parser must tolerate missing.
+
+**Office Size label** is misleading — it represents firm-wide
+headcount (Starnes "Office Size: 56" matches `People(56)`), not the
+number of offices. Don't use it as `office_count`; use it as a
+cross-check against `attorney_count` from the SRP cards.
+
+**Office count** — the number of distinct offices a firm has. Not
+yet confirmed; needs to be derived during enrichment from an offices
+list section on the profile (TBD in parser pass) OR set to NULL.
+
+**Awards / ratings:** "Martindale-Hubbell Preeminent" badge text and
+"Peer Reviews 4.4/5.0 (57)" string are present. Not extracted in v1
+— surfaced here for future use only.
+
 ## 10. Known pitfalls
 
 * **Cloudflare.** First sign of trouble — stop. Don't escalate tooling yet (leave for later).

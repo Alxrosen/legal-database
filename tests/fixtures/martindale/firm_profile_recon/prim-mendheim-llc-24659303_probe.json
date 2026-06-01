@@ -1,0 +1,79 @@
+{
+  "masthead_list_items_count": 5,
+  "masthead_list_items": [
+    {
+      "class": "masthead-list__item masthead-list__item--bold",
+      "text": "Dothan, AL",
+      "is_bold": true
+    },
+    {
+      "class": "masthead-list__item",
+      "text": "103 Jamestown Boulevard, P.O. Box 2147, 36302, Dothan, AL 36301",
+      "is_bold": false
+    },
+    {
+      "class": "masthead-list__item",
+      "text": "A General Practice Law Firm That Specializes In Collections",
+      "is_bold": false
+    },
+    {
+      "class": "masthead-list__item",
+      "text": "Peer Reviews4.4/5.0(57)",
+      "is_bold": false
+    },
+    {
+      "class": "masthead-list__item",
+      "text": "Profile Visibility[ i ]#8in weekly profile views out of91Law Firms in Dothan, AL#40,932in weekly profile views out of314,963total Law Firms Overall",
+      "is_bold": false
+    }
+  ],
+  "aop_list_count": 5,
+  "aop_list_items": [
+    "Civil Litigation",
+    "Personal Injury",
+    "Fraud",
+    "Real Estate",
+    "Collections"
+  ],
+  "toggle_area_header_counts": [
+    {
+      "header": "Areas of Practice(5)",
+      "count_text": "(5)"
+    },
+    {
+      "header": "People(3)",
+      "count_text": "(3)"
+    }
+  ],
+  "truncate_text_blocks": [
+    {
+      "header": null,
+      "text_sample": "Prim & Mendheim, LLC is a general practice law firm based in Dothan, Alabama with lifelong Dothan lawyers that specialize in real estate transactions and the collection of commercial and consumer debt. In addition to our specialized areas of real estate and collections, our law firm also provides re",
+      "text_length": 992
+    },
+    {
+      "header": null,
+      "text_sample": "Civil LitigationPersonal InjuryFraudReal EstateCollections",
+      "text_length": 58
+    }
+  ],
+  "year_established_regex": 2006,
+  "office_count_regex": 2,
+  "near_year_label_text": [
+    {
+      "tag": "div",
+      "text": "Year Established:2006"
+    },
+    {
+      "tag": "div",
+      "text": "Year Established:"
+    }
+  ],
+  "preeminent_present": true,
+  "peer_reviews_present": true,
+  "_firm_name": "Prim & Mendheim, LLC",
+  "_firm_profile_url": "https://www.martindale.com/organization/prim-mendheim-llc-24659303/dothan-alabama-38318554-f/",
+  "_slug": "prim-mendheim-llc-24659303",
+  "_attorney_count_srp": 3,
+  "_state_slug": "alabama"
+}

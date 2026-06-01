@@ -1,0 +1,73 @@
+{
+  "masthead_list_items_count": 5,
+  "masthead_list_items": [
+    {
+      "class": "masthead-list__item masthead-list__item--bold",
+      "text": "Phoenix, AZ",
+      "is_bold": true
+    },
+    {
+      "class": "masthead-list__item",
+      "text": "4105 N. 20th Street Suite 260, Phoenix, AZ 85016",
+      "is_bold": false
+    },
+    {
+      "class": "masthead-list__item",
+      "text": "The experienced attorneys at MDK are dedicated to the best results for our clients, every time. We help injury victims of car, motorcycle and trucking accidents. Call MDK for a free no-obligation to learn how we can help you recover.",
+      "is_bold": false
+    },
+    {
+      "class": "masthead-list__item",
+      "text": "Peer ReviewsNo Reviews",
+      "is_bold": false
+    },
+    {
+      "class": "masthead-list__item",
+      "text": "Profile Visibility[ i ]#90in weekly profile views out of1,788Law Firms in Phoenix, AZ#40,932in weekly profile views out of314,963total Law Firms Overall",
+      "is_bold": false
+    }
+  ],
+  "aop_list_count": 8,
+  "aop_list_items": [
+    "Personal Injury",
+    "Car Accident",
+    "Truck Accident",
+    "Motorcycle Accident",
+    "Wrongful Death",
+    "Premises Liability",
+    "Catastrophic Injury",
+    "Criminal Law"
+  ],
+  "toggle_area_header_counts": [
+    {
+      "header": "Areas of Practice(8)",
+      "count_text": "(8)"
+    },
+    {
+      "header": "People(2)",
+      "count_text": "(2)"
+    }
+  ],
+  "truncate_text_blocks": [
+    {
+      "header": null,
+      "text_sample": "Accidents can happen at any time or any place. Often times, people are not sure what to do or what can be done if a loved one is significantly hurt or lost due to an accident. Accidents are often avoidable if the responsible people, professionals and corporations act as required. Unfortunately, care",
+      "text_length": 771
+    },
+    {
+      "header": null,
+      "text_sample": "Personal InjuryCar AccidentTruck AccidentMotorcycle AccidentWrongful DeathPremises LiabilityCatastrophic InjuryCriminal Law",
+      "text_length": 123
+    }
+  ],
+  "year_established_regex": null,
+  "office_count_regex": 2,
+  "near_year_label_text": [],
+  "preeminent_present": true,
+  "peer_reviews_present": true,
+  "_firm_name": "Sargon Law Group",
+  "_firm_profile_url": "https://www.martindale.com/organization/sargon-law-group-300011123/phoenix-arizona-300014891-f/",
+  "_slug": "sargon-law-group-300011123",
+  "_attorney_count_srp": 2,
+  "_state_slug": "arizona"
+}

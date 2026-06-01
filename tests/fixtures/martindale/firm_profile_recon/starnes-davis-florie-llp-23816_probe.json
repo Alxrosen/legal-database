@@ -1,0 +1,123 @@
+{
+  "masthead_list_items_count": 5,
+  "masthead_list_items": [
+    {
+      "class": "masthead-list__item masthead-list__item--bold",
+      "text": "Birmingham, AL",
+      "is_bold": true
+    },
+    {
+      "class": "masthead-list__item",
+      "text": "100 Brookwood Place, 7th Floor, Birmingham, AL 35209",
+      "is_bold": false
+    },
+    {
+      "class": "masthead-list__item",
+      "text": "Since 1975, Starnes Davis Florie LLP has become one of the largest firms in Alabama to devote itself exclusively to litigation.",
+      "is_bold": false
+    },
+    {
+      "class": "masthead-list__item",
+      "text": "Peer Reviews4.8/5.0(298)",
+      "is_bold": false
+    },
+    {
+      "class": "masthead-list__item",
+      "text": "Profile Visibility[ i ]#5in weekly profile views out of1,114Law Firms in Birmingham, AL#653in weekly profile views out of314,963total Law Firms Overall",
+      "is_bold": false
+    }
+  ],
+  "aop_list_count": 44,
+  "aop_list_items": [
+    "Defense Civil Litigation Practice",
+    "Consumer Finance",
+    "Class Actions",
+    "Fidelity And Surety",
+    "Financial Institution Bond Claims",
+    "Health Care",
+    "Labor And Employment",
+    "Consumer Fraud",
+    "Workers' Compensation",
+    "Toxic Torts",
+    "Biotechnology",
+    "Pharmaceuticals",
+    "Arbitration",
+    "Mediation",
+    "Appellate Practice",
+    "Written Advocacy",
+    "Complex Insurance",
+    "Government",
+    "Long Term Care",
+    "Energy",
+    "Natural Resources",
+    "Telecommunications Law",
+    "Commercial Litigation",
+    "Sports Licensing",
+    "NCAA Regulation",
+    "Complex Litigation",
+    "Trial Practice",
+    "Aviation Defense",
+    "Banking Litigation",
+    "Business Litigation",
+    "Construction Litigation",
+    "Environmental Litigation",
+    "Nursing Home Litigation",
+    "General Liability Defense",
+    "Intellectual Property Litigation",
+    "Legal Malpractice Defense",
+    "Medical Malpractice Defense",
+    "Municipal Defense",
+    "Coal Mining",
+    "Premises Liability",
+    "Products Liability Defense",
+    "Professional Liability Defense",
+    "Securities Litigation",
+    "Workers Compensation"
+  ],
+  "toggle_area_header_counts": [
+    {
+      "header": "Areas of Practice(44)",
+      "count_text": "(44)"
+    },
+    {
+      "header": "People(56)",
+      "count_text": "(56)"
+    }
+  ],
+  "truncate_text_blocks": [
+    {
+      "header": null,
+      "text_sample": "Starnes Davis Florie LLP is a general civil practice law firm exclusively committed to the trial and resolution of civil litigation. The Firm practice involves diverse clients including physicians, attorneys, hospitals, long-term care facilities, medical personnel, banks, corporations, governments, ",
+      "text_length": 1028
+    },
+    {
+      "header": null,
+      "text_sample": "Admiralty & Maritime LitigationAlternative Dispute ResolutionAppellate LawAutomobile Liability DefenseBanking & Financial ServicesBiotechnology & PharmaceuticalBusiness Investigations & White Collar DefenseBusiness LitigationClass Actions & Mass TortsCollegiate SportsComplex Insurance LitigationCons",
+      "text_length": 938
+    },
+    {
+      "header": null,
+      "text_sample": "Defense Civil Litigation PracticeConsumer FinanceClass ActionsFidelity And SuretyFinancial Institution Bond ClaimsHealth CareLabor And EmploymentConsumer FraudWorkers' CompensationToxic TortsBiotechnologyPharmaceuticalsArbitrationMediationAppellate PracticeWritten AdvocacyComplex InsuranceGovernment",
+      "text_length": 818
+    }
+  ],
+  "year_established_regex": 1975,
+  "office_count_regex": 56,
+  "near_year_label_text": [
+    {
+      "tag": "div",
+      "text": "Year Established:1975"
+    },
+    {
+      "tag": "div",
+      "text": "Year Established:"
+    }
+  ],
+  "preeminent_present": true,
+  "peer_reviews_present": true,
+  "_firm_name": "Starnes Davis Florie LLP",
+  "_firm_profile_url": "https://www.martindale.com/organization/starnes-davis-florie-llp-23816/birmingham-alabama-25752-f/",
+  "_slug": "starnes-davis-florie-llp-23816",
+  "_attorney_count_srp": 42,
+  "_state_slug": "alabama"
+}

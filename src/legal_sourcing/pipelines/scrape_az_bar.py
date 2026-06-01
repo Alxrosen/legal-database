@@ -158,29 +158,33 @@ def normalize_record(rec: dict[str, Any]) -> dict[str, Any]:
         em = (c.get("email_raw") or "").strip().lower() or None
         c["email_normalized"] = em
 
-    # Offices: address normalization to populate the `normalized` sub-dict.
+    # Offices: when the source supplied structured raw fields we
+    # preserve them directly. usaddress is reserved for the street
+    # portion, where the input is genuinely free-text. Round-tripping
+    # the whole address through usaddress mis-tagged "Dothan AL" as
+    # `street="al dothan", city=None, state=None` because the tagger
+    # is statistical and trips on missing commas / missing street
+    # numbers.
     for o in rec.get("offices", []):
-        addr_str = " ".join(
+        street_components = " ".join(
             p
-            for p in (
-                o.get("street_raw"),
-                o.get("street2_raw"),
-                o.get("city_raw"),
-                o.get("state_raw"),
-                o.get("postal_code_raw"),
-            )
+            for p in (o.get("street_raw"), o.get("street2_raw"))
             if p
         )
-        if addr_str:
-            parsed = normalize_address(addr_str)
-            if parsed:
-                o["normalized"] = {
-                    "street": parsed.street_normalized,
-                    "city": parsed.city,
-                    "state": parsed.state,
-                    "postal_code": parsed.postal_code,
-                    "country": parsed.country,
-                }
+        norm: dict[str, Any] = {}
+        if street_components:
+            parsed_street = normalize_address(street_components)
+            if parsed_street:
+                norm["street"] = parsed_street.street_normalized
+        norm["city"] = (o.get("city_raw") or "").strip() or None
+        state_raw = (o.get("state_raw") or "").replace(".", "").strip().upper()
+        norm["state"] = state_raw[:2] if state_raw else None
+        zip5 = (o.get("postal_code_raw") or "").strip().split("-")[0][:5]
+        norm["postal_code"] = zip5 or None
+        norm["country"] = (o.get("country_raw") or "US").upper()
+        # Only attach if at least one non-default field was populated.
+        if any(v and v != "US" for v in norm.values()):
+            o["normalized"] = norm
 
     # Practice areas: match each raw string against the canonical taxonomy.
     raw_list = rec.get("practice_areas_raw") or []

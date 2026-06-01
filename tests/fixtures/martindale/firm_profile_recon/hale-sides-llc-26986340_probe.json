@@ -1,0 +1,92 @@
+{
+  "masthead_list_items_count": 5,
+  "masthead_list_items": [
+    {
+      "class": "masthead-list__item masthead-list__item--bold",
+      "text": "Birmingham, AL",
+      "is_bold": true
+    },
+    {
+      "class": "masthead-list__item",
+      "text": "600 Financial Center, 505 20th Street North, Suite 600, Birmingham, AL 35203",
+      "is_bold": false
+    },
+    {
+      "class": "masthead-list__item",
+      "text": "Litigation and Business Practice Serving the State of Alabama",
+      "is_bold": false
+    },
+    {
+      "class": "masthead-list__item",
+      "text": "Peer Reviews5.0/5.0(1)",
+      "is_bold": false
+    },
+    {
+      "class": "masthead-list__item",
+      "text": "Profile Visibility[ i ]#62in weekly profile views out of1,114Law Firms in Birmingham, AL#40,932in weekly profile views out of314,963total Law Firms Overall",
+      "is_bold": false
+    }
+  ],
+  "aop_list_count": 18,
+  "aop_list_items": [
+    "General Civil Trial Practice in all State and Federal Courts",
+    "Municipal Liability",
+    "Municipal Law Enforcement",
+    "Employment",
+    "Workers Compensation",
+    "Personal Injury",
+    "Wrongful Death",
+    "Business Development",
+    "Complex Business Litigation",
+    "Professional Malpractice",
+    "Corporate Law",
+    "Commercial Transactions",
+    "Architect and Engineer Construction Litigation",
+    "Form I-9 Audit and Compliance",
+    "E-Verify",
+    "Probate Law",
+    "Wage and Hour Law",
+    "Human Resources Law"
+  ],
+  "toggle_area_header_counts": [
+    {
+      "header": "Areas of Practice(18)",
+      "count_text": "(18)"
+    },
+    {
+      "header": "People(2)",
+      "count_text": "(2)"
+    }
+  ],
+  "truncate_text_blocks": [
+    {
+      "header": null,
+      "text_sample": "The attorneys of Hale Sides LLC have more than 50 years combined experience successfully handling litigation and business matters with the highest standards of professionalism, precision and efficiency.",
+      "text_length": 202
+    },
+    {
+      "header": null,
+      "text_sample": "General Civil Trial Practice in all State and Federal CourtsMunicipal LiabilityMunicipal Law EnforcementEmploymentWorkers CompensationPersonal InjuryWrongful DeathBusiness DevelopmentComplex Business LitigationProfessional MalpracticeCorporate LawCommercial TransactionsArchitect and Engineer Constru",
+      "text_length": 400
+    }
+  ],
+  "year_established_regex": 2009,
+  "office_count_regex": 2,
+  "near_year_label_text": [
+    {
+      "tag": "div",
+      "text": "Year Established:2009"
+    },
+    {
+      "tag": "div",
+      "text": "Year Established:"
+    }
+  ],
+  "preeminent_present": true,
+  "peer_reviews_present": true,
+  "_firm_name": "Hale Sides LLC",
+  "_firm_profile_url": "https://www.martindale.com/organization/hale-sides-llc-26986340/birmingham-alabama-41602628-f/",
+  "_slug": "hale-sides-llc-26986340",
+  "_attorney_count_srp": 4,
+  "_state_slug": "alabama"
+}
