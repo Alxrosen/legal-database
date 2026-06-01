@@ -19,9 +19,13 @@ import usaddress
 from legal_sourcing.normalize.text import basic_normalize
 
 # Mapping from usaddress tag names to our normalized component fields.
-_STREET_TAGS = {
-    "AddressNumber",
+# Order matters: we join the matching tokens in this order to produce
+# a stable normalized street string. A set here was a bug — iteration
+# order was undefined, so the same raw address could collapse to
+# different normalized strings across runs.
+_STREET_TAG_ORDER: tuple[str, ...] = (
     "AddressNumberPrefix",
+    "AddressNumber",
     "AddressNumberSuffix",
     "StreetNamePreDirectional",
     "StreetNamePreModifier",
@@ -30,8 +34,8 @@ _STREET_TAGS = {
     "StreetNamePostType",
     "StreetNamePostDirectional",
     "StreetNamePostModifier",
-}
-_UNIT_TAGS = {"OccupancyType", "OccupancyIdentifier"}
+)
+_UNIT_TAG_ORDER: tuple[str, ...] = ("OccupancyType", "OccupancyIdentifier")
 
 
 @dataclass(frozen=True)
@@ -75,8 +79,8 @@ def normalize_address(raw: str | None) -> NormalizedAddress | None:
         # Collapse list values into space-joined strings.
         parsed = {k: " ".join(v) if isinstance(v, list) else v for k, v in parsed.items()}
 
-    street_tokens = [parsed[k] for k in _STREET_TAGS if k in parsed]
-    unit_tokens = [parsed[k] for k in _UNIT_TAGS if k in parsed]
+    street_tokens = [parsed[k] for k in _STREET_TAG_ORDER if k in parsed]
+    unit_tokens = [parsed[k] for k in _UNIT_TAG_ORDER if k in parsed]
     street = " ".join(street_tokens) if street_tokens else None
     if unit_tokens:
         street = (street or "") + " " + " ".join(unit_tokens)
