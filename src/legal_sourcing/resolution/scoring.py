@@ -1,0 +1,174 @@
+"""Pairwise scoring for entity resolution.
+
+`score_pair(a, b)` returns a dict with one component per signal plus a
+weighted total in [0, 100]. Components are stored alongside the
+decision in `MatchReviewQueue.score_components` so the same
+candidate set can be re-decided with new weights/thresholds without
+re-scraping or re-scoring (the score is the data, the decision is
+the policy).
+
+Components:
+
+  * `name_sim`     — rapidfuzz `token_set_ratio` on `name_normalized`,
+                     mapped to [0, 1]. Token-set ratio survives word
+                     reordering and minor variations.
+  * `phone_exact`  — 1.0 if both records have phones AND they match;
+                     0.0 if both have phones but differ; None if
+                     either is missing (omitted from the score).
+  * `website_exact` — same logic, on the bare-domain
+                     `website_normalized`.
+  * `city_match`   — 1.0 if both `primary_city` match (case-insensitive);
+                     None when either is missing.
+  * `state_match`  — 1.0 / 0.0 / None, on `primary_state`.
+  * `suffix_diff_penalty` — -1.0 when the entity suffix differs
+                     (LLP vs PC); 0.0 otherwise. Treated as a small
+                     negative signal: same name with different
+                     suffix is *evidence* of two distinct registered
+                     entities at one practice.
+
+Weighting:
+  total = sum(weight[component] * value)  for each non-None component
+  clipped to [0, 100].
+
+Defaults pick a balanced max of ~100 when all components are present:
+  name=50, phone=25, website=20, city=10, state=5, suffix=-5
+  -> max = 50 + 25 + 20 + 10 + 5 = 110, capped to 100.
+
+Override weights by passing your own dict to `score_pair(..., weights=...)`.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from rapidfuzz import fuzz
+
+from legal_sourcing.models import FirmSourceRecord
+
+
+DEFAULT_WEIGHTS: dict[str, float] = {
+    # Weights chosen so all five positive components sum to exactly 100,
+    # which means a perfect-everything pair lands at the auto-merge
+    # ceiling without the suffix-penalty being silently clipped.
+    "name_sim": 45.0,
+    "phone_exact": 25.0,
+    "website_exact": 20.0,
+    "city_match": 5.0,
+    "state_match": 5.0,
+    # Penalty for suffix mismatch; weight is positive but the value
+    # is -1 when applied so the total nudges DOWN.
+    "suffix_diff_penalty": 5.0,
+}
+
+
+def _name_suffix(record: FirmSourceRecord) -> str | None:
+    """Entity suffix is preserved in the contacts/aggregation path
+    only as part of name_raw. We don't carry a separate column today,
+    so derive it on the fly from name_raw — strip leading words until
+    we hit one of the known suffixes.
+    """
+    raw = (record.name_raw or "").strip().lower()
+    if not raw:
+        return None
+    # Last 1-2 tokens after stripping punctuation.
+    cleaned = "".join(c if c.isalnum() or c.isspace() else " " for c in raw)
+    tokens = [t for t in cleaned.split() if t]
+    if not tokens:
+        return None
+    suffixes = {
+        "llp",
+        "lllp",
+        "llc",
+        "pllc",
+        "pc",
+        "pa",
+        "p.a",
+        "p.c",
+        "plc",
+        "ltd",
+        "inc",
+        "corp",
+    }
+    # Two-token check (e.g. "p a" / "p c").
+    if len(tokens) >= 2 and (tokens[-2] + " " + tokens[-1]) in {"p a", "p c"}:
+        return tokens[-2] + " " + tokens[-1]
+    if tokens[-1] in suffixes:
+        return tokens[-1]
+    return None
+
+
+def score_pair(
+    a: FirmSourceRecord,
+    b: FirmSourceRecord,
+    *,
+    weights: dict[str, float] | None = None,
+) -> dict[str, Any]:
+    """Return {components, total} for a candidate pair.
+
+    `components` is the per-signal dict (values in [0, 1] or None).
+    `total` is the weighted sum clipped to [0, 100].
+    """
+    w = weights or DEFAULT_WEIGHTS
+    components: dict[str, float | None] = {}
+
+    # Name similarity — always computed; missing names treated as 0.
+    name_a = (a.name_normalized or "").strip()
+    name_b = (b.name_normalized or "").strip()
+    if name_a and name_b:
+        components["name_sim"] = fuzz.token_set_ratio(name_a, name_b) / 100.0
+    else:
+        components["name_sim"] = 0.0
+
+    # Phone exact-match (when both present).
+    pa = (a.phone_normalized or "").strip()
+    pb = (b.phone_normalized or "").strip()
+    if pa and pb:
+        components["phone_exact"] = 1.0 if pa == pb else 0.0
+    else:
+        components["phone_exact"] = None
+
+    # Website exact-match (when both present).
+    wa = (a.website_normalized or "").strip().lower()
+    wb = (b.website_normalized or "").strip().lower()
+    if wa and wb:
+        components["website_exact"] = 1.0 if wa == wb else 0.0
+    else:
+        components["website_exact"] = None
+
+    # City match (case-insensitive; both must be present).
+    ca = (a.primary_city or "").strip().lower()
+    cb = (b.primary_city or "").strip().lower()
+    if ca and cb:
+        components["city_match"] = 1.0 if ca == cb else 0.0
+    else:
+        components["city_match"] = None
+
+    # State match.
+    sa = (a.primary_state or "").strip().upper()
+    sb = (b.primary_state or "").strip().upper()
+    if sa and sb:
+        components["state_match"] = 1.0 if sa == sb else 0.0
+    else:
+        components["state_match"] = None
+
+    # Suffix mismatch as a small negative.
+    suffix_a = _name_suffix(a)
+    suffix_b = _name_suffix(b)
+    if suffix_a and suffix_b and suffix_a != suffix_b:
+        components["suffix_diff_penalty"] = -1.0
+    elif suffix_a and suffix_b:
+        components["suffix_diff_penalty"] = 0.0
+    else:
+        # Don't penalize when one side is missing a suffix.
+        components["suffix_diff_penalty"] = 0.0
+
+    # Total: weighted sum of present components.
+    total = 0.0
+    for k, weight in w.items():
+        v = components.get(k)
+        if v is None:
+            continue
+        total += weight * v
+    total = max(0.0, min(100.0, total))
+
+    return {"components": components, "total": round(total, 2)}
