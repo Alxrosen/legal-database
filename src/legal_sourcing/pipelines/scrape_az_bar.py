@@ -176,7 +176,10 @@ def normalize_record(rec: dict[str, Any]) -> dict[str, Any]:
             parsed_street = normalize_address(street_components)
             if parsed_street:
                 norm["street"] = parsed_street.street_normalized
-        norm["city"] = (o.get("city_raw") or "").strip() or None
+        # Title-case city so AZ Bar's all-caps "PHOENIX" doesn't end up
+        # in a different bucket from Martindale's "Phoenix".
+        city_raw = (o.get("city_raw") or "").strip()
+        norm["city"] = city_raw.title() if city_raw else None
         state_raw = (o.get("state_raw") or "").replace(".", "").strip().upper()
         norm["state"] = state_raw[:2] if state_raw else None
         zip5 = (o.get("postal_code_raw") or "").strip().split("-")[0][:5]

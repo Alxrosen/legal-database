@@ -40,6 +40,7 @@ from legal_sourcing.parsers.martindale import (
     MartindaleCityParser,
     extract_page_meta,
     parse_firm_profile,
+    parse_firm_profile_full,
 )
 from legal_sourcing.pipelines.scrape_az_bar import (
     aggregate_by_firm,
@@ -381,19 +382,201 @@ def run_pilot(
     )
 
 
+def run_enrich(
+    *,
+    only_pending: bool = True,
+    limit: int | None = None,
+) -> None:
+    """Resumable firm-profile enrichment pass.
+
+    Walks Martindale rows with a `firm_profile_url`. For each row
+    whose `enrichment_status` is not `'enriched'`, fetches the
+    profile and parses the rich fields via `parse_firm_profile_full`.
+    Sets `enrichment_status='enriched' | 'failed' | 'no_profile'`,
+    so re-running picks up where we left off.
+    """
+    from sqlalchemy.orm.attributes import flag_modified
+
+    settings = get_settings()
+    configure_logging()
+    engine = create_engine(settings.db_url)
+    with Session(engine) as session:
+        # 1) Mark non-subscriber rows (no firm_profile_url) so future
+        # passes skip them deterministically.
+        all_martindale = session.scalars(
+            select(FirmSourceRecord).where(
+                FirmSourceRecord.source == "martindale",
+                FirmSourceRecord.enrichment_status.is_(None),
+            )
+        ).all()
+        marked_no_profile = 0
+        for r in all_martindale:
+            if not (r.additional_data or {}).get("firm_profile_url"):
+                r.enrichment_status = "no_profile"
+                marked_no_profile += 1
+        session.commit()
+        log.info(
+            "martindale.enrich_marked_no_profile",
+            count=marked_no_profile,
+        )
+
+        # 2) Targets: rows with firm_profile_url AND not yet enriched.
+        q = select(FirmSourceRecord).where(
+            FirmSourceRecord.source == "martindale",
+        )
+        if only_pending:
+            q = q.where(
+                (FirmSourceRecord.enrichment_status.is_(None))
+                | (FirmSourceRecord.enrichment_status == "pending")
+                | (FirmSourceRecord.enrichment_status == "failed")
+            )
+        targets = [
+            r
+            for r in session.scalars(q).all()
+            if (r.additional_data or {}).get("firm_profile_url")
+        ]
+        if limit:
+            targets = targets[:limit]
+        log.info("martindale.enrich_start", to_enrich=len(targets))
+
+        enriched = failed = 0
+        with MartindaleScraper() as scraper:
+            for r in targets:
+                fpu = r.additional_data["firm_profile_url"]
+                try:
+                    path = scraper.fetch_one(
+                        fpu,
+                        method="GET",
+                        bucket="firm_profiles",
+                        filename=_firm_profile_filename(fpu),
+                    )
+                    if path is None:
+                        raise RuntimeError("fetch_one returned no path")
+                    profile = parse_firm_profile_full(_read_gz_bytes(path))
+                except Exception as exc:  # noqa: BLE001
+                    log.error(
+                        "martindale.enrich_failed",
+                        firm=r.name_raw,
+                        error=str(exc)[:300],
+                    )
+                    r.enrichment_status = "failed"
+                    failed += 1
+                    session.commit()
+                    continue
+
+                _apply_enrichment(r, profile)
+                r.enrichment_status = "enriched"
+                for col in (
+                    "contacts",
+                    "offices",
+                    "practice_areas_raw",
+                    "practice_areas_matched",
+                    "practice_areas_unmatched",
+                    "additional_data",
+                    "firm_descriptions",
+                ):
+                    flag_modified(r, col)
+                session.commit()
+                enriched += 1
+
+        log.info("martindale.enrich_done", enriched=enriched, failed=failed)
+        print(
+            f"Enrichment complete: {enriched} enriched, {failed} failed, "
+            f"{marked_no_profile} marked no_profile."
+        )
+
+
+def _firm_profile_filename(url: str) -> str:
+    parts = [p for p in url.rstrip("/").split("/") if p]
+    for p in parts:
+        if "-" in p and any(c.isdigit() for c in p):
+            return p
+    return "unknown"
+
+
+def _apply_enrichment(row: FirmSourceRecord, profile: dict) -> None:
+    """Splice the parsed profile fields onto an existing row."""
+    if profile.get("primary_city"):
+        row.primary_city = profile["primary_city"]
+    if profile.get("primary_state"):
+        row.primary_state = profile["primary_state"]
+    if profile.get("primary_postal_code"):
+        row.primary_postal_code = profile["primary_postal_code"]
+    if profile.get("year_established") is not None:
+        row.year_founded = profile["year_established"]
+    if profile.get("office_count") is not None:
+        row.office_count = profile["office_count"]
+    if profile.get("firm_short_description"):
+        row.firm_short_description = profile["firm_short_description"]
+    if profile.get("firm_descriptions"):
+        row.firm_descriptions = profile["firm_descriptions"]
+    if profile.get("firm_website_url") and not row.website_raw:
+        row.website_raw = profile["firm_website_url"]
+    ad = dict(row.additional_data or {})
+    if profile.get("firm_website_is_sponsored") is not None:
+        ad["firm_website_is_sponsored"] = profile["firm_website_is_sponsored"]
+    if profile.get("office_size_label_raw") is not None:
+        ad["office_size_label_raw"] = profile["office_size_label_raw"]
+    row.additional_data = ad
+
+    # Practice areas — profile is canonical for Martindale.
+    if profile.get("practice_areas"):
+        row.practice_areas_raw = list(profile["practice_areas"])
+        from legal_sourcing.normalize import (
+            get_taxonomy,
+            normalize_practice_area,
+        )
+
+        tax = get_taxonomy()
+        matched: set[str] = set()
+        unmatched: set[str] = set()
+        for s in row.practice_areas_raw:
+            slug = tax.match(s)
+            if slug:
+                matched.add(slug)
+            else:
+                n = normalize_practice_area(s)
+                if n:
+                    unmatched.add(n)
+        row.practice_areas_matched = sorted(matched)
+        row.practice_areas_unmatched = sorted(unmatched)
+
+    # Subscriber flag — reaching this code path means we successfully
+    # fetched a profile, so by definition this firm is a subscriber.
+    row.is_subscriber = True
+
+    # People-count cross-check: SRP attorney_count undercounts large
+    # firms (Starnes SRP=42 vs profile=56). Prefer the larger value.
+    if profile.get("people_count") is not None:
+        if (row.attorney_count or 0) < profile["people_count"]:
+            row.attorney_count = profile["people_count"]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("pilot",))
+    parser.add_argument(
+        "mode",
+        choices=("pilot", "enrich"),
+        help="pilot = SRP city sweep. enrich = firm-profile enrichment.",
+    )
     parser.add_argument(
         "--max-pages-per-city",
         type=int,
         default=3,
-        help="Cap the per-city page walk. Default 3. Pass 0 to walk to last_page.",
+        help="(pilot only) Cap the per-city page walk. 0 = no cap.",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="(enrich only) Cap the number of rows enriched in this run.",
     )
     args = parser.parse_args()
-    cap = args.max_pages_per_city if args.max_pages_per_city > 0 else None
     if args.mode == "pilot":
+        cap = args.max_pages_per_city if args.max_pages_per_city > 0 else None
         run_pilot(max_pages_per_city=cap)
+    elif args.mode == "enrich":
+        run_enrich(limit=args.limit)
     return 0
 
 

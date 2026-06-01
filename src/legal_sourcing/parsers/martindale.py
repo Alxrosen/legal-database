@@ -183,8 +183,33 @@ def _attorney_card_to_firm_dict(
         if phone_raw:
             office["phone_raw"] = phone_raw
 
+    # Subscriber detection from data-gtm-tracking on the SRP card.
+    # The firm anchor on subscriber cards carries
+    # `"profile_type":"Subscriber"`; non-subscriber cards have no such
+    # anchor at all (matched by the firm_a is None branch above). We
+    # also look at the attorney title anchor's gtm payload as a
+    # secondary signal — some cards have "profile_type":"Subscriber"
+    # on the attorney side too.
+    is_subscriber = False
+    if pos is not None:
+        firm_a_for_gtm = pos.css_first("a.detail_position--office-link")
+        if firm_a_for_gtm is not None:
+            gtm_firm = _parse_gtm(
+                firm_a_for_gtm.attributes.get("data-gtm-tracking") or ""
+            )
+            if gtm_firm and gtm_firm.get("profile_type") == "Subscriber":
+                is_subscriber = True
+    title_a_for_gtm = card_html.css_first("li.detail_title > a")
+    if title_a_for_gtm is not None and not is_subscriber:
+        gtm_title = _parse_gtm(
+            title_a_for_gtm.attributes.get("data-gtm-tracking") or ""
+        )
+        if gtm_title and gtm_title.get("profile_type") == "Subscriber":
+            is_subscriber = True
+
     additional: dict[str, Any] = {
         "card_shape": "subscriber" if source_firm_id_martindale else ("solo" if firm_name_raw is None else "non_subscriber_at_pattern"),
+        "is_subscriber": is_subscriber,
     }
     if source_firm_id_martindale:
         additional["source_firm_id_martindale"] = source_firm_id_martindale
@@ -321,3 +346,253 @@ def parse_firm_profile(payload: bytes) -> dict[str, Any]:
         out["firm_phone"] = (tel.attributes.get("href") or "").replace("tel:", "") or None
 
     return out
+
+
+# ---------------------------------------------------------------------------
+# Full firm-profile parser — enrichment pass for subscriber firms only.
+#
+# Field list and selector decisions documented in
+# docs/data_sources/martindale.md §9.5 with `CONFIRMED 2026-06-01`
+# annotations from the recon pass on 5 sample firms.
+
+
+def _detect_short_description(masthead_items) -> str | None:
+    """Item 2 in the masthead is USUALLY the short tagline, but some
+    firms (e.g. The McGhee Firm) have no tagline at all and item 2 is
+    the Peer-Reviews block. Detect by content, not position.
+    """
+    for it in masthead_items:
+        cls = it.attributes.get("class") or ""
+        if "masthead-list__item--bold" in cls:
+            continue
+        text = it.text(strip=True) or ""
+        if not text:
+            continue
+        if text.startswith("Peer Reviews"):
+            continue
+        if text.startswith("Profile Visibility"):
+            continue
+        if any(
+            kw in text
+            for kw in (
+                "Boulevard",
+                "Street",
+                "Avenue",
+                "Suite",
+                "Floor",
+                "P.O. Box",
+                "Drive",
+                "Lane",
+                "Road",
+                "Parkway",
+                "Place",
+            )
+        ):
+            continue
+        return text
+    return None
+
+
+def _extract_address_line(masthead_items) -> str | None:
+    for it in masthead_items:
+        cls = it.attributes.get("class") or ""
+        if "masthead-list__item--bold" in cls:
+            continue
+        text = it.text(strip=True) or ""
+        if any(
+            s in text
+            for s in (
+                "Boulevard",
+                "Street",
+                "Avenue",
+                "Suite",
+                "Floor",
+                "P.O. Box",
+                "Drive",
+                "Lane",
+                "Road",
+                "Parkway",
+                "Place",
+            )
+        ):
+            return text
+    return None
+
+
+def _extract_city_state(masthead_items) -> tuple[str | None, str | None]:
+    for it in masthead_items:
+        cls = it.attributes.get("class") or ""
+        if "masthead-list__item--bold" not in cls:
+            continue
+        text = it.text(strip=True) or ""
+        m = re.match(r"^(?P<city>.+?),\s*(?P<state>[A-Z]{2})\s*$", text)
+        if m:
+            return m.group("city").strip(), m.group("state")
+    return None, None
+
+
+def _extract_zip_from_address(line: str | None) -> str | None:
+    """Take the LAST 5-digit ZIP — Martindale sometimes lists two
+    (P.O. Box zip + physical zip); we want the physical one."""
+    if not line:
+        return None
+    zips = re.findall(r"\b(\d{5})(?:-\d{4})?\b", line)
+    return zips[-1] if zips else None
+
+
+def _extract_practice_areas(tree: HTMLParser) -> list[str]:
+    aop = tree.css_first("ul#aopList")
+    if aop is None:
+        return []
+    return [
+        (li.text(strip=True) or "").strip()
+        for li in aop.css("li")
+        if li.text(strip=True)
+    ]
+
+
+def _extract_toggle_count(tree: HTMLParser, label_prefix: str) -> int | None:
+    """toggle-area__header-count h2 text already contains the count
+    in parens — e.g. h2 "People(56)" or h2 "Areas of Practice(44)".
+    """
+    for h2 in tree.css("h2"):
+        text = h2.text(strip=True) or ""
+        if not text.startswith(label_prefix):
+            continue
+        m = re.search(r"\((\d+)\)", text)
+        if m:
+            return int(m.group(1))
+    return None
+
+
+def _walk_dfs(node):
+    """Yield `node` and every descendant in depth-first document order.
+
+    selectolax's `Node.iter()` only walks direct children, so we
+    recurse manually. Document order is critical here: it's what
+    lets us pair each truncate-text div with the preceding h2.
+    """
+    yield node
+    for child in node.iter():
+        yield from _walk_dfs(child)
+
+
+def _extract_descriptions(tree: HTMLParser) -> list[dict[str, Any]]:
+    """Pair each `div.truncate-text` with the nearest preceding `h2`
+    in document order. Filter the AOP-rendered-as-text noise block.
+    """
+    out: list[dict[str, Any]] = []
+    last_heading: str | None = None
+    body = tree.body
+    if body is None:
+        return out
+    for node in _walk_dfs(body):
+        if node.tag == "h2":
+            last_heading = node.text(strip=True) or None
+            continue
+        if node.tag == "div":
+            cls = node.attributes.get("class") or ""
+            if "truncate-text" not in cls:
+                continue
+            text = node.text(strip=True) or ""
+            if not text:
+                continue
+            # Filter the AOP rendered as text. Two signals together:
+            # the parent heading is "Areas of Practice..." OR the text
+            # body has fewer than 1 space per 20 chars (concatenated
+            # CamelCase areas like "Civil LitigationPersonal Injury...").
+            if last_heading and last_heading.startswith("Areas of Practice"):
+                continue
+            if last_heading and last_heading.startswith("People"):
+                continue
+            space_density = text.count(" ") / max(len(text), 1)
+            if len(text) < 500 and space_density < 0.05:
+                continue
+            out.append({"heading": last_heading, "text": text})
+    return out
+
+
+def _extract_year_established(tree: HTMLParser) -> int | None:
+    for d in tree.css("div"):
+        text = d.text(strip=True) or ""
+        if text.startswith("Year Established"):
+            m = re.search(r"([12][0-9]{3})", text)
+            if m:
+                return int(m.group(1))
+    body_text = tree.body.text(strip=False) if tree.body else ""
+    m = re.search(
+        r"Year\s+Established[^A-Za-z0-9]+([12][0-9]{3})", body_text, flags=re.I
+    )
+    return int(m.group(1)) if m else None
+
+
+def _extract_office_size_label(tree: HTMLParser) -> int | None:
+    """"Office Size" on Martindale = firm headcount, NOT number of
+    offices. Returned for the people-count cross-check; not used as
+    `office_count` directly.
+    """
+    body_text = tree.body.text(strip=False) if tree.body else ""
+    m = re.search(r"Office\s+Size[^A-Za-z0-9]+(\d+)", body_text, flags=re.I)
+    return int(m.group(1)) if m else None
+
+
+def parse_firm_profile_full(payload: bytes) -> dict[str, Any]:
+    """Full firm-profile extraction for the enrichment pass.
+
+    `office_count` is returned as None when the only available source
+    ("Office Size") is within shouting distance of `people_count` —
+    that's the Martindale firm-size synonym, not a true office count.
+    """
+    html = (
+        payload.decode("utf-8", errors="replace")
+        if isinstance(payload, (bytes, bytearray))
+        else payload
+    )
+    tree = HTMLParser(html)
+
+    masthead_items = tree.css("ul.masthead-list li.masthead-list__item")
+    address_line = _extract_address_line(masthead_items)
+    city, state = _extract_city_state(masthead_items)
+    zip_code = _extract_zip_from_address(address_line)
+    short_desc = _detect_short_description(masthead_items)
+
+    practice_areas = _extract_practice_areas(tree)
+    people_count = _extract_toggle_count(tree, "People")
+    aop_count_via_toggle = _extract_toggle_count(tree, "Areas of Practice")
+    year_established = _extract_year_established(tree)
+    office_size_label = _extract_office_size_label(tree)
+    descriptions = _extract_descriptions(tree)
+
+    slim = parse_firm_profile(
+        html.encode("utf-8") if isinstance(html, str) else html
+    )
+
+    # Heuristic office_count: only when the "Office Size" value is
+    # clearly NOT just a synonym for people-count. Otherwise NULL.
+    office_count: int | None = None
+    if office_size_label is not None:
+        if people_count is None:
+            # No people count to compare; trust the label.
+            office_count = office_size_label
+        else:
+            slack = max(2, people_count // 4)
+            if abs(office_size_label - people_count) > slack:
+                office_count = office_size_label
+
+    return {
+        "primary_address_line": address_line,
+        "primary_city": city,
+        "primary_state": state,
+        "primary_postal_code": zip_code,
+        "firm_short_description": short_desc,
+        "firm_website_url": slim.get("firm_website_url"),
+        "firm_website_is_sponsored": slim.get("firm_website_is_sponsored"),
+        "firm_phone": slim.get("firm_phone"),
+        "practice_areas": practice_areas,
+        "practice_area_count_toggle": aop_count_via_toggle,
+        "people_count": people_count,
+        "year_established": year_established,
+        "firm_descriptions": descriptions,
+        "office_count": office_count,
+        "office_size_label_raw": office_size_label,
+    }

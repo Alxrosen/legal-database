@@ -16,6 +16,7 @@ from legal_sourcing.parsers.martindale import (
     _split_title_at_firm,
     extract_page_meta,
     parse_firm_profile,
+    parse_firm_profile_full,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures" / "martindale" / "recon"
@@ -234,6 +235,117 @@ def test_extract_page_meta_missing_signals_returns_none_fields():
         "has_next": False,
         "card_count": 0,
     }
+
+
+def test_parse_firm_profile_full_prim_mendheim_shape():
+    """Synthetic profile HTML matching the Prim & Mendheim shape we
+    verified during recon (docs/data_sources/martindale.md §9.5).
+    """
+    html = """<html><body>
+      <ul class="masthead-list">
+        <li class="masthead-list__item masthead-list__item--bold">Dothan, AL</li>
+        <li class="masthead-list__item">103 Jamestown Boulevard, P.O. Box 2147, 36302, Dothan, AL 36301</li>
+        <li class="masthead-list__item">A General Practice Law Firm That Specializes In Collections</li>
+        <li class="masthead-list__item">Peer Reviews4.4/5.0(57)</li>
+        <li class="masthead-list__item">Profile Visibility...</li>
+      </ul>
+
+      <div>Year Established:2006</div>
+      <p>Office Size: 3</p>
+
+      <h2>Areas of Practice(5)</h2>
+      <span class="toggle-area__header-count">(5)</span>
+      <ul id="aopList">
+        <li>Civil Litigation</li>
+        <li>Personal Injury</li>
+        <li>Fraud</li>
+        <li>Real Estate</li>
+        <li>Collections</li>
+      </ul>
+
+      <h2>People(3)</h2>
+      <span class="toggle-area__header-count">(3)</span>
+
+      <h2>About our Dothan, AL office</h2>
+      <div class="truncate-text">Prim &amp; Mendheim, LLC is a general practice law firm based in Dothan, Alabama with lifelong Dothan lawyers that specialize in real estate transactions and the collection of commercial and consumer debt.</div>
+
+      <h2>Our Firm</h2>
+      <div class="truncate-text">Our firm has been serving Dothan since 2006.</div>
+
+      <a href="http://www.pm-firm.com" class="webstats-website-click" rel="sponsored">Website</a>
+      <a href="tel:+13344830339">Phone</a>
+    </body></html>"""
+    result = parse_firm_profile_full(html.encode("utf-8"))
+    assert result["primary_city"] == "Dothan"
+    assert result["primary_state"] == "AL"
+    # Last ZIP is the physical one (36301), not the P.O. Box one (36302).
+    assert result["primary_postal_code"] == "36301"
+    assert result["firm_short_description"] == "A General Practice Law Firm That Specializes In Collections"
+    assert result["year_established"] == 2006
+    assert result["practice_areas"] == [
+        "Civil Litigation",
+        "Personal Injury",
+        "Fraud",
+        "Real Estate",
+        "Collections",
+    ]
+    assert result["practice_area_count_toggle"] == 5
+    assert result["people_count"] == 3
+    # Office Size: 3 matches people=3 -> office_count must be NULL.
+    assert result["office_count"] is None
+    assert result["office_size_label_raw"] == 3
+    # Descriptions paired with the preceding h2 + filter the AOP-text noise.
+    assert {d["heading"] for d in result["firm_descriptions"]} == {
+        "About our Dothan, AL office",
+        "Our Firm",
+    }
+    assert result["firm_website_url"] == "http://www.pm-firm.com"
+    assert result["firm_website_is_sponsored"] is True
+    assert result["firm_phone"] == "+13344830339"
+
+
+def test_parse_firm_profile_full_handles_missing_year_and_tagline():
+    """The McGhee Firm: no tagline, no year established. Parser must
+    not crash and must return None for those fields.
+    """
+    html = """<html><body>
+      <ul class="masthead-list">
+        <li class="masthead-list__item masthead-list__item--bold">Dothan, AL</li>
+        <li class="masthead-list__item">424 South Oates Street, Dothan, AL 36301</li>
+        <li class="masthead-list__item">Peer ReviewsNo Reviews</li>
+        <li class="masthead-list__item">Profile Visibility...</li>
+      </ul>
+      <h2>Areas of Practice(2)</h2>
+      <ul id="aopList"><li>Criminal Defense</li><li>Personal Injury</li></ul>
+      <h2>People(1)</h2>
+    </body></html>"""
+    result = parse_firm_profile_full(html.encode("utf-8"))
+    assert result["primary_city"] == "Dothan"
+    assert result["primary_state"] == "AL"
+    assert result["primary_postal_code"] == "36301"
+    assert result["year_established"] is None
+    assert result["firm_short_description"] is None
+    assert result["practice_areas"] == ["Criminal Defense", "Personal Injury"]
+    assert result["people_count"] == 1
+    assert result["firm_descriptions"] == []
+
+
+def test_parse_firm_profile_full_office_count_when_distinct_from_people():
+    """If Office Size differs meaningfully from People, use it as
+    office_count (rare; mostly a "find the office count source"
+    discovery for the future)."""
+    html = """<html><body>
+      <ul class="masthead-list">
+        <li class="masthead-list__item masthead-list__item--bold">Phoenix, AZ</li>
+        <li class="masthead-list__item">100 Main St, Phoenix, AZ 85001</li>
+      </ul>
+      <p>Office Size: 100</p>
+      <h2>People(5)</h2>
+      <ul id="aopList"><li>Test</li></ul>
+    </body></html>"""
+    result = parse_firm_profile_full(html.encode("utf-8"))
+    # 100 is wildly larger than 5 -> trust it as office_count.
+    assert result["office_count"] == 100
 
 
 def test_extract_page_meta_falls_back_to_anchor_data_page():

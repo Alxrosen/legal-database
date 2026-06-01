@@ -119,6 +119,43 @@ class FirmSourceRecord(Base, TimestampMixin):
         DateTime(timezone=True), nullable=True
     )
 
+    # ---- Primary-office denormalization ---------------------------------
+    # Derived from offices[i where is_primary=True]; queryable directly.
+    # Indexed because real query targets ("firms in Phoenix, AZ") hit
+    # these. We deliberately skip primary_street (low-cardinality for
+    # indexing) and primary_country (almost always "US").
+    primary_city: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, index=True
+    )
+    primary_state: Mapped[str | None] = mapped_column(
+        String(8), nullable=True, index=True
+    )
+    primary_postal_code: Mapped[str | None] = mapped_column(
+        String(16), nullable=True
+    )
+
+    # ---- Firm-profile enrichment fields ---------------------------------
+    # Populated by the Martindale firm-profile enrichment pass. Other
+    # sources may use these too if the underlying page exposes them.
+    office_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_subscriber: Mapped[bool] = mapped_column(
+        nullable=False, default=False, server_default=text("0"), index=True
+    )
+    firm_short_description: Mapped[str | None] = mapped_column(
+        String(512), nullable=True
+    )
+    # List of {"heading": str|None, "text": str} — separate
+    # office-specific blurbs from firm-wide ones.
+    firm_descriptions: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSON, nullable=True
+    )
+    # 'pending' (not yet attempted) / 'enriched' / 'no_profile' (no
+    # firm_profile_url) / 'failed' (fetch or parse error). Drives the
+    # resumable enrichment pass.
+    enrichment_status: Mapped[str | None] = mapped_column(
+        String(16), nullable=True, index=True
+    )
+
     # Composite / multi-valued fields as JSON. See docstring for shapes.
     # server_default mirrors the Python-side default so raw-SQL inserts
     # also produce non-NULL, well-shaped JSON.
