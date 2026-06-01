@@ -33,6 +33,7 @@ from urllib.parse import urlparse
 from selectolax.parser import HTMLParser
 
 from legal_sourcing.parsers.base import BaseParser
+from legal_sourcing.normalize.url import safe_urlparse
 
 # US address regex — capture trailing ZIP + 2-letter state to peel
 # city/state/zip off the back of the location string. Cards render
@@ -89,8 +90,9 @@ def _extract_card(card_node) -> dict[str, Any] | None:
     # Firm id is the trailing path segment after the last hyphen, e.g.
     # "mezrano-law-firm-NDkwMzUzOF8x" -> "NDkwMzUzOF8x".
     source_firm_id_findlaw: str | None = None
-    if profile_url:
-        path = urlparse(profile_url).path.rstrip("/")
+    _parsed = safe_urlparse(profile_url) if profile_url else None
+    if _parsed is not None:
+        path = _parsed.path.rstrip("/")
         last_seg = path.rsplit("/", 1)[-1]
         m = _TITLE_ID_RE.search(last_seg)
         if m:

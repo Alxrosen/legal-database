@@ -523,10 +523,78 @@ def run_full() -> None:
     )
 
 
+def _process_and_upsert(detail_paths: list[Path], *, mode: str) -> None:
+    """Shared tail: parse -> normalize -> aggregate -> upsert.
+
+    Used by both `full` (after fetching) and `load` (from disk). This
+    is the part that crashed mid-run before the urlparse fix — keeping
+    it in one place means a future crash here is recoverable by just
+    re-running `load` against the already-fetched raw files.
+    """
+    settings = get_settings()
+    raw_records = parse_detail_payloads(detail_paths)
+    for r in raw_records:
+        normalize_record(r)
+    firm_records = aggregate_by_firm(raw_records)
+    log.info(
+        "pipeline.aggregate_done",
+        mode=mode,
+        attorneys=len(raw_records),
+        firms=len(firm_records),
+    )
+    engine = create_engine(settings.db_url)
+    with Session(engine) as session:
+        counts = upsert_firm_source_records(session, firm_records)
+    log.info("pipeline.upsert_done", **counts)
+    print(
+        f"{mode}: {len(raw_records)} attorneys -> {len(firm_records)} firms "
+        f"({counts['inserted']} inserted, {counts['updated']} updated)."
+    )
+
+
+def run_load(*, date_str: str | None = None) -> None:
+    """Parse + upsert from already-fetched raw detail files on disk.
+
+    No network. Honors the project principle that re-parsing must
+    never require re-scraping. If a `full` run crashes in the
+    normalize/aggregate phase (as happened on Py 3.14 with a malformed
+    URL), the fetched files are intact — `load` recovers them.
+
+    `date_str` selects the data/raw/az_bar/{date}/detail partition;
+    defaults to the most recent date present.
+    """
+    settings = get_settings()
+    configure_logging()
+    base = settings.raw_data_dir / "az_bar"
+    if not base.exists():
+        print(f"No AZ Bar raw data at {base}", file=sys.stderr)
+        return
+    if date_str is None:
+        date_dirs = sorted([p for p in base.iterdir() if p.is_dir()])
+        if not date_dirs:
+            print(f"No date partitions under {base}", file=sys.stderr)
+            return
+        date_str = date_dirs[-1].name
+    detail_dir = base / date_str / "detail"
+    if not detail_dir.exists():
+        print(f"No detail/ dir at {detail_dir}", file=sys.stderr)
+        return
+    detail_paths = sorted(detail_dir.glob("*.json.gz"))
+    log.info(
+        "pipeline.load_start",
+        date=date_str,
+        detail_files=len(detail_paths),
+    )
+    _process_and_upsert(detail_paths, mode="load")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "mode", choices=("pilot", "full"), help="Scrape scope (pilot=one page)."
+        "mode",
+        choices=("pilot", "full", "load"),
+        help="pilot=one page; full=whole directory; "
+        "load=parse already-fetched raw files (no network).",
     )
     parser.add_argument(
         "--page",
@@ -547,6 +615,13 @@ def main() -> int:
         default=1,
         help="How many consecutive list pages to walk from --page (default 1).",
     )
+    parser.add_argument(
+        "--date",
+        type=str,
+        default=None,
+        help="(load only) data/raw/az_bar/{date} partition to parse. "
+        "Defaults to the most recent.",
+    )
     args = parser.parse_args()
     if args.mode == "pilot":
         run_pilot(
@@ -554,6 +629,8 @@ def main() -> int:
             page_size=args.page_size,
             num_pages=args.num_pages,
         )
+    elif args.mode == "load":
+        run_load(date_str=args.date)
     else:
         run_full()
     return 0

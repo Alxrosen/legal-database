@@ -34,6 +34,7 @@ from urllib.parse import urlparse
 from selectolax.parser import HTMLParser
 
 from legal_sourcing.parsers.base import BaseParser
+from legal_sourcing.normalize.url import safe_urlparse
 
 _ATTORNEY_ID_RE = re.compile(r"-(\d+)/?$")
 # US-state postal codes for the location_text city/state parse.
@@ -107,9 +108,11 @@ def _attorney_card_to_firm_dict(
         if h3 is not None:
             attorney_name = h3.text(strip=True) or None
         if attorney_profile_url:
-            m = _ATTORNEY_ID_RE.search(urlparse(attorney_profile_url).path)
-            if m:
-                source_attorney_id = m.group(1)
+            _parsed = safe_urlparse(attorney_profile_url)
+            if _parsed is not None:
+                m = _ATTORNEY_ID_RE.search(_parsed.path)
+                if m:
+                    source_attorney_id = m.group(1)
 
     if not attorney_name:
         return None  # un-usable card

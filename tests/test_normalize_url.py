@@ -8,6 +8,25 @@ from legal_sourcing.normalize.url import normalize_url
 
 
 @pytest.mark.parametrize(
+    "raw",
+    [
+        # Python 3.14 urlparse raises ValueError on these; normalize_url
+        # must swallow it and return None rather than crash the whole
+        # normalize pass. This is the bug that killed the AZ Bar full
+        # sweep mid-run (35,864 fetched, 0 stored).
+        "http://[malformed",
+        "https://exa[mple.com",
+        "[::bad",
+        "www.foo].com",
+        "http://]",
+    ],
+)
+def test_normalize_url_never_raises_on_malformed(raw):
+    # Must not raise; returns None for unparseable junk.
+    assert normalize_url(raw) is None
+
+
+@pytest.mark.parametrize(
     "raw, expected",
     [
         ("https://www.Example.com/path/", "example.com"),

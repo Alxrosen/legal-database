@@ -12,7 +12,19 @@ runs `www.smith.lawyer` vs `smith.lawyer`, both normalize to
 
 from __future__ import annotations
 
-from urllib.parse import urlparse
+from urllib.parse import ParseResult, urlparse
+
+
+def safe_urlparse(url: str) -> ParseResult | None:
+    """urlparse that never raises. Python 3.14 made urlparse raise
+    ValueError on malformed URLs (stray brackets, bad IPv6 literals);
+    scraped hrefs contain plenty of junk, so callers want a None
+    rather than a crash that aborts a whole parse/normalize pass.
+    """
+    try:
+        return urlparse(url)
+    except ValueError:
+        return None
 
 
 def normalize_url(raw: str | None) -> str | None:
@@ -39,7 +51,14 @@ def normalize_url(raw: str | None) -> str | None:
     if "://" not in s and not s.startswith("//"):
         s = "//" + s
 
-    parsed = urlparse(s)
+    # Python 3.14 made urlparse strict: malformed URLs (e.g. a stray
+    # "[" that looks like a broken IPv6 literal) now raise ValueError
+    # instead of best-effort parsing. Source data has plenty of junk
+    # URLs, so swallow the error and treat the value as unparseable.
+    try:
+        parsed = urlparse(s)
+    except ValueError:
+        return None
     host = parsed.netloc or parsed.path  # bare strings end up in `path`
     host = host.split("/")[0]  # in case path leaked in via no-scheme input
     host = host.split("?")[0].split("#")[0]
