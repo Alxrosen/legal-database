@@ -38,6 +38,7 @@ from legal_sourcing.config import get_settings
 from legal_sourcing.models import FirmSourceRecord
 from legal_sourcing.parsers.martindale import (
     MartindaleCityParser,
+    extract_page_meta,
     parse_firm_profile,
 )
 from legal_sourcing.pipelines.scrape_az_bar import (
@@ -67,18 +68,32 @@ def _read_gz_bytes(path: Path) -> bytes:
         return f.read()
 
 
-def _has_next_page(html_bytes: bytes) -> bool:
-    """Heuristic — empty results page has zero `card--attorney` blocks."""
-    # Avoid full DOM parse for the cheap check; use a regex hit count.
-    return b'class="card card--attorney' in html_bytes or b"class='card card--attorney" in html_bytes
-
-
 def fetch_city_pages(
-    scraper: MartindaleScraper, *, state_slug: str, city_slug: str
+    scraper: MartindaleScraper,
+    *,
+    state_slug: str,
+    city_slug: str,
+    max_pages: int | None = None,
 ) -> list[Path]:
-    """Walk ?page=1..N until a page has no cards. Returns the raw paths."""
+    """Walk a city's listing pages using the documented pagination signals:
+
+      * Page 1's `input.goToPage[data-max]` gives the deterministic total
+        page count. We log it alongside `.results__total` and use it as
+        the upper bound for the walk.
+      * Each page's `a.arrow[rel="next"]` is checked as a per-iteration
+        stop signal — defensive against the case where data-max can't
+        be parsed.
+      * At the end we compare scraped card count against `.results__total`
+        and warn on big mismatches (the declared total is often inflated
+        ~30%, but a 20-of-7000 outcome is a structural problem).
+
+    `max_pages` caps the walk for pilot runs. None means walk to last_page.
+    """
     paths: list[Path] = []
     page = 1
+    declared_total: int | None = None
+    last_page: int | None = None
+    scraped_cards = 0
     while True:
         url = scraper.city_url(city_slug=city_slug, state_slug=state_slug, page=page)
         if not is_path_allowed(url):
@@ -93,25 +108,101 @@ def fetch_city_pages(
         if path is None:
             break
         paths.append(path)
-        body = _read_gz_bytes(path)
-        if not _has_next_page(body):
+
+        body = _read_gz_bytes(path).decode("utf-8", errors="replace")
+        meta = extract_page_meta(body)
+        scraped_cards += meta["card_count"]
+
+        if page == 1:
+            declared_total = meta["results_total"]
+            last_page = meta["last_page"]
+            effective_target = last_page
+            if max_pages is not None and last_page is not None:
+                effective_target = min(last_page, max_pages)
+            log.info(
+                "martindale.city_meta",
+                state=state_slug,
+                city=city_slug,
+                declared_total=declared_total,
+                last_page=last_page,
+                effective_target_pages=effective_target,
+                max_pages_cap=max_pages,
+            )
+
+        # Stop conditions in priority order.
+        if meta["card_count"] == 0:
             log.info(
                 "martindale.city_end",
                 state=state_slug,
                 city=city_slug,
+                reason="empty_page",
                 pages=page,
             )
             break
+        if max_pages is not None and page >= max_pages:
+            log.info(
+                "martindale.city_end",
+                state=state_slug,
+                city=city_slug,
+                reason="max_pages_cap",
+                pages=page,
+            )
+            break
+        if last_page is not None and page >= last_page:
+            log.info(
+                "martindale.city_end",
+                state=state_slug,
+                city=city_slug,
+                reason="last_page_reached",
+                pages=page,
+            )
+            break
+        if not meta["has_next"]:
+            log.info(
+                "martindale.city_end",
+                state=state_slug,
+                city=city_slug,
+                reason="no_next_link",
+                pages=page,
+            )
+            break
+
         page += 1
-        if page > 50:
-            # Safety: don't infinite-loop on a malformed page.
+        if page > 500:  # safety net well beyond any realistic city
             log.warning(
                 "martindale.city_page_cap",
                 state=state_slug,
                 city=city_slug,
-                cap=50,
+                cap=500,
             )
             break
+
+    # End-of-city sanity check on scraped count vs declared total.
+    if (
+        declared_total
+        and scraped_cards > 0
+        and (max_pages is None or last_page is None or max_pages >= last_page)
+    ):
+        # Only warn when we actually attempted the full walk.
+        ratio = scraped_cards / declared_total
+        if ratio < 0.5 or ratio > 1.5:
+            log.warning(
+                "martindale.count_mismatch",
+                state=state_slug,
+                city=city_slug,
+                scraped_cards=scraped_cards,
+                declared_total=declared_total,
+                ratio=round(ratio, 3),
+            )
+    log.info(
+        "martindale.city_done",
+        state=state_slug,
+        city=city_slug,
+        pages_fetched=len(paths),
+        cards_scraped=scraped_cards,
+        declared_total=declared_total,
+        last_page=last_page,
+    )
     return paths
 
 
@@ -200,12 +291,20 @@ def merge_firm_profiles(
             ad["firm_website_is_sponsored"] = profile["firm_website_is_sponsored"]
 
 
-def run_pilot(*, cities: list[tuple[str, str]] | None = None) -> None:
+def run_pilot(
+    *,
+    cities: list[tuple[str, str]] | None = None,
+    max_pages_per_city: int | None = 3,
+) -> None:
     settings = get_settings()
     configure_logging()
     cities = cities or PILOT_CITIES
 
-    log.info("martindale.pilot_start", cities=len(cities))
+    log.info(
+        "martindale.pilot_start",
+        cities=len(cities),
+        max_pages_per_city=max_pages_per_city,
+    )
 
     with MartindaleScraper() as scraper:
         # Phase 1: city sweep
@@ -213,7 +312,12 @@ def run_pilot(*, cities: list[tuple[str, str]] | None = None) -> None:
         for state_slug, city_slug in cities:
             try:
                 city_paths.extend(
-                    fetch_city_pages(scraper, state_slug=state_slug, city_slug=city_slug)
+                    fetch_city_pages(
+                        scraper,
+                        state_slug=state_slug,
+                        city_slug=city_slug,
+                        max_pages=max_pages_per_city,
+                    )
                 )
             except ScrapeError as exc:
                 log.error(
@@ -277,9 +381,16 @@ def run_pilot(*, cities: list[tuple[str, str]] | None = None) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mode", choices=("pilot",))
+    parser.add_argument(
+        "--max-pages-per-city",
+        type=int,
+        default=3,
+        help="Cap the per-city page walk. Default 3. Pass 0 to walk to last_page.",
+    )
     args = parser.parse_args()
+    cap = args.max_pages_per_city if args.max_pages_per_city > 0 else None
     if args.mode == "pilot":
-        run_pilot()
+        run_pilot(max_pages_per_city=cap)
     return 0
 
 

@@ -14,6 +14,7 @@ import pytest
 from legal_sourcing.parsers.martindale import (
     MartindaleCityParser,
     _split_title_at_firm,
+    extract_page_meta,
     parse_firm_profile,
 )
 
@@ -165,3 +166,99 @@ def test_firm_profile_handles_missing_website():
     profile = parse_firm_profile(payload)
     assert "firm_website_url" not in profile
     assert profile["firm_phone"] == "555-9999"
+
+
+# ---- Pagination metadata extraction --------------------------------------
+
+
+def _city_page_html(
+    *,
+    declared_total: str | None = "(6,994)",
+    data_max: str | None = "167",
+    next_unavailable: bool = False,
+    card_count: int = 30,
+) -> str:
+    """Synthetic city-page HTML matching the real Birmingham shape."""
+    next_class = "arrow unavailable" if next_unavailable else "arrow"
+    total_block = (
+        f'<h2 class="results__title">Birmingham Attorney Results '
+        f'<span class="results__total">{declared_total}</span></h2>'
+        if declared_total is not None
+        else ""
+    )
+    goto_block = (
+        f'<input class="goToPage" type="text" data-max="{data_max}" value="1"/>'
+        if data_max is not None
+        else ""
+    )
+    next_block = (
+        f'<a class="{next_class}" rel="next" href="/all-lawyers/x/y/?page=2" '
+        f'data-page="2">next</a>'
+    )
+    cards = "".join(
+        '<div class="card card--attorney"><ul><li class="detail_title">'
+        f'<a href="/attorney/x-{i}/"><h3>X {i}</h3></a></li></ul></div>'
+        for i in range(card_count)
+    )
+    return f"""<html><body>
+        {total_block}
+        {cards}
+        <ul class="inline-list right pagination">
+          {goto_block}
+          {next_block}
+        </ul>
+    </body></html>"""
+
+
+def test_extract_page_meta_birmingham_shape():
+    """Matches the captured Birmingham page 1: 6,994 declared, 167 pages,
+    next link present, 30 cards visible.
+    """
+    meta = extract_page_meta(_city_page_html())
+    assert meta["results_total"] == 6994
+    assert meta["last_page"] == 167
+    assert meta["has_next"] is True
+    assert meta["card_count"] == 30
+
+
+def test_extract_page_meta_last_page_next_unavailable():
+    meta = extract_page_meta(_city_page_html(next_unavailable=True))
+    assert meta["has_next"] is False
+
+
+def test_extract_page_meta_missing_signals_returns_none_fields():
+    meta = extract_page_meta("<html><body>no pagination here</body></html>")
+    assert meta == {
+        "results_total": None,
+        "last_page": None,
+        "has_next": False,
+        "card_count": 0,
+    }
+
+
+def test_extract_page_meta_falls_back_to_anchor_data_page():
+    """When input.goToPage[data-max] is absent, the largest data-page
+    integer on an <a> inside ul.pagination becomes the last_page."""
+    html = """<html><body>
+      <ul class="pagination">
+        <li><a data-page="1" href="?page=1">1</a></li>
+        <li><a data-page="2" href="?page=2">2</a></li>
+        <li><a data-page="42" href="?page=42">42</a></li>
+      </ul>
+    </body></html>"""
+    meta = extract_page_meta(html)
+    assert meta["last_page"] == 42
+
+
+def test_extract_page_meta_parses_inflated_total():
+    """Some directories present results_total in millions with commas."""
+    html = _city_page_html(declared_total="(1,234,567)")
+    meta = extract_page_meta(html)
+    assert meta["results_total"] == 1234567
+
+
+def test_extract_page_meta_handles_empty_results_total():
+    html = _city_page_html(declared_total="(— results)")
+    meta = extract_page_meta(html)
+    # Number regex finds nothing -> None.
+    assert meta["results_total"] is None

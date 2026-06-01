@@ -235,6 +235,70 @@ class MartindaleCityParser(BaseParser):
         return out
 
 
+def extract_page_meta(html: str) -> dict[str, Any]:
+    """Extract pagination + result-count metadata from a city listing page.
+
+    Returns a dict with:
+      * `results_total`: int | None — declared total result count from
+        the `.results__total` span (e.g. "(6,994)" -> 6994). NOT
+        load-bearing — directory sites often inflate this; use it only
+        as a sanity baseline.
+      * `last_page`: int | None — total page count. Prefer
+        `input.goToPage[data-max]`; fall back to the largest
+        `data-page` integer on any `<a>` in the pagination block.
+      * `has_next`: bool — True if `a.arrow[rel="next"]` exists AND
+        does NOT carry the `unavailable` class (last page disables
+        the next arrow).
+      * `card_count`: int — number of attorney cards on this page,
+        for the per-page accounting that drives the count-mismatch
+        warning.
+    """
+    tree = HTMLParser(html)
+
+    results_total: int | None = None
+    total_span = tree.css_first(".results__total")
+    if total_span is not None:
+        t = total_span.text(strip=True) or ""
+        m = re.search(r"[\d,]+", t)
+        if m:
+            try:
+                results_total = int(m.group(0).replace(",", ""))
+            except ValueError:
+                results_total = None
+
+    last_page: int | None = None
+    goto = tree.css_first("input.goToPage[data-max]")
+    if goto is not None:
+        dm = (goto.attributes.get("data-max") or "").strip()
+        if dm.isdigit():
+            last_page = int(dm)
+    if last_page is None:
+        # Fallback: scan numbered <a data-page=...> inside any pagination ul.
+        for a in tree.css("ul.pagination a[data-page]"):
+            dp = (a.attributes.get("data-page") or "").strip()
+            if dp.isdigit():
+                last_page = max(last_page or 0, int(dp))
+
+    next_a = tree.css_first('a.arrow[rel="next"]')
+    has_next = False
+    if next_a is not None:
+        cls = (next_a.attributes.get("class") or "").lower()
+        # The previous-page-of-page-1 case shows `class="arrow unavailable"`
+        # on the prev arrow; the next arrow uses the same convention on
+        # the last page.
+        if "unavailable" not in cls:
+            has_next = True
+
+    card_count = len(tree.css(".card.card--attorney"))
+
+    return {
+        "results_total": results_total,
+        "last_page": last_page,
+        "has_next": has_next,
+        "card_count": card_count,
+    }
+
+
 def parse_firm_profile(payload: bytes) -> dict[str, Any]:
     """Extract firm-level fields from a profile page. Returned as a
     free dict; the pipeline merges into the aggregated FirmSourceRecord

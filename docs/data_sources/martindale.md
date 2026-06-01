@@ -262,6 +262,37 @@ of cards rendered on page 1, walking `?page=2`, `?page=3`, ... until a
 page returns 0 cards is the simplest approach. (`?page=` isn't caught
 by the `?params=` robots deny-list.)
 
+> **CONFIRMED 2026-05-29 (pagination fix).** Three signals on every
+> city page; pipeline uses all three:
+>
+> 1. `.results__total` span — declared total count
+>    (e.g. `<span class="results__total">(6,994)</span>`). Soft
+>    sanity baseline only — Martindale's declared totals are
+>    inflated (Birmingham declares 6,994 but only 167 pages × 30
+>    cards = 5,010 actual). Don't derive page count from this.
+> 2. `input.goToPage[data-max]` — the **deterministic** total page
+>    count (e.g. `data-max="167"`). Source of truth.
+> 3. `a.arrow[rel="next"]` with class NOT `unavailable` — per-page
+>    "is there another page" check. Defensive fallback when
+>    `goToPage` parsing fails.
+>
+> Implementation: `parsers/martindale.extract_page_meta()` returns
+> `{results_total, last_page, has_next, card_count}`. The pipeline
+> logs `martindale.city_meta` on page 1, walks to `last_page`
+> (capped by `--max-pages-per-city`), and warns
+> `martindale.count_mismatch` if scraped cards diverge from
+> `results_total` by more than ~50% (only when the full walk was
+> attempted).
+>
+> **Hard cap at 167 pages.** Phoenix declares `results_total=17,522`
+> but `data-max=167`, the same as Birmingham. Martindale apparently
+> caps page enumeration at 167 regardless of declared total — so for
+> very large cities we can access at most 167 × ~30 = ~5,010
+> attorneys via this route. For full coverage of mega-cities we'd
+> need to filter (state+practice area, alphabetical letter, etc.)
+> to reduce the per-query result set under the cap. Out of scope
+> for the pilot; tracked here as a known limitation.
+
 **Resumability:** treating `(state, city)` pairs from §4.2 as the work
 queue and persisting completed pairs to a small SQLite table
 (e.g. `martindale_city_runs`) lets a crashed run resume mid-state
