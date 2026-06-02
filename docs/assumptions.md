@@ -729,3 +729,53 @@ discovery harder or discover from a single broad practice area.
 - `src/legal_sourcing/pipelines/scrape_findlaw.py`
   (`extract_city_slugs`, `discover_state`, `run_full`, `run_load`).
 - Tests: `tests/test_full_scrape_support.py`.
+
+---
+
+## 2026-06-02 — Justia firm grain = office address; Avvo blocked by Cloudflare
+
+**Assumption.** Justia listing cards are ATTORNEY-level and carry a
+lawyer name + office address + phone + practice areas but **no firm
+name**. Justia `FirmSourceRecord`s are therefore aggregated by
+**normalized office `(street, city)`**: lawyers sharing an office
+become one firm-shaped record (`name_raw=""`, those lawyers as
+`contacts`, practice areas unioned, `attorney_count` = contact count).
+A lawyer with no parseable street is a solo record keyed on the Justia
+profile id. Cross-source resolution matches Justia records to named
+firms from other sources via phone / website / address (NOT name).
+
+The national Justia sweep iterates states only (no city enumeration);
+per-state pagination is **capped** by Justia (beyond the cap a `?page=N`
+request is redirected to the page-1 hub with the page param dropped —
+the cap signal, since the hub still shows a misleading "Next" link).
+Mega-states are thus partially covered at the state grain; deeper
+coverage via city / practice-area subdivision (URL builders exist) is a
+future lever — same shape as Martindale's 167-page cap.
+
+**Why.** Justia has no firm name to key on, but it does have addresses,
+which the resolution layer already blocks on. Office grouping yields
+firm-shaped records that resolve cleanly against the named-firm sources.
+Profile-page enrichment (one fetch per lawyer) would add firm names but
+multiply requests by ~50x — deferred.
+
+**Avvo.** Recon 2026-06-02 found Avvo hard-blocked by a Cloudflare JS
+challenge that a full browser header set does NOT pass (unlike Justia).
+A working Avvo scraper needs TLS-impersonation (`curl_cffi`) or a
+headless browser — i.e. defeating the challenge — which is **not started
+without explicit user sign-off**. Avvo scaffolding intentionally NOT
+built pending that decision. See docs/data_sources/avvo.md.
+
+**Trigger to revisit.** If firm names become important for Justia
+records, add a profile-enrichment pass (mirrors Martindale `enrich`).
+If mega-state coverage matters, subdivide by city/practice area. If
+Avvo is wanted, pick a transport (curl_cffi vs Playwright) first.
+
+**Enforced where.**
+- `src/legal_sourcing/scrapers/justia.py` (browser headers, challenge
+  guard, www host).
+- `src/legal_sourcing/parsers/justia.py` (`JustiaDirectoryParser`,
+  `extract_page_meta`).
+- `src/legal_sourcing/pipelines/scrape_justia.py` (`aggregate_by_office`,
+  `fetch_state_pages` cap detection, `run_full`, `run_load`).
+- Tests: `tests/test_justia_parser.py`.
+- Docs: `docs/data_sources/justia.md`, `docs/data_sources/avvo.md`.
