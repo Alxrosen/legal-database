@@ -36,7 +36,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from legal_sourcing.config import get_settings
-from legal_sourcing.geo import parse_states_arg
+from legal_sourcing.geo import STATE_SLUG_TO_ABBR, parse_states_arg
 from legal_sourcing.models import FirmSourceRecord
 from legal_sourcing.parsers.martindale import (
     MartindaleCityParser,
@@ -349,6 +349,23 @@ def _tag_provenance(firm_records: list[dict[str, Any]]) -> None:
         r.setdefault("source_url", "")
 
 
+def _backfill_office_state(records: list[dict[str, Any]], state_slug: str) -> None:
+    """Backfill office ``state_raw`` from the swept URL's state.
+
+    Martindale SRP cards show only the city; the state is implied by the
+    ``/all-lawyers/{city}/{state}/`` URL. Without this, ~94% of Martindale
+    firms have no state, which breaks ``primary_state``, the name_state
+    blocking key, and state scoring downstream. Mutates in place.
+    """
+    abbr = STATE_SLUG_TO_ABBR.get(state_slug)
+    if not abbr:
+        return
+    for r in records:
+        for o in r.get("offices") or []:
+            if not (o.get("state_raw") or "").strip():
+                o["state_raw"] = abbr
+
+
 def _process_city(
     state_slug: str,
     city_slug: str,
@@ -362,6 +379,7 @@ def _process_city(
     roll this one back.
     """
     records = parse_city_records(paths)
+    _backfill_office_state(records, state_slug)
     for r in records:
         normalize_record(r)
     firm_records = aggregate_by_firm(records)

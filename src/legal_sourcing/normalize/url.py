@@ -51,6 +51,58 @@ def strip_self_domain(url: str | None, own_domains: tuple[str, ...]) -> str | No
     return url
 
 
+# Third-party legal directories, lead-gen aggregators, social, and maps
+# domains. A firm "website" pointing here is not a distinctive firm
+# domain; because normalize_url collapses to the bare domain, such a
+# value would be SHARED across unrelated firms and fabricate website
+# matches in resolution. Treated as "no website" for matching purposes.
+AGGREGATOR_DOMAINS: frozenset[str] = frozenset(
+    {
+        # legal directories / lead-gen
+        "lawfirms.com",
+        "avvo.com",
+        "lawyers.com",
+        "martindale.com",
+        "findlaw.com",
+        "justia.com",
+        "justia.lawyer",
+        "nolo.com",
+        "superlawyers.com",
+        "expertise.com",
+        "lawinfo.com",
+        "legalmatch.com",
+        "attorneys.com",
+        "hg.org",
+        "thervo.com",
+        # social / maps / generic
+        "facebook.com",
+        "linkedin.com",
+        "twitter.com",
+        "x.com",
+        "instagram.com",
+        "youtube.com",
+        "google.com",
+        "business.google.com",
+        "g.page",
+        "goo.gl",
+        "bing.com",
+        "yelp.com",
+    }
+)
+
+
+def is_aggregator_domain(host: str | None) -> bool:
+    """True if `host` (a bare domain from `normalize_url`) is a known
+    directory / aggregator / social domain that must not be used as a
+    firm-website match key. Matches the domain and any subdomain."""
+    if not host:
+        return False
+    h = host.strip().lower().lstrip(".")
+    if h.startswith("www."):
+        h = h[4:]
+    return any(h == d or h.endswith("." + d) for d in AGGREGATOR_DOMAINS)
+
+
 def normalize_url(raw: str | None) -> str | None:
     """Return bare-domain form of a URL/host string, or None if not
     parseable.

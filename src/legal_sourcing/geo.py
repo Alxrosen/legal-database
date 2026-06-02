@@ -65,6 +65,64 @@ US_STATE_SLUGS: tuple[str, ...] = (
 )
 
 
+# Slug -> USPS 2-letter abbreviation. Used to backfill a firm's office
+# state when a source lists only the city on the card but the STATE is
+# implied by the URL we scraped (e.g. Martindale /all-lawyers/{city}/{state}/).
+STATE_SLUG_TO_ABBR: dict[str, str] = {
+    "alabama": "AL",
+    "alaska": "AK",
+    "arizona": "AZ",
+    "arkansas": "AR",
+    "california": "CA",
+    "colorado": "CO",
+    "connecticut": "CT",
+    "delaware": "DE",
+    "florida": "FL",
+    "georgia": "GA",
+    "hawaii": "HI",
+    "idaho": "ID",
+    "illinois": "IL",
+    "indiana": "IN",
+    "iowa": "IA",
+    "kansas": "KS",
+    "kentucky": "KY",
+    "louisiana": "LA",
+    "maine": "ME",
+    "maryland": "MD",
+    "massachusetts": "MA",
+    "michigan": "MI",
+    "minnesota": "MN",
+    "mississippi": "MS",
+    "missouri": "MO",
+    "montana": "MT",
+    "nebraska": "NE",
+    "nevada": "NV",
+    "new-hampshire": "NH",
+    "new-jersey": "NJ",
+    "new-mexico": "NM",
+    "new-york": "NY",
+    "north-carolina": "NC",
+    "north-dakota": "ND",
+    "ohio": "OH",
+    "oklahoma": "OK",
+    "oregon": "OR",
+    "pennsylvania": "PA",
+    "rhode-island": "RI",
+    "south-carolina": "SC",
+    "south-dakota": "SD",
+    "tennessee": "TN",
+    "texas": "TX",
+    "utah": "UT",
+    "vermont": "VT",
+    "virginia": "VA",
+    "washington": "WA",
+    "west-virginia": "WV",
+    "wisconsin": "WI",
+    "wyoming": "WY",
+    "district-of-columbia": "DC",
+}
+
+
 def parse_states_arg(value: str | None) -> list[str]:
     """Turn a CLI ``--states`` value into a validated list of slugs.
 

@@ -779,3 +779,51 @@ Avvo is wanted, pick a transport (curl_cffi vs Playwright) first.
   `fetch_state_pages` cap detection, `run_full`, `run_load`).
 - Tests: `tests/test_justia_parser.py`.
 - Docs: `docs/data_sources/justia.md`, `docs/data_sources/avvo.md`.
+
+---
+
+## 2026-06-02 — pre-resolution data-quality guards (DB audit findings)
+
+A DB audit before canonical resolution surfaced several "gotchas" that
+would corrupt blocking/scoring. Guards added:
+
+**Aggregator/social websites are not match keys.** Beyond a source's
+own domain, third-party directories (`lawfirms.com`, `avvo.com`,
+`lawyers.com`, `superlawyers.com`, ...) and social/maps domains
+(`facebook.com`, `linkedin.com`, `google.com`, ...) collapse — via
+`normalize_url` — to one shared domain, so they'd fabricate website
+matches across unrelated firms. `normalize.url.is_aggregator_domain`
++ `AGGREGATOR_DOMAINS`; `normalize_record` nulls `website_normalized`
+when it hits one. Revisit the list as new aggregators show up.
+
+**Martindale office state backfilled from the URL.** Martindale SRP
+cards show only the city; the state is implied by the
+`/all-lawyers/{city}/{state}/` URL. Without backfill ~94% of Martindale
+firms had no state, breaking `primary_state`, the `name_state` blocking
+key, and state scoring. `geo.STATE_SLUG_TO_ABBR` +
+`scrape_martindale._backfill_office_state` fill it pre-normalize.
+
+**Still operational (NOT code), required before resolution:**
+`primary_city/state/postal_code` are 0 in the DB — they live in the
+`offices` JSON but the columns aren't derived. The re-derive step
+(scripts/renormalize_addresses.py / task #48) MUST run after scraping,
+and a re-normalize/`load` pass is needed for the website + state guards
+to take effect on already-fetched rows (no rescrape). Martindale
+`enrich` should also run (full mode skips firm profiles, leaving
+Martindale with almost no website/phone).
+
+**OPEN DECISION — government/court entities.** AZ Bar (and others)
+include attorneys at courts / AG offices / public defenders / agencies
+("maricopa county superior court" = 30 attorneys, 299 `.gov` sites).
+These aren't acquisition targets and form large false clusters. Whether
+to EXCLUDE or just FLAG them in the canonical set is a product decision,
+deferred to the user. Not yet implemented.
+
+**Enforced where.**
+- `src/legal_sourcing/normalize/url.py` (`AGGREGATOR_DOMAINS`,
+  `is_aggregator_domain`).
+- `src/legal_sourcing/geo.py` (`STATE_SLUG_TO_ABBR`).
+- `src/legal_sourcing/pipelines/scrape_az_bar.py` (`normalize_record`).
+- `src/legal_sourcing/pipelines/scrape_martindale.py`
+  (`_backfill_office_state`).
+- Tests: `tests/test_resolution_data_quality.py`.

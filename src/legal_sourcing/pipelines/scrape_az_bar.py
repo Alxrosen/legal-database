@@ -52,6 +52,7 @@ from legal_sourcing.normalize import (
     normalize_practice_area,
     normalize_url,
 )
+from legal_sourcing.normalize.url import is_aggregator_domain
 from legal_sourcing.parsers.az_bar import AZBarDetailParser
 from legal_sourcing.scrapers.az_bar import AZBarScraper
 from legal_sourcing.utils.logging import configure_logging, get_logger
@@ -140,7 +141,10 @@ def normalize_record(rec: dict[str, Any]) -> dict[str, Any]:
     """
     name_n = normalize_firm_name(rec.get("name_raw"))
     rec["name_normalized"] = name_n.normalized if name_n else None
-    rec["website_normalized"] = normalize_url(rec.get("website_raw"))
+    website_n = normalize_url(rec.get("website_raw"))
+    # Drop directory/aggregator/social domains: shared across unrelated
+    # firms, they'd fabricate website matches in resolution.
+    rec["website_normalized"] = None if is_aggregator_domain(website_n) else website_n
     rec["phone_normalized"] = normalize_phone(rec.get("phone_raw"))
 
     # Contacts: lightweight per-attorney normalization.
