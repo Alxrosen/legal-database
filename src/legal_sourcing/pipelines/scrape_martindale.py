@@ -413,7 +413,7 @@ def run_full(
         already_done=cp.completed_count,
     )
 
-    engine = create_engine(settings.db_url)
+    engine = create_engine(settings.db_url, connect_args={"timeout": 30})
     with MartindaleScraper() as scraper:
         for state_slug in states:
             try:
@@ -502,7 +502,7 @@ def run_load(*, date_str: str | None = None, resume: bool = False) -> None:
         resume=resume,
     )
     cp = Checkpoint("martindale_load") if resume else None
-    engine = create_engine(settings.db_url)
+    engine = create_engine(settings.db_url, connect_args={"timeout": 30})
     total = {"inserted": 0, "updated": 0, "cities": 0}
     for (state_slug, city_slug), paths in sorted(groups.items()):
         key = f"{state_slug}/{city_slug}"
@@ -594,7 +594,7 @@ def run_pilot(
         r.setdefault("source_url", "")
 
     # Phase 5: upsert
-    engine = create_engine(settings.db_url)
+    engine = create_engine(settings.db_url, connect_args={"timeout": 30})
     with Session(engine) as session:
         counts = upsert_firm_source_records(session, firm_records)
     log.info("martindale.upsert_done", **counts)
@@ -622,7 +622,7 @@ def run_enrich(
 
     settings = get_settings()
     configure_logging()
-    engine = create_engine(settings.db_url)
+    engine = create_engine(settings.db_url, connect_args={"timeout": 30})
     with Session(engine) as session:
         # 1) Mark non-subscriber rows (no firm_profile_url) so future
         # passes skip them deterministically.
