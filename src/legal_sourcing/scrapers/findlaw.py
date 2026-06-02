@@ -49,12 +49,16 @@ class FindLawScraper(BaseScraper):
     SOURCE_NAME = "findlaw"
     BASE_URL = "https://lawyers.findlaw.com"
 
-    # Conservative defaults — doc-recommended.
-    RATE_LIMIT_RPS = 0.33  # one request every ~3 seconds
-    INITIAL_RATE_LIMIT_RPS = 0.2  # a slightly slower first minute
+    # Stepped up from the doc's conservative 0.33 RPS after a clean
+    # national run: 4,350 requests over 3.7h drew only 13 transient 429s
+    # (0.3%, all recovered) and ZERO Cloudflare/403 — clear headroom.
+    # Now 0.5 RPS (one request every ~2s), still single-threaded with no
+    # burst. First Cloudflare challenge / sustained 429s: drop back.
+    RATE_LIMIT_RPS = 0.5
+    INITIAL_RATE_LIMIT_RPS = 0.33  # gentle first minute
     RATE_RAMP_SECONDS = 60.0
     BURST_CAPACITY = 1.0  # no bursting
-    WORKERS = 1  # single-threaded recon
+    WORKERS = 1  # single-threaded — Cloudflare-fronted, don't fan out
 
     ROBOTS_POLICY = "warn"  # project default
     MAX_RETRIES = 3  # Cloudflare challenges aren't retryable; budget low
