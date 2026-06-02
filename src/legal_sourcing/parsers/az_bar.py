@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from legal_sourcing.normalize.url import strip_self_domain
 from legal_sourcing.parsers.base import BaseParser
 
 # Company-field values that signal the attorney is not actively
@@ -34,6 +35,10 @@ _DEACTIVATION_MARKERS: dict[str, str] = {
 _ABSENT_MARKERS: frozenset[str] = frozenset(
     {"n/a", "na", "none", "-", "--", "self", "self employed", "self-employed"}
 )
+
+# Never record the bar's own site as a firm website (would collapse to a
+# single shared domain and cause false website matches in resolution).
+_AZBAR_OWN_DOMAINS = ("azbar.org",)
 
 
 def _flatten_areas_of_law(areas: Any) -> list[str]:
@@ -222,7 +227,9 @@ def _record_to_firm_dict(record: dict[str, Any], source_url: str) -> dict[str, A
     return {
         "name_raw": company_raw,
         "deactivation_status": deactivation_status,
-        "website_raw": (record.get("FirmURL") or "").strip() or None,
+        "website_raw": strip_self_domain(
+            (record.get("FirmURL") or "").strip() or None, _AZBAR_OWN_DOMAINS
+        ),
         # Firm-level phone takes the same primary phone as the contact;
         # aggregation may overwrite if a later attorney supplies a
         # better value.

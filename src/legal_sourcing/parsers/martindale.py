@@ -33,8 +33,12 @@ from urllib.parse import urlparse
 
 from selectolax.parser import HTMLParser
 
-from legal_sourcing.normalize.url import safe_urlparse
+from legal_sourcing.normalize.url import safe_urlparse, strip_self_domain
 from legal_sourcing.parsers.base import BaseParser
+
+# Never record Martindale's own domain as a firm website (would collapse
+# to a shared key and cause false website matches in resolution).
+_MARTINDALE_OWN_DOMAINS = ("martindale.com",)
 
 _ATTORNEY_ID_RE = re.compile(r"-(\d+)/?$")
 # US-state postal codes for the location_text city/state parse.
@@ -332,7 +336,9 @@ def parse_firm_profile(payload: bytes) -> dict[str, Any]:
 
     website = tree.css_first("a.webstats-website-click[href], a.profile-website-body[href]")
     if website is not None:
-        out["firm_website_url"] = website.attributes.get("href")
+        out["firm_website_url"] = strip_self_domain(
+            website.attributes.get("href"), _MARTINDALE_OWN_DOMAINS
+        )
         rel = (website.attributes.get("rel") or "").lower()
         out["firm_website_is_sponsored"] = "sponsored" in rel
 

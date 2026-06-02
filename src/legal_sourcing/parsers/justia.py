@@ -27,7 +27,13 @@ from typing import Any
 
 from selectolax.parser import HTMLParser
 
+from legal_sourcing.normalize.url import strip_self_domain
 from legal_sourcing.parsers.base import BaseParser
+
+# Justia's own domains: justia.com and the justia.lawyer hosted-microsite
+# pattern. Both collapse to a shared domain, so they must never be
+# recorded as a firm's website (false matches in resolution).
+_JUSTIA_OWN_DOMAINS = ("justia.com", "justia.lawyer")
 
 # Last address line: "City, ST 12345" (optionally ZIP+4).
 _CITY_STATE_ZIP_RE = re.compile(
@@ -102,19 +108,15 @@ def _practice_areas(card) -> list[str]:
 
 
 def _website(card) -> str | None:
-    # Skip Justia's own domains: `justia.com` and the `justia.lawyer`
-    # hosted-microsite pattern. Both normalize to a single shared domain,
-    # which would create false website matches across unrelated lawyers
-    # in the resolution layer. Only emit a firm's own external site.
+    # Only emit a firm's own external site — never a Justia domain (those
+    # collapse to a shared key and cause false website matches). Keep
+    # scanning past a Justia-domain link in case a real one follows.
     for a in card.css("a"):
         href = a.attributes.get("href") or ""
         if not href.startswith("http"):
             continue
-        low = href.lower()
-        if "justia.com" in low or "justia.lawyer" in low:
-            continue
         blob = ((a.attributes.get("class") or "") + " " + a.text()).lower()
-        if "website" in blob:
+        if "website" in blob and strip_self_domain(href, _JUSTIA_OWN_DOMAINS):
             return href
     return None
 

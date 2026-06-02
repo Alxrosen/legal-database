@@ -27,6 +27,30 @@ def safe_urlparse(url: str) -> ParseResult | None:
         return None
 
 
+def strip_self_domain(url: str | None, own_domains: tuple[str, ...]) -> str | None:
+    """Drop a website URL that points at the directory's OWN domain.
+
+    A source must never record itself as a firm's website: because
+    `normalize_url` collapses to the bare domain, every firm that leaked
+    e.g. `findlaw.com` would share one website key and create false
+    website matches across unrelated firms in the resolution layer.
+
+    Returns None if `url`'s host equals or is a subdomain of any entry in
+    `own_domains` (e.g. `findlaw.com` also catches `lawyers.findlaw.com`).
+    Otherwise returns `url` unchanged. Unparseable input returns None.
+    """
+    if not url:
+        return None
+    host = normalize_url(url)
+    if host is None:
+        return None
+    for d in own_domains:
+        d = d.strip().lower().lstrip(".")
+        if d and (host == d or host.endswith("." + d)):
+            return None
+    return url
+
+
 def normalize_url(raw: str | None) -> str | None:
     """Return bare-domain form of a URL/host string, or None if not
     parseable.

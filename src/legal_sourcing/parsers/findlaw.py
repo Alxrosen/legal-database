@@ -32,8 +32,12 @@ from urllib.parse import urlparse
 
 from selectolax.parser import HTMLParser
 
-from legal_sourcing.normalize.url import safe_urlparse
+from legal_sourcing.normalize.url import safe_urlparse, strip_self_domain
 from legal_sourcing.parsers.base import BaseParser
+
+# Never record FindLaw's own domain as a firm website (would collapse to
+# a shared key and cause false website matches in resolution).
+_FINDLAW_OWN_DOMAINS = ("findlaw.com",)
 
 # US address regex — capture trailing ZIP + 2-letter state to peel
 # city/state/zip off the back of the location string. Cards render
@@ -104,7 +108,11 @@ def _extract_card(card_node) -> dict[str, Any] | None:
     office_fields = _parse_location_text(location_text)
 
     site_node = card_node.css_first('a[data-testid="website-button-link"]')
-    website_url = site_node.attributes.get("href") if site_node is not None else None
+    website_url = (
+        strip_self_domain(site_node.attributes.get("href"), _FINDLAW_OWN_DOMAINS)
+        if site_node is not None
+        else None
+    )
     website_rel = site_node.attributes.get("rel") if site_node is not None else None
 
     phone_node = card_node.css_first('a[data-testid="phone-button-link"], a[href^="tel:"]')
