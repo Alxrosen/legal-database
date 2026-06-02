@@ -6,7 +6,6 @@ Recon fixtures live under tests/fixtures/martindale/recon/.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -34,7 +33,11 @@ FIXTURES = Path(__file__).parent / "fixtures" / "martindale" / "recon"
         ("Founder at", "Founder", None),
         # Non-subscriber "Title at Firm" pattern:
         ("Member at DaGian Law Offices, LLP", "Member", "DaGian Law Offices, LLP"),
-        ("Gen. Coun. at Great Southern Wood Preserving, Inc.", "Gen. Coun.", "Great Southern Wood Preserving, Inc."),
+        (
+            "Gen. Coun. at Great Southern Wood Preserving, Inc.",
+            "Gen. Coun.",
+            "Great Southern Wood Preserving, Inc.",
+        ),
         # Solo / freeform — no " at " at all:
         ("Solo Practitioner", "Solo Practitioner", None),
         ("Attorney", "Attorney", None),
@@ -55,7 +58,6 @@ def test_split_title_at_firm(raw, title, firm):
 def test_city_parser_emits_one_record_per_card():
     """Recon fixture had 54 cards from Abbeville, AL. The parser run
     against the raw page should produce the same count."""
-    import gzip
     # The recon saved gz pages under data/raw — but those are local
     # and gitignored. The committed fixture is the extracted JSON,
     # not the raw HTML. Use the extracted card list to check we still
@@ -140,7 +142,9 @@ def test_city_parser_handles_solo_no_firm():
     </div>
     </body></html>"""
     parser = MartindaleCityParser()
-    [rec] = parser.parse_bytes(payload, source_url="https://www.martindale.com/all-lawyers/mobile/alabama/")
+    [rec] = parser.parse_bytes(
+        payload, source_url="https://www.martindale.com/all-lawyers/mobile/alabama/"
+    )
     assert rec["name_raw"] is None
     assert rec["contacts"][0]["title"] == "Solo Practitioner"
     assert rec["additional_data"]["card_shape"] == "solo"
@@ -193,8 +197,7 @@ def _city_page_html(
         else ""
     )
     next_block = (
-        f'<a class="{next_class}" rel="next" href="/all-lawyers/x/y/?page=2" '
-        f'data-page="2">next</a>'
+        f'<a class="{next_class}" rel="next" href="/all-lawyers/x/y/?page=2" data-page="2">next</a>'
     )
     cards = "".join(
         '<div class="card card--attorney"><ul><li class="detail_title">'
@@ -280,7 +283,10 @@ def test_parse_firm_profile_full_prim_mendheim_shape():
     assert result["primary_state"] == "AL"
     # Last ZIP is the physical one (36301), not the P.O. Box one (36302).
     assert result["primary_postal_code"] == "36301"
-    assert result["firm_short_description"] == "A General Practice Law Firm That Specializes In Collections"
+    assert (
+        result["firm_short_description"]
+        == "A General Practice Law Firm That Specializes In Collections"
+    )
     assert result["year_established"] == 2006
     assert result["practice_areas"] == [
         "Civil Litigation",

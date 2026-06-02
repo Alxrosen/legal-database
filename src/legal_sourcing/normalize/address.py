@@ -63,7 +63,7 @@ def normalize_address(raw: str | None) -> NormalizedAddress | None:
         # Best-effort: take the first labeling.
         try:
             parts = usaddress.parse(raw_str)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return NormalizedAddress(
                 raw=raw_str,
                 street=None,

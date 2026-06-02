@@ -45,7 +45,6 @@ from rapidfuzz import fuzz
 
 from legal_sourcing.models import FirmSourceRecord
 
-
 DEFAULT_WEIGHTS: dict[str, float] = {
     # Weights chosen so all five positive components sum to exactly 100,
     # which means a perfect-everything pair lands at the auto-merge

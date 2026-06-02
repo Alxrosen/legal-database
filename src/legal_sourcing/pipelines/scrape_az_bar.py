@@ -34,9 +34,10 @@ import gzip
 import hashlib
 import json
 import sys
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
@@ -76,19 +77,13 @@ def fetch_reference(scraper: AZBarScraper) -> None:
     ]
     for name, path, include_inactive in endpoints:
         url = scraper.reference_url(path, include_inactive=include_inactive)
-        scraper.fetch_one(
-            url, method="GET", bucket="reference", filename=name
-        )
+        scraper.fetch_one(url, method="GET", bucket="reference", filename=name)
     log.info("pipeline.reference_done", count=len(endpoints))
 
 
-def fetch_list_page(
-    scraper: AZBarScraper, *, page: int, page_size: int
-) -> dict[str, Any]:
+def fetch_list_page(scraper: AZBarScraper, *, page: int, page_size: int) -> dict[str, Any]:
     """Fetch + parse one list page envelope. Returns the parsed JSON."""
-    url = scraper.list_url(
-        page=page, page_size=page_size, shuffle=False, seed="null"
-    )
+    url = scraper.list_url(page=page, page_size=page_size, shuffle=False, seed="null")
     path = scraper.fetch_one(
         url,
         method="POST",
@@ -102,9 +97,7 @@ def fetch_list_page(
         return json.loads(f.read())
 
 
-def fetch_details(
-    scraper: AZBarScraper, entity_numbers: Iterable[int]
-) -> list[Path]:
+def fetch_details(scraper: AZBarScraper, entity_numbers: Iterable[int]) -> list[Path]:
     """Concurrently fetch detail for each EntityNumber. Returns the
     list of gzipped raw payload paths written."""
     entity_numbers = list(entity_numbers)
@@ -126,7 +119,7 @@ def fetch_details(
             en = futures[fut]
             try:
                 p = fut.result()
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 log.error("pipeline.detail_failed", entity_number=en, error=str(exc))
                 continue
             if p is not None:
@@ -166,11 +159,7 @@ def normalize_record(rec: dict[str, Any]) -> dict[str, Any]:
     # is statistical and trips on missing commas / missing street
     # numbers.
     for o in rec.get("offices", []):
-        street_components = " ".join(
-            p
-            for p in (o.get("street_raw"), o.get("street2_raw"))
-            if p
-        )
+        street_components = " ".join(p for p in (o.get("street_raw"), o.get("street2_raw")) if p)
         norm: dict[str, Any] = {}
         if street_components:
             parsed_street = normalize_address(street_components)
@@ -261,9 +250,7 @@ def aggregate_by_firm(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
             seed.setdefault("deactivation_status", r.get("deactivation_status"))
             seed["practice_areas_raw"] = list(r.get("practice_areas_raw") or [])
             seed["practice_areas_matched"] = list(r.get("practice_areas_matched") or [])
-            seed["practice_areas_unmatched"] = list(
-                r.get("practice_areas_unmatched") or []
-            )
+            seed["practice_areas_unmatched"] = list(r.get("practice_areas_unmatched") or [])
             seed["additional_data"] = dict(r.get("additional_data") or {})
             groups[key] = seed
             continue
@@ -271,9 +258,7 @@ def aggregate_by_firm(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
         agg = groups[key]
         agg["contacts"].extend(r.get("contacts", []))
         # Dedupe offices by normalized street.
-        seen_streets = {
-            (o.get("normalized") or {}).get("street") for o in agg["offices"]
-        }
+        seen_streets = {(o.get("normalized") or {}).get("street") for o in agg["offices"]}
         for o in r.get("offices", []):
             s = (o.get("normalized") or {}).get("street")
             if s not in seen_streets:
@@ -284,12 +269,10 @@ def aggregate_by_firm(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
             set(agg["practice_areas_raw"]) | set(r.get("practice_areas_raw") or [])
         )
         agg["practice_areas_matched"] = sorted(
-            set(agg["practice_areas_matched"])
-            | set(r.get("practice_areas_matched") or [])
+            set(agg["practice_areas_matched"]) | set(r.get("practice_areas_matched") or [])
         )
         agg["practice_areas_unmatched"] = sorted(
-            set(agg["practice_areas_unmatched"])
-            | set(r.get("practice_areas_unmatched") or [])
+            set(agg["practice_areas_unmatched"]) | set(r.get("practice_areas_unmatched") or [])
         )
         # First non-None wins for firm-level fields.
         for fld in ("website_raw", "website_normalized", "phone_raw", "phone_normalized"):
@@ -304,9 +287,7 @@ def aggregate_by_firm(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for key, rec in groups.items():
         rec["attorney_count"] = len(rec["contacts"])
         if key[0] == "__solo__":
-            rec["source_firm_id"] = _firm_id(
-                None, None, fallback_entity_number=key[1]
-            )
+            rec["source_firm_id"] = _firm_id(None, None, fallback_entity_number=key[1])
         else:
             name_n, street_n = key
             rec["source_firm_id"] = _firm_id(name_n, street_n)
@@ -331,9 +312,7 @@ def parse_detail_payloads(paths: Iterable[Path]) -> list[dict[str, Any]]:
 # DB upsert
 
 
-def upsert_firm_source_records(
-    session: Session, records: list[dict[str, Any]]
-) -> dict[str, int]:
+def upsert_firm_source_records(session: Session, records: list[dict[str, Any]]) -> dict[str, int]:
     """Insert or update FirmSourceRecord rows. Returns counts."""
     inserted = 0
     updated = 0
@@ -486,9 +465,7 @@ def run_full() -> None:
             if not results:
                 log.info("pipeline.list_end_of_results", page=page)
                 break
-            all_entity_numbers.extend(
-                a["EntityNumber"] for a in results if a.get("EntityNumber")
-            )
+            all_entity_numbers.extend(a["EntityNumber"] for a in results if a.get("EntityNumber"))
             if len(results) < PAGE_SIZE:
                 log.info(
                     "pipeline.list_short_page",
@@ -619,8 +596,7 @@ def main() -> int:
         "--date",
         type=str,
         default=None,
-        help="(load only) data/raw/az_bar/{date} partition to parse. "
-        "Defaults to the most recent.",
+        help="(load only) data/raw/az_bar/{date} partition to parse. Defaults to the most recent.",
     )
     args = parser.parse_args()
     if args.mode == "pilot":

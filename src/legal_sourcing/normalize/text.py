@@ -22,9 +22,7 @@ def collapse_whitespace(s: str) -> str:
 
 def strip_diacritics(s: str) -> str:
     """Café -> Cafe. Useful before lowercasing for cross-source match."""
-    return "".join(
-        c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c)
-    )
+    return "".join(c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c))
 
 
 def strip_punctuation(s: str) -> str:

@@ -18,7 +18,6 @@ from typing import Any
 
 from legal_sourcing.parsers.base import BaseParser
 
-
 # Company-field values that signal the attorney is not actively
 # affiliated with a firm. Mapped to a canonical lowercase token.
 _DEACTIVATION_MARKERS: dict[str, str] = {
@@ -111,9 +110,7 @@ def _attorney_contact(record: dict[str, Any]) -> dict[str, Any]:
         # it's a dict, else the value directly.
         first_phone = phones_list[0]
         if isinstance(first_phone, dict):
-            primary_phone = (
-                first_phone.get("PhoneNumber") or first_phone.get("Phone") or None
-            )
+            primary_phone = first_phone.get("PhoneNumber") or first_phone.get("Phone") or None
         else:
             primary_phone = str(first_phone) or None
 
@@ -160,9 +157,7 @@ def _attorney_contact(record: dict[str, Any]) -> dict[str, Any]:
     return contact
 
 
-def _record_to_firm_dict(
-    record: dict[str, Any], source_url: str
-) -> dict[str, Any]:
+def _record_to_firm_dict(record: dict[str, Any], source_url: str) -> dict[str, Any]:
     """One attorney record -> one firm-shaped dict (raw fields only).
 
     The pipeline normalizes and aggregates across attorneys at the
@@ -247,9 +242,7 @@ class AZBarListParser(BaseParser):
 
     SOURCE_NAME = "az_bar"
 
-    def parse_bytes(
-        self, payload: bytes, *, source_url: str
-    ) -> list[dict[str, Any]]:
+    def parse_bytes(self, payload: bytes, *, source_url: str) -> list[dict[str, Any]]:
         envelope = json.loads(payload)
         if not envelope.get("IsSuccess"):
             return []
@@ -263,9 +256,7 @@ class AZBarDetailParser(BaseParser):
 
     SOURCE_NAME = "az_bar"
 
-    def parse_bytes(
-        self, payload: bytes, *, source_url: str
-    ) -> list[dict[str, Any]]:
+    def parse_bytes(self, payload: bytes, *, source_url: str) -> list[dict[str, Any]]:
         envelope = json.loads(payload)
         if not envelope.get("IsSuccess"):
             return []

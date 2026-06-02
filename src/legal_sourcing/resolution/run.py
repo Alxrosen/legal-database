@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-from typing import Any
 
 from sqlalchemy import create_engine, delete, select
 from sqlalchemy.orm import Session

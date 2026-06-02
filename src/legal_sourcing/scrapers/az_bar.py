@@ -37,7 +37,6 @@ from __future__ import annotations
 from legal_sourcing.config import get_settings
 from legal_sourcing.scrapers.base import BaseScraper
 
-
 # Static configuration for the AZ Bar API — see reference doc for context.
 _API_HOST = "https://api-proxy.azbar.org"
 

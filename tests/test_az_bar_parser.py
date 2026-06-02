@@ -15,8 +15,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from legal_sourcing.parsers.az_bar import (
     AZBarDetailParser,
     AZBarListParser,
@@ -69,9 +67,9 @@ def test_list_parser_record_shape():
 
 
 def test_list_parser_skips_unsuccessful_envelopes():
-    bad = json.dumps(
-        {"IsSuccess": False, "Error": "boom", "Result": {"Results": []}}
-    ).encode("utf-8")
+    bad = json.dumps({"IsSuccess": False, "Error": "boom", "Result": {"Results": []}}).encode(
+        "utf-8"
+    )
     parser = AZBarListParser()
     assert parser.parse_bytes(bad, source_url="x") == []
 
@@ -248,6 +246,7 @@ def test_aggregate_does_not_collapse_unaffiliated_attorneys():
     (None, None). Each unaffiliated attorney must now be its own row,
     keyed on EntityNumber.
     """
+
     # Build two distinct attorneys with NO firm name and NO address.
     def _solo(entity_number: int, last_name: str) -> dict:
         return {

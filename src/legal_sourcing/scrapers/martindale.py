@@ -34,7 +34,6 @@ from urllib.parse import urlparse
 
 from legal_sourcing.scrapers.base import BaseScraper
 
-
 # Paths the site's robots.txt forbids under `User-agent: *`. Our own
 # pre-check keeps us honest in case the warn-mode policy lets one slip.
 _FORBIDDEN_PATH_PREFIXES = (
@@ -49,10 +48,7 @@ _FORBIDDEN_PATH_PREFIXES = (
 def is_path_allowed(url: str) -> bool:
     """Return False if the URL falls under any robots-forbidden prefix."""
     path = urlparse(url).path or "/"
-    for bad in _FORBIDDEN_PATH_PREFIXES:
-        if path.startswith(bad):
-            return False
-    return True
+    return all(not path.startswith(bad) for bad in _FORBIDDEN_PATH_PREFIXES)
 
 
 class MartindaleScraper(BaseScraper):
@@ -83,8 +79,7 @@ class MartindaleScraper(BaseScraper):
     # says NOT to swap in TLS-impersonation tooling on first contact —
     # we ride on httpx defaults and a plausible UA.
     USER_AGENT = (
-        "Mozilla/5.0 (compatible; legal-sourcing-research/0.1; "
-        "+contact: amrosen@bowstreetllc.com)"
+        "Mozilla/5.0 (compatible; legal-sourcing-research/0.1; +contact: amrosen@bowstreetllc.com)"
     )
 
     def _default_headers(self) -> dict[str, str]:
@@ -111,7 +106,7 @@ class MartindaleScraper(BaseScraper):
 
 
 __all__ = [
+    "_FORBIDDEN_PATH_PREFIXES",
     "MartindaleScraper",
     "is_path_allowed",
-    "_FORBIDDEN_PATH_PREFIXES",
 ]

@@ -62,9 +62,7 @@ class PracticeAreaAlias(Base, TimestampMixin):
     """
 
     __tablename__ = "practice_area_aliases"
-    __table_args__ = (
-        UniqueConstraint("alias_normalized", name="uq_alias_normalized"),
-    )
+    __table_args__ = (UniqueConstraint("alias_normalized", name="uq_alias_normalized"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     practice_area_id: Mapped[int] = mapped_column(
@@ -119,9 +117,7 @@ class UnmatchedPracticeArea(Base, TimestampMixin):
     """
 
     __tablename__ = "unmatched_practice_areas"
-    __table_args__ = (
-        UniqueConstraint("normalized_value", name="uq_unmatched_normalized"),
-    )
+    __table_args__ = (UniqueConstraint("normalized_value", name="uq_unmatched_normalized"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 

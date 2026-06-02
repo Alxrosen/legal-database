@@ -19,16 +19,16 @@ from legal_sourcing.models.source_record import FirmSourceRecord
 
 __all__ = [
     "Base",
-    "TimestampMixin",
     "Firm",
+    "FirmPerson",
+    "FirmPracticeArea",
     "FirmSourceRecord",
     "FirmSourceRecordLink",
+    "MatchReviewQueue",
     "Office",
     "Person",
-    "FirmPerson",
     "PracticeArea",
     "PracticeAreaAlias",
-    "FirmPracticeArea",
+    "TimestampMixin",
     "UnmatchedPracticeArea",
-    "MatchReviewQueue",
 ]

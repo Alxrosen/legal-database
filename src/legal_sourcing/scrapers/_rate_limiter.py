@@ -99,9 +99,7 @@ class RateLimiter:
                     # Approximation during the ramp: use the current
                     # rate for the elapsed window. Error is bounded by
                     # the ramp duration and is invisible at our scale.
-                    self._tokens = min(
-                        self._capacity, self._tokens + elapsed * rate
-                    )
+                    self._tokens = min(self._capacity, self._tokens + elapsed * rate)
                     self._last_refill = now
 
                 if self._tokens >= 1.0:

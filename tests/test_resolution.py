@@ -7,11 +7,10 @@ from types import SimpleNamespace
 import pytest
 
 from legal_sourcing.resolution.blocking import (
-    NAME_PREFIX_LEN,
     generate_candidate_pairs,
     make_blocking_keys,
 )
-from legal_sourcing.resolution.scoring import DEFAULT_WEIGHTS, score_pair
+from legal_sourcing.resolution.scoring import score_pair
 
 
 def _rec(**kwargs):
@@ -63,7 +62,7 @@ def test_make_blocking_keys_truncates_long_names():
     )
     keys = make_blocking_keys(r)
     # First NAME_PREFIX_LEN chars + state.
-    assert f"name_state:the husb|AZ" in keys
+    assert "name_state:the husb|AZ" in keys
 
 
 def test_generate_candidate_pairs_dedupes_and_orders():
@@ -160,25 +159,41 @@ def test_score_pair_missing_signals_are_neutral():
 def test_score_pair_suffix_mismatch_penalty():
     """Same name + different entity suffix -> small penalty."""
     a = _rec(
-        id=1, name_normalized="acme law", name_raw="Acme Law, LLP",
-        phone_normalized="+1", website_normalized="acme.law",
-        primary_city="Phoenix", primary_state="AZ",
+        id=1,
+        name_normalized="acme law",
+        name_raw="Acme Law, LLP",
+        phone_normalized="+1",
+        website_normalized="acme.law",
+        primary_city="Phoenix",
+        primary_state="AZ",
     )
     b = _rec(
-        id=2, name_normalized="acme law", name_raw="Acme Law, PC",
-        phone_normalized="+1", website_normalized="acme.law",
-        primary_city="Phoenix", primary_state="AZ",
+        id=2,
+        name_normalized="acme law",
+        name_raw="Acme Law, PC",
+        phone_normalized="+1",
+        website_normalized="acme.law",
+        primary_city="Phoenix",
+        primary_state="AZ",
     )
     s = score_pair(a, b)
     no_penalty_a = _rec(
-        id=1, name_normalized="acme law", name_raw="Acme Law, LLP",
-        phone_normalized="+1", website_normalized="acme.law",
-        primary_city="Phoenix", primary_state="AZ",
+        id=1,
+        name_normalized="acme law",
+        name_raw="Acme Law, LLP",
+        phone_normalized="+1",
+        website_normalized="acme.law",
+        primary_city="Phoenix",
+        primary_state="AZ",
     )
     no_penalty_b = _rec(
-        id=2, name_normalized="acme law", name_raw="Acme Law, LLP",
-        phone_normalized="+1", website_normalized="acme.law",
-        primary_city="Phoenix", primary_state="AZ",
+        id=2,
+        name_normalized="acme law",
+        name_raw="Acme Law, LLP",
+        phone_normalized="+1",
+        website_normalized="acme.law",
+        primary_city="Phoenix",
+        primary_state="AZ",
     )
     s_no_penalty = score_pair(no_penalty_a, no_penalty_b)
     assert s["total"] < s_no_penalty["total"]

@@ -47,9 +47,7 @@ def test_successful_fetch_stores_gzip_and_sidecar(tmp_path):
     )
     body = b"<html><body>hello</body></html>"
     respx.get("https://example.com/firms/1").mock(
-        return_value=httpx.Response(
-            200, content=body, headers={"Content-Type": "text/html"}
-        )
+        return_value=httpx.Response(200, content=body, headers={"Content-Type": "text/html"})
     )
 
     scraper = _make(tmp_path)
@@ -71,9 +69,7 @@ def test_successful_fetch_stores_gzip_and_sidecar(tmp_path):
 def test_robots_default_warn_proceeds(tmp_path):
     """Default ROBOTS_POLICY='warn' logs the violation but still fetches."""
     respx.get("https://example.com/robots.txt").mock(
-        return_value=httpx.Response(
-            200, text="User-agent: *\nDisallow: /private/\n"
-        )
+        return_value=httpx.Response(200, text="User-agent: *\nDisallow: /private/\n")
     )
     respx.get("https://example.com/private/x").mock(
         return_value=httpx.Response(
@@ -95,9 +91,7 @@ class _BlockingScraper(_DummyScraper):
 def test_robots_block_policy_raises(tmp_path):
     """Subclasses can opt into hard-block via ROBOTS_POLICY = 'block'."""
     respx.get("https://example.com/robots.txt").mock(
-        return_value=httpx.Response(
-            200, text="User-agent: *\nDisallow: /private/\n"
-        )
+        return_value=httpx.Response(200, text="User-agent: *\nDisallow: /private/\n")
     )
     # No mock for /private/x — block policy should raise before any GET.
 
@@ -184,9 +178,7 @@ def test_non_retryable_4xx_raises(tmp_path):
     respx.get("https://example.com/robots.txt").mock(
         return_value=httpx.Response(200, text="User-agent: *\nAllow: /\n")
     )
-    respx.get("https://example.com/nope").mock(
-        return_value=httpx.Response(404, text="")
-    )
+    respx.get("https://example.com/nope").mock(return_value=httpx.Response(404, text=""))
 
     scraper = _make(tmp_path)
     with pytest.raises(ScrapeError):

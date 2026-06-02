@@ -33,8 +33,8 @@ from urllib.parse import urlparse
 
 from selectolax.parser import HTMLParser
 
-from legal_sourcing.parsers.base import BaseParser
 from legal_sourcing.normalize.url import safe_urlparse
+from legal_sourcing.parsers.base import BaseParser
 
 _ATTORNEY_ID_RE = re.compile(r"-(\d+)/?$")
 # US-state postal codes for the location_text city/state parse.
@@ -96,8 +96,6 @@ def _attorney_card_to_firm_dict(
 
     Returns None if the card lacks an attorney name (we can't use it).
     """
-    rec: dict[str, Any] = {}
-
     title_a = card_html.css_first("li.detail_title > a")
     attorney_name: str | None = None
     attorney_profile_url: str | None = None
@@ -197,21 +195,19 @@ def _attorney_card_to_firm_dict(
     if pos is not None:
         firm_a_for_gtm = pos.css_first("a.detail_position--office-link")
         if firm_a_for_gtm is not None:
-            gtm_firm = _parse_gtm(
-                firm_a_for_gtm.attributes.get("data-gtm-tracking") or ""
-            )
+            gtm_firm = _parse_gtm(firm_a_for_gtm.attributes.get("data-gtm-tracking") or "")
             if gtm_firm and gtm_firm.get("profile_type") == "Subscriber":
                 is_subscriber = True
     title_a_for_gtm = card_html.css_first("li.detail_title > a")
     if title_a_for_gtm is not None and not is_subscriber:
-        gtm_title = _parse_gtm(
-            title_a_for_gtm.attributes.get("data-gtm-tracking") or ""
-        )
+        gtm_title = _parse_gtm(title_a_for_gtm.attributes.get("data-gtm-tracking") or "")
         if gtm_title and gtm_title.get("profile_type") == "Subscriber":
             is_subscriber = True
 
     additional: dict[str, Any] = {
-        "card_shape": "subscriber" if source_firm_id_martindale else ("solo" if firm_name_raw is None else "non_subscriber_at_pattern"),
+        "card_shape": "subscriber"
+        if source_firm_id_martindale
+        else ("solo" if firm_name_raw is None else "non_subscriber_at_pattern"),
         "is_subscriber": is_subscriber,
     }
     if source_firm_id_martindale:
@@ -241,9 +237,7 @@ class MartindaleCityParser(BaseParser):
 
     SOURCE_NAME = "martindale"
 
-    def parse_bytes(
-        self, payload: bytes, *, source_url: str
-    ) -> list[dict[str, Any]]:
+    def parse_bytes(self, payload: bytes, *, source_url: str) -> list[dict[str, Any]]:
         html = payload.decode("utf-8", errors="replace")
         tree = HTMLParser(html)
         # Derive city + state slugs from the URL so each emitted dict
@@ -336,9 +330,7 @@ def parse_firm_profile(payload: bytes) -> dict[str, Any]:
     tree = HTMLParser(html)
     out: dict[str, Any] = {}
 
-    website = tree.css_first(
-        "a.webstats-website-click[href], a.profile-website-body[href]"
-    )
+    website = tree.css_first("a.webstats-website-click[href], a.profile-website-body[href]")
     if website is not None:
         out["firm_website_url"] = website.attributes.get("href")
         rel = (website.attributes.get("rel") or "").lower()
@@ -447,11 +439,7 @@ def _extract_practice_areas(tree: HTMLParser) -> list[str]:
     aop = tree.css_first("ul#aopList")
     if aop is None:
         return []
-    return [
-        (li.text(strip=True) or "").strip()
-        for li in aop.css("li")
-        if li.text(strip=True)
-    ]
+    return [(li.text(strip=True) or "").strip() for li in aop.css("li") if li.text(strip=True)]
 
 
 def _extract_toggle_count(tree: HTMLParser, label_prefix: str) -> int | None:
@@ -523,14 +511,12 @@ def _extract_year_established(tree: HTMLParser) -> int | None:
             if m:
                 return int(m.group(1))
     body_text = tree.body.text(strip=False) if tree.body else ""
-    m = re.search(
-        r"Year\s+Established[^A-Za-z0-9]+([12][0-9]{3})", body_text, flags=re.I
-    )
+    m = re.search(r"Year\s+Established[^A-Za-z0-9]+([12][0-9]{3})", body_text, flags=re.I)
     return int(m.group(1)) if m else None
 
 
 def _extract_office_size_label(tree: HTMLParser) -> int | None:
-    """"Office Size" on Martindale = firm headcount, NOT number of
+    """ "Office Size" on Martindale = firm headcount, NOT number of
     offices. Returned for the people-count cross-check; not used as
     `office_count` directly.
     """
@@ -566,9 +552,7 @@ def parse_firm_profile_full(payload: bytes) -> dict[str, Any]:
     office_size_label = _extract_office_size_label(tree)
     descriptions = _extract_descriptions(tree)
 
-    slim = parse_firm_profile(
-        html.encode("utf-8") if isinstance(html, str) else html
-    )
+    slim = parse_firm_profile(html.encode("utf-8") if isinstance(html, str) else html)
 
     # Heuristic office_count: only when the "Office Size" value is
     # clearly NOT just a synonym for people-count. Otherwise NULL.

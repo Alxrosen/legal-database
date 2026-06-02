@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 import pytest
+from selectolax.parser import HTMLParser
 
 from legal_sourcing.parsers.findlaw import (
     FindLawCityParser,
@@ -14,7 +15,6 @@ from legal_sourcing.parsers.findlaw import (
     _parse_location_text,
     extract_page_meta,
 )
-from selectolax.parser import HTMLParser
 
 FIXTURES = Path(__file__).parent / "fixtures" / "findlaw" / "recon"
 
@@ -149,7 +149,7 @@ def _make_srp(
         f'<div class="fl-serp-card organic">'
         f'<a class="fl-serp-card-title" href="/a/b-{i}/">F {i}</a>'
         f'<div class="fl-serp-card-location"><span>1 A St, Phoenix, AZ 85001</span></div>'
-        f'</div>'
+        f"</div>"
         for i in range(card_count)
     )
     page_links = ""
@@ -169,11 +169,7 @@ def _make_srp(
         if last_page is not None
         else ""
     )
-    rt = (
-        f"<p>Results 1 to {card_count} of {results_total}</p>"
-        if results_total is not None
-        else ""
-    )
+    rt = f"<p>Results 1 to {card_count} of {results_total}</p>" if results_total is not None else ""
     return f"<html><body>{rt}{cards}{nav}</body></html>"
 
 
@@ -186,7 +182,9 @@ def test_extract_page_meta_birmingham_shape():
 
 
 def test_extract_page_meta_last_page_no_next():
-    meta = extract_page_meta(_make_srp(card_count=36, last_page=2, has_next=False, results_total=36))
+    meta = extract_page_meta(
+        _make_srp(card_count=36, last_page=2, has_next=False, results_total=36)
+    )
     assert meta["has_next"] is False
     assert meta["card_count"] == 36
 
@@ -210,9 +208,7 @@ def test_alabaster_recon_fixture_round_trip_card_count():
     """The Phase 5 recon fixture is the extracted JSON, but we can
     double-check the count of records matches what the recon log
     reported (40 cards)."""
-    bare = json.loads(
-        (FIXTURES / "phase5_alabaster_bare.json").read_text(encoding="utf-8")
-    )
+    bare = json.loads((FIXTURES / "phase5_alabaster_bare.json").read_text(encoding="utf-8"))
     assert len(bare) == 40
     # First card should be Mezrano Law Firm with website + phone.
     first = bare[0]

@@ -33,10 +33,11 @@ from __future__ import annotations
 import argparse
 import sys
 from collections import defaultdict
-from datetime import datetime, timezone
-from typing import Any, Iterable
+from collections.abc import Iterable
+from datetime import UTC, datetime
+from typing import Any
 
-from sqlalchemy import create_engine, delete, select, update
+from sqlalchemy import create_engine, delete, select
 from sqlalchemy.orm import Session
 
 from legal_sourcing.config import get_settings
@@ -56,9 +57,9 @@ log = get_logger(__name__)
 # non-empty value for the field wins. Tunable per field via
 # FIELD_PRECEDENCE_OVERRIDES below.
 DEFAULT_SOURCE_PRIORITY: tuple[str, ...] = (
-    "martindale",   # richest enrichment; clean firm names
-    "findlaw",      # firm-level cards, real website URLs
-    "az_bar",       # individual attorneys; firm fields often sparse
+    "martindale",  # richest enrichment; clean firm names
+    "findlaw",  # firm-level cards, real website URLs
+    "az_bar",  # individual attorneys; firm fields often sparse
 )
 
 # Per-field overrides on the default priority. Empty for now —
@@ -176,9 +177,9 @@ def _make_field_provenance(
     canonical field that was picked, recording which source record
     supplied the value and when.
     """
-    written_at = datetime.now(timezone.utc).isoformat()
+    written_at = datetime.now(UTC).isoformat()
     prov: dict[str, Any] = {}
-    for field, (value, source_record_id, source) in chosen.items():
+    for field, (_value, source_record_id, source) in chosen.items():
         if source_record_id is None:
             continue
         prov[field] = {
@@ -279,10 +280,7 @@ def apply_decisions(
         uf = _UnionFind()
 
         # Make sure every source-record id ends up in UF (singletons too).
-        all_ids = [
-            r.id
-            for r in session.scalars(select(FirmSourceRecord)).all()
-        ]
+        all_ids = [r.id for r in session.scalars(select(FirmSourceRecord)).all()]
         for rid in all_ids:
             uf.find(rid)
 
@@ -292,15 +290,10 @@ def apply_decisions(
         # 3) Group source-record ids by canonical component.
         components = uf.components(all_ids)
         counts["components"] = len(components)
-        log.info(
-            "apply.components", count=len(components), total_records=len(all_ids)
-        )
+        log.info("apply.components", count=len(components), total_records=len(all_ids))
 
         # 4) Build Firm + Links per component.
-        member_records = {
-            r.id: r
-            for r in session.scalars(select(FirmSourceRecord)).all()
-        }
+        member_records = {r.id: r for r in session.scalars(select(FirmSourceRecord)).all()}
 
         firm_by_root: dict[int, Firm] = {}
         for root, member_ids in components.items():
@@ -309,7 +302,7 @@ def apply_decisions(
                 counts["singletons"] += 1
             else:
                 counts["multi_member_firms"] += 1
-            firm, prov = _build_firm_from_component(members)
+            firm, _prov = _build_firm_from_component(members)
             session.add(firm)
             firm_by_root[root] = firm
         session.flush()  # populate firm.id values

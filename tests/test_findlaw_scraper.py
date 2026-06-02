@@ -11,9 +11,9 @@ import pytest
 import respx
 
 from legal_sourcing.scrapers.findlaw import (
+    _CLOUDFLARE_CHALLENGE_MARKERS,
     FindLawCloudflareChallenge,
     FindLawScraper,
-    _CLOUDFLARE_CHALLENGE_MARKERS,
 )
 
 
@@ -43,32 +43,39 @@ def test_url_builders():
     s = FindLawScraper()
     try:
         assert s.root_url() == "https://lawyers.findlaw.com/"
+        assert s.practice_area_index_url() == "https://lawyers.findlaw.com/legal-issues/"
         assert (
-            s.practice_area_index_url()
-            == "https://lawyers.findlaw.com/legal-issues/"
+            s.practice_area_state_url(practice_area_slug="dui-dwi", state_slug="arizona")
+            == "https://lawyers.findlaw.com/dui-dwi/arizona/"
         )
-        assert s.practice_area_state_url(
-            practice_area_slug="dui-dwi", state_slug="arizona"
-        ) == "https://lawyers.findlaw.com/dui-dwi/arizona/"
         # page=1 omits the page param.
-        assert s.practice_area_city_url(
-            practice_area_slug="dui-dwi", state_slug="arizona", city_slug="phoenix"
-        ) == "https://lawyers.findlaw.com/dui-dwi/arizona/phoenix/"
+        assert (
+            s.practice_area_city_url(
+                practice_area_slug="dui-dwi", state_slug="arizona", city_slug="phoenix"
+            )
+            == "https://lawyers.findlaw.com/dui-dwi/arizona/phoenix/"
+        )
         # page>1 appends ?page=N.
-        assert s.practice_area_city_url(
-            practice_area_slug="dui-dwi",
-            state_slug="arizona",
-            city_slug="phoenix",
-            page=3,
-        ) == "https://lawyers.findlaw.com/dui-dwi/arizona/phoenix/?page=3"
+        assert (
+            s.practice_area_city_url(
+                practice_area_slug="dui-dwi",
+                state_slug="arizona",
+                city_slug="phoenix",
+                page=3,
+            )
+            == "https://lawyers.findlaw.com/dui-dwi/arizona/phoenix/?page=3"
+        )
         # extra_params combines correctly.
-        assert s.practice_area_city_url(
-            practice_area_slug="dui-dwi",
-            state_slug="arizona",
-            city_slug="phoenix",
-            page=2,
-            extra_params="keyword=DUI",
-        ) == "https://lawyers.findlaw.com/dui-dwi/arizona/phoenix/?keyword=DUI&page=2"
+        assert (
+            s.practice_area_city_url(
+                practice_area_slug="dui-dwi",
+                state_slug="arizona",
+                city_slug="phoenix",
+                page=2,
+                extra_params="keyword=DUI",
+            )
+            == "https://lawyers.findlaw.com/dui-dwi/arizona/phoenix/?keyword=DUI&page=2"
+        )
     finally:
         s.close()
 
@@ -99,9 +106,7 @@ def test_cloudflare_challenge_in_200_aborts(tmp_path, marker):
     )
     body = f"<html><head><title>x</title></head><body>{marker}</body></html>".encode()
     respx.get("https://lawyers.findlaw.com/whatever/").mock(
-        return_value=httpx.Response(
-            200, content=body, headers={"Content-Type": "text/html"}
-        )
+        return_value=httpx.Response(200, content=body, headers={"Content-Type": "text/html"})
     )
     scraper = _make(tmp_path)
     try:
@@ -120,9 +125,7 @@ def test_non_html_response_is_not_checked_for_cloudflare(tmp_path):
     )
     body = b"<urlset><url><loc>cf-mitigated-something</loc></url></urlset>"
     respx.get("https://lawyers.findlaw.com/sitemap.xml").mock(
-        return_value=httpx.Response(
-            200, content=body, headers={"Content-Type": "application/xml"}
-        )
+        return_value=httpx.Response(200, content=body, headers={"Content-Type": "application/xml"})
     )
     scraper = _make(tmp_path)
     try:

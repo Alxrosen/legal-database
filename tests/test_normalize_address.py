@@ -56,9 +56,7 @@ def test_street_token_order_is_stable_address_number_first():
     idx_number = s.find("445")
     idx_dexter = s.find("dexter")
     assert idx_number >= 0 and idx_dexter >= 0
-    assert idx_number < idx_dexter, (
-        f"street_normalized has wrong token order: {s!r}"
-    )
+    assert idx_number < idx_dexter, f"street_normalized has wrong token order: {s!r}"
 
 
 def test_street_token_order_stable_across_runs():

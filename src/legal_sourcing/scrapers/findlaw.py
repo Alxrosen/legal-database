@@ -114,9 +114,7 @@ class FindLawScraper(BaseScraper):
     def practice_area_index_url(self) -> str:
         return f"{self.BASE_URL}/legal-issues/"
 
-    def practice_area_state_url(
-        self, *, practice_area_slug: str, state_slug: str
-    ) -> str:
+    def practice_area_state_url(self, *, practice_area_slug: str, state_slug: str) -> str:
         return f"{self.BASE_URL}/{practice_area_slug}/{state_slug}/"
 
     def practice_area_city_url(
@@ -128,9 +126,7 @@ class FindLawScraper(BaseScraper):
         page: int = 1,
         extra_params: str = "",
     ) -> str:
-        base = (
-            f"{self.BASE_URL}/{practice_area_slug}/{state_slug}/{city_slug}/"
-        )
+        base = f"{self.BASE_URL}/{practice_area_slug}/{state_slug}/{city_slug}/"
         qs_parts = []
         if extra_params:
             qs_parts.append(extra_params.lstrip("?&"))
@@ -140,7 +136,7 @@ class FindLawScraper(BaseScraper):
 
 
 __all__ = [
-    "FindLawScraper",
-    "FindLawCloudflareChallenge",
     "_CLOUDFLARE_CHALLENGE_MARKERS",
+    "FindLawCloudflareChallenge",
+    "FindLawScraper",
 ]

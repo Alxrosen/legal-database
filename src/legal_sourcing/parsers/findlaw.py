@@ -32,8 +32,8 @@ from urllib.parse import urlparse
 
 from selectolax.parser import HTMLParser
 
-from legal_sourcing.parsers.base import BaseParser
 from legal_sourcing.normalize.url import safe_urlparse
+from legal_sourcing.parsers.base import BaseParser
 
 # US address regex — capture trailing ZIP + 2-letter state to peel
 # city/state/zip off the back of the location string. Cards render
@@ -77,9 +77,7 @@ def _extract_card(card_node) -> dict[str, Any] | None:
     Returns None if the card has no usable title — those are likely
     advertisement / non-firm slots even though they share the class.
     """
-    title_a = card_node.css_first(
-        'a.fl-serp-card-title, a[data-testid="serp-card-title-link"]'
-    )
+    title_a = card_node.css_first('a.fl-serp-card-title, a[data-testid="serp-card-title-link"]')
     if title_a is None:
         return None
     name = title_a.text(strip=True) or None
@@ -98,30 +96,20 @@ def _extract_card(card_node) -> dict[str, Any] | None:
         if m:
             source_firm_id_findlaw = m.group(1)
 
-    card_text_node = card_node.css_first(
-        'div.fl-serp-card-text, [data-testid="serp-card-text"]'
-    )
+    card_text_node = card_node.css_first('div.fl-serp-card-text, [data-testid="serp-card-text"]')
     card_text = card_text_node.text(strip=True) if card_text_node is not None else None
 
-    loc_node = card_node.css_first(
-        "div.fl-serp-card-location > span, div.fl-serp-card-location"
-    )
+    loc_node = card_node.css_first("div.fl-serp-card-location > span, div.fl-serp-card-location")
     location_text = loc_node.text(strip=True) if loc_node is not None else None
     office_fields = _parse_location_text(location_text)
 
     site_node = card_node.css_first('a[data-testid="website-button-link"]')
     website_url = site_node.attributes.get("href") if site_node is not None else None
-    website_rel = (
-        site_node.attributes.get("rel") if site_node is not None else None
-    )
+    website_rel = site_node.attributes.get("rel") if site_node is not None else None
 
-    phone_node = card_node.css_first(
-        'a[data-testid="phone-button-link"], a[href^="tel:"]'
-    )
+    phone_node = card_node.css_first('a[data-testid="phone-button-link"], a[href^="tel:"]')
     phone = (
-        _normalize_phone_tel(phone_node.attributes.get("href"))
-        if phone_node is not None
-        else None
+        _normalize_phone_tel(phone_node.attributes.get("href")) if phone_node is not None else None
     )
 
     office: dict[str, Any] | None = None
@@ -174,7 +162,7 @@ def extract_page_meta(html: str) -> dict[str, Any]:
     * `last_page` — largest integer text inside `nav[aria-label=
       "Pagination"]` page-number `<li>` elements, when present
     * `results_total` — UNDER-COUNTS in practice (FindLaw shows
-      "Results 1 to 40 of 36" where 36 < pages × pagesize). Captured
+      "Results 1 to 40 of 36" where 36 < pages x pagesize). Captured
       for sanity logging only; not load-bearing.
     """
     tree = HTMLParser(html)
@@ -221,9 +209,7 @@ class FindLawCityParser(BaseParser):
 
     SOURCE_NAME = "findlaw"
 
-    def parse_bytes(
-        self, payload: bytes, *, source_url: str
-    ) -> list[dict[str, Any]]:
+    def parse_bytes(self, payload: bytes, *, source_url: str) -> list[dict[str, Any]]:
         html = payload.decode("utf-8", errors="replace")
         tree = HTMLParser(html)
 

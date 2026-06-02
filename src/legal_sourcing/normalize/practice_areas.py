@@ -152,9 +152,7 @@ def load_taxonomy(path: Path) -> Taxonomy:
     # Validate parent references.
     for area in areas.values():
         if area.parent_slug and area.parent_slug not in areas:
-            raise ValueError(
-                f"Area '{area.slug}' references unknown parent '{area.parent_slug}'"
-            )
+            raise ValueError(f"Area '{area.slug}' references unknown parent '{area.parent_slug}'")
 
     return Taxonomy(areas=areas, alias_index=alias_index)
 

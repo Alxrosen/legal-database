@@ -63,9 +63,7 @@ class FirmSourceRecordLink(Base, TimestampMixin):
 
     __tablename__ = "firm_source_record_links"
     __table_args__ = (
-        UniqueConstraint(
-            "firm_id", "firm_source_record_id", name="uq_firm_source_record_link"
-        ),
+        UniqueConstraint("firm_id", "firm_source_record_id", name="uq_firm_source_record_link"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

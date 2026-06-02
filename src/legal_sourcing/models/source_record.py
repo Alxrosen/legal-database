@@ -109,9 +109,7 @@ class FirmSourceRecord(Base, TimestampMixin):
     # word so we can filter / report on dormant entries without
     # losing the signal. Lowercase canonical form ("retired" /
     # "inactive" / "deceased" / source-specific synonyms).
-    deactivation_status: Mapped[str | None] = mapped_column(
-        String(32), nullable=True, index=True
-    )
+    deactivation_status: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
 
     # Source-reported "last updated" / publish date for this firm's entry.
     # Distinct from `scraped_at` (when *we* fetched the page).
@@ -124,15 +122,9 @@ class FirmSourceRecord(Base, TimestampMixin):
     # Indexed because real query targets ("firms in Phoenix, AZ") hit
     # these. We deliberately skip primary_street (low-cardinality for
     # indexing) and primary_country (almost always "US").
-    primary_city: Mapped[str | None] = mapped_column(
-        String(128), nullable=True, index=True
-    )
-    primary_state: Mapped[str | None] = mapped_column(
-        String(8), nullable=True, index=True
-    )
-    primary_postal_code: Mapped[str | None] = mapped_column(
-        String(16), nullable=True
-    )
+    primary_city: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    primary_state: Mapped[str | None] = mapped_column(String(8), nullable=True, index=True)
+    primary_postal_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
     # ---- Firm-profile enrichment fields ---------------------------------
     # Populated by the Martindale firm-profile enrichment pass. Other
@@ -141,20 +133,14 @@ class FirmSourceRecord(Base, TimestampMixin):
     is_subscriber: Mapped[bool] = mapped_column(
         nullable=False, default=False, server_default=text("0"), index=True
     )
-    firm_short_description: Mapped[str | None] = mapped_column(
-        String(512), nullable=True
-    )
+    firm_short_description: Mapped[str | None] = mapped_column(String(512), nullable=True)
     # List of {"heading": str|None, "text": str} — separate
     # office-specific blurbs from firm-wide ones.
-    firm_descriptions: Mapped[list[dict[str, Any]] | None] = mapped_column(
-        JSON, nullable=True
-    )
+    firm_descriptions: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
     # 'pending' (not yet attempted) / 'enriched' / 'no_profile' (no
     # firm_profile_url) / 'failed' (fetch or parse error). Drives the
     # resumable enrichment pass.
-    enrichment_status: Mapped[str | None] = mapped_column(
-        String(16), nullable=True, index=True
-    )
+    enrichment_status: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
 
     # Composite / multi-valued fields as JSON. See docstring for shapes.
     # server_default mirrors the Python-side default so raw-SQL inserts

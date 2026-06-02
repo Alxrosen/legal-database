@@ -41,8 +41,9 @@ from __future__ import annotations
 import gzip
 import json
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 
 class BaseParser(ABC):
@@ -86,5 +87,4 @@ class BaseParser(ABC):
 
     def iter_payloads(self, raw_dir: Path) -> Iterator[Path]:
         """Walk a raw-data directory and yield every gzipped payload path."""
-        for p in sorted(Path(raw_dir).rglob("*.gz")):
-            yield p
+        yield from sorted(Path(raw_dir).rglob("*.gz"))

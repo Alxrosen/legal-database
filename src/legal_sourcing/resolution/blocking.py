@@ -26,7 +26,7 @@ O(10^6) cross-product.
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Iterable, Iterator
+from collections.abc import Iterable, Iterator
 
 from legal_sourcing.models import FirmSourceRecord
 

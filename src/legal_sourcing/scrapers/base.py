@@ -51,10 +51,11 @@ import json
 import random
 import time
 import urllib.robotparser
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Iterable
+from typing import ClassVar
 from urllib.parse import urlparse
 
 import httpx
@@ -106,7 +107,7 @@ class BaseScraper:
     BACKOFF_MAX_SECONDS: float = 60.0
 
     # Content-type sniffing for the raw filename extension.
-    _EXTENSION_BY_CONTENT_TYPE: dict[str, str] = {
+    _EXTENSION_BY_CONTENT_TYPE: ClassVar[dict[str, str]] = {
         "application/json": "json",
         "text/html": "html",
         "text/xml": "xml",
@@ -192,7 +193,7 @@ class BaseScraper:
                 url = futures[fut]
                 try:
                     path = fut.result()
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     log.error("scrape.url_failed", url=url, error=str(exc))
                     continue
                 if path is not None:
@@ -247,10 +248,10 @@ class BaseScraper:
     def close(self) -> None:
         self._client.close()
 
-    def __enter__(self) -> "BaseScraper":
+    def __enter__(self) -> BaseScraper:
         return self
 
-    def __exit__(self, *exc_info) -> None:  # noqa: ANN001
+    def __exit__(self, *exc_info) -> None:
         self.close()
 
     # ---- Internals -----------------------------------------------------
@@ -410,7 +411,7 @@ class BaseScraper:
             "url": url,
             "final_url": str(response.url),
             "status": response.status_code,
-            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "fetched_at": datetime.now(UTC).isoformat(),
             "headers": {k: v for k, v in response.headers.items()},
             "source": self.SOURCE_NAME,
             "body_path": gz_path.name,
