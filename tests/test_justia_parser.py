@@ -28,6 +28,7 @@ _HTML = """
   <a href="tel:6022222222" class="phone">(602) 222-2222</a>
   <div class="address">100 Main St<br>Suite 5<br>Phoenix, AZ 85001</div>
   <div class="outline">Personal Injury</div>
+  <a class="website" href="https://justia.lawyer/bob-jones-222">View Website</a>
 </div>
 <div class="jld-card -premium -gold" data-vars-profile="333">
   <strong class="name"><a href="https://lawyers.justia.com/lawyer/sally-roe-333">Sally Roe</a></strong>
@@ -59,6 +60,14 @@ def test_parse_cards_basic_fields():
     assert o["state_raw"] == "AZ"
     assert o["postal_code_raw"] == "85001"
     assert jane["practice_areas_raw"] == ["Personal Injury", "Divorce"]
+
+
+def test_website_excludes_justia_microsites():
+    # Bob's only "website" is a justia.lawyer microsite -> must be dropped
+    # (it normalizes to a shared domain and would cause false matches).
+    bob = _parsed()[1]
+    assert bob["contacts"][0]["name_raw"] == "Bob Jones"
+    assert bob["website_raw"] is None
 
 
 def test_premium_card_has_no_address_or_practice():

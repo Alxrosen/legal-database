@@ -102,12 +102,19 @@ def _practice_areas(card) -> list[str]:
 
 
 def _website(card) -> str | None:
+    # Skip Justia's own domains: `justia.com` and the `justia.lawyer`
+    # hosted-microsite pattern. Both normalize to a single shared domain,
+    # which would create false website matches across unrelated lawyers
+    # in the resolution layer. Only emit a firm's own external site.
     for a in card.css("a"):
         href = a.attributes.get("href") or ""
         if not href.startswith("http"):
             continue
+        low = href.lower()
+        if "justia.com" in low or "justia.lawyer" in low:
+            continue
         blob = ((a.attributes.get("class") or "") + " " + a.text()).lower()
-        if "website" in blob and "justia.com" not in href:
+        if "website" in blob:
             return href
     return None
 
