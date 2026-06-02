@@ -645,3 +645,38 @@ Keep the rule.
 - `docs/data_sources/az_bar_reference.md` — required-headers section
   explicitly calls out `Userid: publictools` and warns "Missing
   either `Password` OR `Userid` returns 401 with an empty body."
+
+---
+
+## 2026-06-02 — urlparse must be guarded; pipelines need crash-safe recovery
+
+**Assumption.** No code calls `urllib.parse.urlparse` on scraped /
+source-derived data without catching `ValueError`. Use
+`legal_sourcing.normalize.url.safe_urlparse`. Additionally, every
+source pipeline should support a `load` (parse-from-disk) mode so a
+crash in the parse/normalize/upsert tail never forces a re-fetch.
+
+**Why.** Python 3.14 made `urlparse` raise
+`ValueError("Invalid IPv6 URL")` on malformed URLs that earlier
+Pythons parsed leniently. A full AZ Bar sweep fetched all 35,864
+detail pages (~30 min) then crashed in the normalize phase on one
+attorney's malformed `FirmURL`, and because fetch+parse+upsert were a
+single process with no disk-recovery path, the entire run's DB write
+was lost. `scrape_az_bar load` was added to recover from the intact
+raw files without re-fetching.
+
+**Trigger to revisit.** A future Python relaxes urlparse again
+(unlikely), or we move parsing fully off urlparse. The `load`-mode
+gap (only AZ Bar has it; Martindale + FindLaw don't) should be closed
+before those sources get full unattended sweeps.
+
+**Enforced where.**
+- `src/legal_sourcing/normalize/url.py` (`safe_urlparse`,
+  `normalize_url` guard).
+- `src/legal_sourcing/parsers/martindale.py`,
+  `src/legal_sourcing/parsers/findlaw.py` (scraped-href urlparse
+  calls use `safe_urlparse`).
+- `src/legal_sourcing/pipelines/scrape_az_bar.py` (`run_load`,
+  `_process_and_upsert`).
+- Tests: `tests/test_normalize_url.py`
+  (`test_normalize_url_never_raises_on_malformed`).

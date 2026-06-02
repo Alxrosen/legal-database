@@ -216,6 +216,35 @@ them in `normalize_record` so they match Martindale's "Phoenix".
   for last_page + `a.fl-pagination-button[rel="next"]` for next.
   Page size is 40 (not 20 as the doc speculated).
 
+### Python 3.14 — urlparse is strict
+
+`urllib.parse.urlparse` raises `ValueError("Invalid IPv6 URL")` on
+malformed URLs (stray `[`, broken IPv6 literals) on Python 3.14,
+where older Pythons were lenient. Scraped URLs are full of junk, so
+**never call `urlparse` on scraped data without guarding it**. Use
+`legal_sourcing.normalize.url.safe_urlparse` (returns `None` instead
+of raising). `normalize_url` already wraps it.
+
+This bug killed a full AZ Bar overnight sweep: it fetched all 35,864
+detail pages, then crashed in the normalize phase on one attorney's
+malformed `FirmURL`, losing the whole run's DB write. Hence the
+`load` mode below.
+
+### `load` mode — recover a fetch without re-scraping
+
+The scrape pipelines fetch THEN parse/normalize/upsert in one process.
+If they crash in the parse/normalize tail, the fetched raw files are
+intact on disk. `scrape_az_bar load [--date YYYY-MM-DD]` re-runs just
+the parse -> normalize -> aggregate -> upsert tail against
+`data/raw/az_bar/{date}/detail/*.json.gz` with NO network. Use it to
+recover from a late crash. **Only AZ Bar has `load` so far** —
+Martindale and FindLaw need the same treatment before their full
+sweeps are crash-safe.
+
+Lesson for unattended runs: don't chain sources with `set -e` (one
+crash aborts everything downstream). Run each source as an
+independent, individually-logged step that continues past failures.
+
 ### Canonical apply step
 
 `resolution/apply.py` is the only writer of the `firms` and
@@ -272,8 +301,33 @@ log a warning but the fetch proceeds. Per-source override to
   status in {`auto_approved`, `approved`}, union-finds clusters,
   creates one Firm per cluster plus links. Idempotent (clears and
   rebuilds canonical tables each run).
-- 192 passing tests.
+- 197 passing tests.
 - AGENTS.md and DEVELOPER.md committed and pushed.
+
+### DB state at last checkpoint (2026-06-01/02)
+
+- **28,171 AZ Bar firms** loaded (full directory: 35,862 attorneys
+  aggregated). Recovered via `scrape_az_bar load` after the Py 3.14
+  crash described above.
+- Martindale + FindLaw NOT yet in the DB at full scale — only raw
+  files from earlier pilots are on disk (`data/raw/martindale/`,
+  `data/raw/findlaw/`). The DB was cleared before the full-sweep
+  attempt, and only AZ Bar made it back in.
+- `firms` / `match_review_queue` are EMPTY at this checkpoint (the
+  DB was cleared; only the AZ Bar source-record load has run since).
+  Re-run `resolution.run resolve` + `resolution.apply` after the
+  remaining sources are scraped.
+
+### Next-run playbook
+
+1. Scrape the missing sources (fixed code, won't hit the urlparse
+   bug): `scrape_martindale pilot --max-pages-per-city 0`,
+   then `scrape_martindale enrich`, then
+   `scrape_findlaw pilot --max-pages-per-combo 20`.
+2. `resolution.run resolve` then `resolution.apply`.
+3. Consider building `load` mode for Martindale + FindLaw and a
+   resilient per-source overnight runner first, so a crash can't
+   waste a fetch again.
 
 ## What's intentionally NOT done
 
