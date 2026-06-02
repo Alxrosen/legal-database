@@ -59,15 +59,19 @@ class MartindaleScraper(BaseScraper):
     SOURCE_NAME = "martindale"
     BASE_URL = "https://www.martindale.com"
 
-    # Relaxed from the doc's 0.5 RPS pilot rate. Martindale sits behind
-    # Cloudflare so we still treat it as the most-sensitive source —
-    # but recon completed cleanly at 0.5 RPS so we step up. New
-    # target 1.0 RPS, ramp 0.5 -> 1.0 over 30s, 3 workers, burst 3.
-    # First sign of 429/503/interstitial: stop and revisit.
-    RATE_LIMIT_RPS = 1.0
-    INITIAL_RATE_LIMIT_RPS = 0.5
+    # Polite rate for the sustained national sweep. A first national
+    # `full` run at 1.0 RPS / burst 3 drew ~11% HTTP 429s on deep
+    # single-city pagination (e.g. birmingham pages 8-11) — every one
+    # recovered via backoff, but sustained throttling on a Cloudflare-
+    # fronted source risks escalation to a fatal 403/interstitial.
+    # Backed down to the rate recon ran clean at: 0.5 RPS sustained,
+    # NO burst (burst 1), gentle 0.33 -> 0.5 ramp over 30s. Ramp back up
+    # only after a long clean stretch. First 429/503/interstitial:
+    # stop and revisit.
+    RATE_LIMIT_RPS = 0.5
+    INITIAL_RATE_LIMIT_RPS = 0.33
     RATE_RAMP_SECONDS = 30.0
-    BURST_CAPACITY = 3.0
+    BURST_CAPACITY = 1.0
     WORKERS = 3
 
     ROBOTS_POLICY = "warn"  # project default; deny list below is the real gate
