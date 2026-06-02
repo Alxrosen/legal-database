@@ -680,3 +680,52 @@ before those sources get full unattended sweeps.
   `_process_and_upsert`).
 - Tests: `tests/test_normalize_url.py`
   (`test_normalize_url_never_raises_on_malformed`).
+
+---
+
+## 2026-06-02 — national `full` scrape: city-grain commit + resumable checkpoint
+
+**Assumption.** Martindale and FindLaw national sweeps run in a `full`
+mode whose DURABLE UNIT IS ONE CITY. For each state we discover city
+slugs from the source's state index page (not a hard-coded city list),
+then per city we fetch → parse → normalize → aggregate → upsert and
+**commit inside that city's own Session**. Each completed city is
+recorded in `data/processed/{source}_full_progress.json`; re-running
+the same `full` command skips checkpointed cities, so a multi-day run
+survives crashes / Ctrl-C / reboot. National scope = 50 states + DC
+(`legal_sourcing.geo.US_STATE_SLUGS`); `--states` narrows it.
+
+**Why.** A national run is multi-day at polite rates and cannot rely
+on the process (or an agent session) staying alive. The AZ Bar crash
+proved end-of-run upserts lose everything to one bad record;
+committing per city bounds the blast radius to a single city and makes
+the run idempotently resumable. FindLaw must aggregate the WHOLE city
+across practice areas before upserting because
+`upsert_firm_source_records` OVERWRITES `practice_areas_*` (does not
+union) — the city grain preserves the per-firm practice-area union.
+
+Secondary decisions baked in:
+- `full` does the city sweep only; Martindale firm-profile enrichment
+  stays in the separate, already-resumable `enrich` mode (folding it
+  in would add one fetch per unique firm → hundreds of thousands more
+  requests nationally).
+- FindLaw discovery drops `all-cities` and `*-county` links (nav /
+  aggregation pages that re-list city firms; de-dupe handles overlap).
+- Martindale state pages spill the whole metro (DC lists MD/VA towns).
+  Harmless (idempotent on name+street), just some redundant fetches.
+
+**Trigger to revisit.** If cross-state metro spillover doubles the
+fetch budget unacceptably, dedupe the city universe globally before
+sweeping. If a source starts rate-limiting the per-state discovery
+fan-out (FindLaw fetches one state-index page per practice area), cache
+discovery harder or discover from a single broad practice area.
+
+**Enforced where.**
+- `src/legal_sourcing/geo.py` (`US_STATE_SLUGS`, `parse_states_arg`).
+- `src/legal_sourcing/pipelines/_checkpoint.py` (`Checkpoint`).
+- `src/legal_sourcing/pipelines/scrape_martindale.py`
+  (`extract_city_slugs`, `discover_state_cities`, `run_full`,
+  `run_load`).
+- `src/legal_sourcing/pipelines/scrape_findlaw.py`
+  (`extract_city_slugs`, `discover_state`, `run_full`, `run_load`).
+- Tests: `tests/test_full_scrape_support.py`.

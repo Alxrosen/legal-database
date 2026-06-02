@@ -114,6 +114,20 @@ uv run python -m legal_sourcing.pipelines.scrape_martindale enrich
 uv run python -m legal_sourcing.pipelines.scrape_findlaw pilot \
     --max-pages-per-combo 5
 
+# NATIONAL full sweep (state->city discovery, per-city commit,
+# resumable via a checkpoint file under data/processed/). Re-running
+# the SAME command resumes; --no-resume re-processes everything.
+# --states defaults to "all" (50 + DC); pass a comma list to scope it.
+uv run python -m legal_sourcing.pipelines.scrape_martindale full \
+    --states all --max-pages-per-city 0     # 0 = no page cap
+uv run python -m legal_sourcing.pipelines.scrape_martindale enrich  # after full
+uv run python -m legal_sourcing.pipelines.scrape_findlaw full \
+    --states all --max-pages-per-combo 0
+
+# Recover a crashed/interrupted full run from disk (NO network):
+uv run python -m legal_sourcing.pipelines.scrape_martindale load [--date YYYY-MM-DD]
+uv run python -m legal_sourcing.pipelines.scrape_findlaw  load [--date YYYY-MM-DD]
+
 # Entity resolution — populate MatchReviewQueue
 uv run python -m legal_sourcing.resolution.run resolve \
     --auto-merge 85 --review 60 --store-min 40
@@ -179,6 +193,19 @@ them in `normalize_record` so they match Martindale's "Phoenix".
   of declared total. Phoenix declares 17,522 but `data-max=167`.
   Mega-cities need filtered queries to access more than ~5K
   attorneys via this route.
+- **Martindale state pages list the whole METRO, not just in-state
+  cities.** `/by-location/district-of-columbia-lawyers/` returns
+  ~180 city slugs including MD/VA suburbs (`aberdeen-proving-ground`,
+  etc.). Harmless — those cities also appear under their own states
+  and the upsert is idempotent on `(name, street)` — but it means a
+  national `full` run re-fetches some cities under multiple states.
+  Wasteful, not wrong.
+- **`scrape_martindale full` does NOT fetch firm profiles.** It does
+  the city sweep + card-level upsert only. Firm-profile enrichment
+  (website fallback, descriptions, year founded, headcount) is the
+  separate `enrich` mode — run it AFTER `full`. Folding profiles into
+  `full` would add one fetch per unique firm and balloon a national
+  run by hundreds of thousands of requests.
 - **Martindale "Office Size"** is firm headcount, NOT number of
   offices. Parser nulls `office_count` when "Office Size" is
   within ~25% of `people_count` (almost always — they're the same
@@ -232,18 +259,28 @@ malformed `FirmURL`, losing the whole run's DB write. Hence the
 
 ### `load` mode — recover a fetch without re-scraping
 
-The scrape pipelines fetch THEN parse/normalize/upsert in one process.
-If they crash in the parse/normalize tail, the fetched raw files are
-intact on disk. `scrape_az_bar load [--date YYYY-MM-DD]` re-runs just
-the parse -> normalize -> aggregate -> upsert tail against
-`data/raw/az_bar/{date}/detail/*.json.gz` with NO network. Use it to
-recover from a late crash. **Only AZ Bar has `load` so far** —
-Martindale and FindLaw need the same treatment before their full
-sweeps are crash-safe.
+All three sources now have `load`. `scrape_az_bar load` re-parses
+`data/raw/az_bar/{date}/detail/*.json.gz`; `scrape_martindale load`
+and `scrape_findlaw load` re-parse the `city/...` page tree, grouped
+back into per-city units (the same durable grain the live `full` run
+commits). All three run parse -> normalize -> aggregate -> upsert with
+NO network. Use them to recover from a late crash.
+
+**`full` mode is now incremental + resumable, which is the primary
+crash-safety mechanism** (load is the fallback). `full` commits one
+city at a time inside its own Session and records each completed city
+in a checkpoint file under `data/processed/{source}_full_progress.json`.
+A crash, Ctrl-C, or reboot loses at most one city; re-running the same
+`full` command skips everything already in the checkpoint. This is why
+a days-long national run survives interruption without re-fetching.
 
 Lesson for unattended runs: don't chain sources with `set -e` (one
 crash aborts everything downstream). Run each source as an
 independent, individually-logged step that continues past failures.
+The two sources write to the SAME `{source}_full_progress.json`-style
+files but DIFFERENT names, so Martindale and FindLaw `full` can run
+concurrently; do NOT run two `full` passes for the SAME source at once
+(they'd race the one checkpoint file).
 
 ### Canonical apply step
 
@@ -320,14 +357,18 @@ log a warning but the fetch proceeds. Per-source override to
 
 ### Next-run playbook
 
-1. Scrape the missing sources (fixed code, won't hit the urlparse
-   bug): `scrape_martindale pilot --max-pages-per-city 0`,
+1. National scrape of the missing sources (resumable, per-city commit;
+   re-run the same command to resume after any interruption):
+   `scrape_martindale full --states all --max-pages-per-city 0`,
    then `scrape_martindale enrich`, then
-   `scrape_findlaw pilot --max-pages-per-combo 20`.
+   `scrape_findlaw full --states all --max-pages-per-combo 0`.
+   Martindale + FindLaw `full` can run concurrently (different hosts,
+   different checkpoint files). A national run is MULTI-DAY at the
+   polite rates — that's expected; the checkpoint makes it safe to
+   stop/restart.
 2. `resolution.run resolve` then `resolution.apply`.
-3. Consider building `load` mode for Martindale + FindLaw and a
-   resilient per-source overnight runner first, so a crash can't
-   waste a fetch again.
+3. If a `full` run dies in the parse tail, `scrape_<source> load`
+   recovers from disk.
 
 ## What's intentionally NOT done
 
