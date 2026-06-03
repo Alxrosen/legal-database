@@ -29,6 +29,45 @@ URL_RE = re.compile(
 )
 RECAPTCHA_RE = re.compile(r"recaptcha|g-recaptcha|grecaptcha|hcaptcha", re.I)
 
+# Association-management / CMS platform fingerprints. The hypothesis is that
+# state bars run on a handful of shared platforms, so the right abstraction is
+# ONE extractor per platform, not per state. A page can match several; we
+# report all. Markers are matched case-insensitively in the page HTML.
+PLATFORM_FINGERPRINTS: dict[str, tuple[str, ...]] = {
+    "HigherLogic-Community": (
+        "higherlogic",
+        "connectedcommunity",
+        "informz",
+        "/network/members",
+        "communities/community-home",
+        "imis-",
+    ),
+    "iMIS-eWeb": ("/eweb/", "dynamicpage.aspx", "asicommon", "asi_", "imisform"),
+    "Personify": ("personifyebusiness", "personify", "usr_id="),
+    "Memberize-cv5": ("cv5/cgi-bin", "utilities.dll", "memberdll.dll", "vieth"),
+    "ReliaGuide": ("reliaguide",),
+    "Salesforce": ("force.com", "/s/sfsites", "lightning/", "aura_"),
+    "Pega/Incapsula": ("prweb", "pega", "_incapsula_", "incident id"),
+    "OracleAPEX": ("/ords/", "apex_", "wwv_flow"),
+    "Sitefinity": ("sitefinity", "telerik"),
+    "SharePoint": ("_layouts/", "sharepoint", "msocontent"),
+    "ColdFusion": (".cfm", "cfid=", "cftoken="),
+    "WordPress": ("wp-content", "wp-json", "wp-includes"),
+    "Drupal": ("/sites/default/files", "drupal-settings-json", "drupal.js"),
+    "Wix": ("wix.com", "wixstatic"),
+    "Squarespace": ("squarespace",),
+    "ASP.NET-WebForms": ("__viewstate", "__eventvalidation"),
+}
+
+
+def detect_platforms(html: bytes) -> list[str]:
+    low = html[:300000].decode("utf-8", "ignore").lower()
+    hits = []
+    for plat, markers in PLATFORM_FINGERPRINTS.items():
+        if any(m in low for m in markers):
+            hits.append(plat)
+    return hits
+
 
 def dump(abbr: str, html: bytes) -> None:
     tree = HTMLParser(html)
@@ -83,6 +122,11 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--only", type=str, default=None)
     ap.add_argument("--date", type=str, default=date.today().isoformat())
+    ap.add_argument(
+        "--platforms",
+        action="store_true",
+        help="fingerprint the AMS/CMS platform per state + a summary, instead of dumping forms",
+    )
     args = ap.parse_args()
 
     recon_dir = ROOT / "data" / "raw" / "state_bars" / args.date / "recon"
@@ -90,6 +134,23 @@ def main() -> int:
     if args.only:
         wanted = {s.strip().lower() for s in args.only.split(",")}
         files = [f for f in files if f.name.split(".")[0] in wanted]
+
+    if args.platforms:
+        from collections import Counter
+
+        summary: Counter[str] = Counter()
+        print(f"== platform fingerprints ({len(files)} states) ==")
+        for f in files:
+            abbr = f.name.split(".")[0]
+            plats = detect_platforms(gzip.decompress(f.read_bytes()))
+            for p in plats:
+                summary[p] += 1
+            print(f"  {abbr:3s} {', '.join(plats) or '(none detected)'}")
+        print("\n== platform summary (states per platform) ==")
+        for plat, n in summary.most_common():
+            print(f"  {n:2d}  {plat}")
+        return 0
+
     for f in files:
         abbr = f.name.split(".")[0]
         dump(abbr, gzip.decompress(f.read_bytes()))
