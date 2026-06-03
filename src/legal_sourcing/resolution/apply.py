@@ -47,6 +47,7 @@ from legal_sourcing.models import (
     FirmSourceRecordLink,
     MatchReviewQueue,
 )
+from legal_sourcing.normalize.name import looks_like_firm
 from legal_sourcing.utils.logging import configure_logging, get_logger
 
 log = get_logger(__name__)
@@ -141,40 +142,10 @@ def _pick(
     return None, None, None
 
 
-# Firm-name markers — used to tell a person-level record (FindLaw lists
-# some individual attorneys as "firm" cards, e.g. Morgan & Morgan) from a
-# real firm name when counting attorneys from records that have no contacts.
-_FIRM_NAME_MARKERS: tuple[str, ...] = (
-    " llp",
-    " lllp",
-    " llc",
-    " pllc",
-    " pc",
-    " p.c",
-    " pa",
-    " p.a",
-    " plc",
-    " ltd",
-    " inc",
-    " corp",
-    "law ",
-    " law",
-    "firm",
-    "group",
-    "associates",
-    "attorneys",
-    "offices",
-    " & ",
-    "counsel",
-    "partners",
-)
-
-
-def _looks_like_firm(name: str | None) -> bool:
-    if not name:
-        return False
-    low = f" {name.strip().lower()} "
-    return any(m in low for m in _FIRM_NAME_MARKERS)
+# Firm-vs-person detection lives in normalize.name (shared with the state-bar
+# parser, whose firm field may also hold a person's name). Aliased here for the
+# existing call sites / tests.
+_looks_like_firm = looks_like_firm
 
 
 def _attorney_identity(contact: dict[str, Any], source: str) -> str | None:

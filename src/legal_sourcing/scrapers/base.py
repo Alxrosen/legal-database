@@ -208,6 +208,8 @@ class BaseScraper:
         *,
         method: str = "GET",
         json_body: dict | None = None,
+        data: dict | None = None,
+        params: dict | None = None,
         bucket: str | None = None,
         filename: str | None = None,
     ) -> Path | None:
@@ -222,6 +224,11 @@ class BaseScraper:
             example, requires POST with query params.
         json_body
             JSON body for POST/PUT/PATCH. Ignored for GET.
+        data
+            Form-encoded body (application/x-www-form-urlencoded) for
+            POST. Used by HTML form endpoints (e.g. state-bar searches).
+        params
+            Query-string params, appended to the URL for any method.
         bucket
             Optional subdirectory under the date partition. Useful when
             a single source has structurally distinct payload classes
@@ -242,6 +249,8 @@ class BaseScraper:
             target_dir,
             method=method,
             json_body=json_body,
+            data=data,
+            params=params,
             filename=filename,
         )
 
@@ -263,6 +272,8 @@ class BaseScraper:
         *,
         method: str = "GET",
         json_body: dict | None = None,
+        data: dict | None = None,
+        params: dict | None = None,
         filename: str | None = None,
     ) -> Path | None:
         if self.ROBOTS_POLICY != "ignore" and not self._robots_allows(url):
@@ -277,7 +288,9 @@ class BaseScraper:
                 note="proceeding despite robots disallow",
             )
 
-        response = self._fetch_with_retries(url, method=method, json_body=json_body)
+        response = self._fetch_with_retries(
+            url, method=method, json_body=json_body, data=data, params=params
+        )
         path = self._store_payload(url, response, target_dir, filename=filename)
         log.debug(
             "scrape.fetched",
@@ -295,12 +308,16 @@ class BaseScraper:
         *,
         method: str = "GET",
         json_body: dict | None = None,
+        data: dict | None = None,
+        params: dict | None = None,
     ) -> httpx.Response:
         last_exc: Exception | None = None
         for attempt in range(1, self.MAX_RETRIES + 2):  # initial + retries
             self._rate_limiter.acquire()
             try:
-                response = self._client.request(method, url, json=json_body)
+                response = self._client.request(
+                    method, url, json=json_body, data=data, params=params
+                )
             except (httpx.TransportError, httpx.TimeoutException) as exc:
                 last_exc = exc
                 wait = self._compute_backoff(attempt, retry_after=None)

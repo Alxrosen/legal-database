@@ -103,3 +103,48 @@ def normalize_firm_name(name: str | None) -> NormalizedName | None:
 
     normalized = collapse_whitespace(" ".join(tokens))
     return NormalizedName(raw=name, normalized=normalized, suffix=suffix)
+
+
+# Substrings that mark a string as a FIRM/organization name rather than a
+# person's name. Used to tell a real firm from a person when a source field
+# (e.g. a state-bar mailing-address line, or a FindLaw person-card) might hold
+# either. Matched against the lower-cased name padded with spaces so " law "
+# matches "Smith Law" but not "Lawson". Extend as new variants appear.
+FIRM_NAME_MARKERS: tuple[str, ...] = (
+    " llp",
+    " lllp",
+    " llc",
+    " pllc",
+    " pc",
+    " p.c",
+    " pa",
+    " p.a",
+    " plc",
+    " ltd",
+    " inc",
+    " corp",
+    "law ",
+    " law",
+    "firm",
+    "group",
+    "associates",
+    "attorneys",
+    "offices",
+    " & ",
+    "counsel",
+    "partners",
+)
+
+
+def looks_like_firm(name: str | None) -> bool:
+    """Heuristic: does `name` look like a firm/organization (vs a person)?
+
+    True when any firm marker (entity suffix, "law", "& ", "group", etc.)
+    appears in the padded, lower-cased name. Used by the canonical-apply
+    attorney count and by sources whose firm field may actually hold a
+    person's name (state bars, FindLaw person-cards).
+    """
+    if not name:
+        return False
+    low = f" {name.strip().lower()} "
+    return any(m in low for m in FIRM_NAME_MARKERS)
