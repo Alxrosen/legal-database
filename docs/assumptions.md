@@ -969,3 +969,97 @@ data-ready canonical draft, so the website TOP tier is included rather
 than retrofitted):** `apply.py` precedence tiers + distinct-attorney
 count + phone-union; `blocking.py` toll-free lead-gen guard; likely a
 `firms.phones` JSON column (the union list) + migration.
+
+---
+
+## 2026-06-03 — canonical resolution = ITERATIVE TRUTH DISCOVERY (idiomatic; REVISED, CONFIRMED by Alex)
+
+**REVISION.** This supersedes an earlier same-day note that mandated a
+*deterministic* argmax-by-fixed-confidence. Alex relaxed the determinism
+requirement in favor of the idiomatic method: *"Resolution does not have to be
+deterministic, please follow the idiomatic option... do research and, if there
+is a clear idiomatic way of doing things, suggest that first."* Plus: *use the
+time it was fetched when computing the confidence score, iteratively.*
+
+**Assumption.** Cross-source scalar conflicts (firm name, description, year,
+attorney_count) are resolved by **iterative truth discovery / data fusion**
+(TruthFinder / EM-style), which JOINTLY estimates per-(firm, field) truth and
+per-**source reliability** `r_s` — rather than a hand-fixed tier order.
+
+1. Each cluster member contributes claims `(field, value, source, fetched_at)`.
+2. `r_s ∈ (0,1)` initialized from priors (website 0.90 · Martindale-enriched
+   0.75 · FindLaw / Martindale-card 0.50 · state bars 0.40 · Justia 0.35); the
+   website's per-method quality (stated > profile-links > solo > heading-roles)
+   scales its claim weight.
+3. **Iterate to convergence:** *truth step* — per (firm, field) truth = argmax
+   over values of `Σ_{sources asserting it} r_s · recency(fetched_at)`;
+   *reliability step* — re-estimate `r_s` from agreement with the current truths.
+4. **recency(fetched_at) = exp(-λ·age)** down-weights stale fetches (the
+   temporal / "evolving truth" variant) — so a fresh scrape with new info can
+   move the truth and an old fetch decays.
+5. **Union FIRST for multi-valued fields** (phones, offices, practice areas,
+   notable signals): every source contributes regardless of `r_s`; each element
+   keeps its support weight as confidence. The distinct-attorney count is the
+   UNION of all sources' attorneys (low-reliability sources still add attorneys).
+
+**NOT deterministic across data changes (intentional, CONFIRMED).** Adding
+sources/firms re-estimates `r_s` globally, so a re-run can shift records as the
+system *learns* which sources to trust — that is the point of truth discovery,
+and it lets recency matter. (Within one run with fixed init it is reproducible.)
+The earlier "must be deterministic / no fetch-time" constraint was **dropped**.
+
+**Representation.** Per-field truth + confidence (normalized winning weight)
+recorded in `firms.field_provenance` JSON; learned `r_s` persisted for audit.
+Confidence/`r_s` derived at apply-time from stored signals + `fetched_at` — no
+new schema column needed.
+
+**Trigger to revisit.** If global re-estimation churns canonical records too
+much between runs, freeze `r_s` (compute once, snapshot) for stability; if
+clusters are mostly 1–2 sources (little to fuse), a single reliability-weighted
+vote (one iteration) suffices.
+
+**Enforced where (to build at canonical-apply time):** `resolution/apply.py`
+(the truth-discovery fusion replaces the per-field `_pick`); `field_provenance`
+carries truth + confidence; `r_s` persisted. The website pilot only needs to
+CAPTURE claims (value + source + extraction method + `fetched_at`). Refs:
+docs/data_sources/firm_websites.md §12; arxiv.org/abs/1503.00310 (Dong &
+Srivastava, *Data Fusion*); TruthFinder; incremental/evolving-truth discovery.
+
+---
+
+## 2026-06-03 — concurrent-scrape durability: fetch-to-disk + in-memory buffer + bulk upsert
+
+**Assumption.** Multiple scrapers (Martindale full, the website enricher, future
+state bars) run concurrently against the one SQLite DB without slow-lock /
+"database is locked" failures AND without losing hours on a crash, via three
+rules:
+
+1. **Raw bytes hit DISK immediately, per fetch** (gzipped under `data/raw/...`).
+   This is the expensive, network-bound artifact and the no-re-scrape backstop;
+   a crash loses at most the one in-flight page.
+2. **Extracted rows buffer IN MEMORY, then bulk-upsert periodically** (~50 rows
+   or ~60s) via SQLite `INSERT … ON CONFLICT DO UPDATE`. Bulk commits minimize
+   write-lock acquisitions so concurrent scrapers interleave cleanly. A crash
+   loses only the un-flushed extracted rows — recoverable by `load` mode
+   (re-parse from the on-disk raw, NO re-fetch), so minutes of cheap re-extract,
+   never hours of re-fetch.
+3. **One DB writer per process.** Worker threads only fetch + extract and hand
+   results back; a single committer does all writes. Concurrent *writers* stay
+   at ~2 (Martindale + enricher) — comfortable for WAL — regardless of fetch
+   worker count.
+
+This is on top of the existing **WAL mode + 30s busy-timeout + commit-retry**
+(rollback + re-apply, 6× backoff) in `upsert_firm_source_records`.
+
+**Why in-memory (not a disk spool) for the buffer.** Alex suggested a temp
+store "ideally not disk." The in-memory buffer is safe *precisely because* the
+raw bytes are already on disk: the buffer only holds cheap-to-recompute
+extracted rows. A disk spool would be needed only if we did NOT persist raw.
+
+**Trigger to revisit.** Migrate to Postgres (then real concurrent writers +
+`COPY`/upsert remove the single-writer constraint), or a single process needs
+multiple writer threads (then a queue + one committer thread, same idea).
+
+**Enforced where.** `pipelines/enrich_websites.py` (buffer + bulk
+`on_conflict_do_update`); `scrapers/base.py` (raw-to-disk per fetch);
+`pipelines/scrape_az_bar.upsert_firm_source_records` (WAL + retry).
