@@ -519,3 +519,58 @@ final fallback (solos). Cache `domain -> discovered pages`.
 - Platform mix (this sample): WordPress-heavy, then Squarespace / custom
   / Wix / Scorpion / Webflow. No single template -> the general cascade
   beats per-template parsers; use platform only as a hint.
+
+---
+
+## 13. Build + pilot results (AGENT-VALIDATED 2026-06-03)
+
+Built the enrichment as `enrichment/website_extract.py` (pure cascade),
+`website_enrichment` table (keyed by normalized website),
+`scrapers/website.py` (`FirmWebsiteScraper`), and the producer/worker pipeline
+`pipelines/enrich_websites.py` (set-difference producer → thread-pool workers →
+single bulk-upsert committer; `pilot`/`run`/`load`). 27,252 distinct
+non-aggregator websites are in scope today (Justia + FindLaw + AZ Bar).
+
+### 13.1 Pilot vs. expected (known firms)
+Verified the cascade against firms whose answers we know:
+
+| Firm | attorneys | staff | offices | years | status | method |
+|---|---|---|---|---|---|---|
+| Goetzlaw.com | 40 | 600 | 4 | 25 | verified | stated (big-H2) |
+| bipc.com | 475 | – | **– (miss)** | 175 | verified | stated (prose) |
+| martinbonnett.com | 6 | – | – | 32 | verified | heading_roles |
+| teplg.com | 3 | 4 | 1 | 16 | verified | heading_roles |
+| lanceentrekin.com | 1 | – | 1 | 25 | verified | solo |
+| swissbiologic.com | – | – | – | – | not_a_law_firm | (gated out) |
+
+Goetz/BIPC/TEPLG/Entrekin all match reality after the fixes below.
+
+### 13.2 Edge cases the pilot surfaced (and fixes)
+- **Sparse home → false `not_a_law_firm`.** TEPLG's Wix home carried only 1
+  legal token; the team page is clearly a firm. FIX: run the relevance gate
+  over **all** fetched pages (OR), not the home alone.
+- **Solo over-counted.** Discovery followed Entrekin's practice-area pages
+  (`/phoenix-car-accident-attorney`) and `_heading_roles` counted each page
+  *title* as a person → 3. FIX: `_heading_roles` only counts headings that look
+  like a **person name** (2–4 capitalized tokens, no role/practice/marketing
+  words), so page titles don't inflate the count (Entrekin → 1 solo).
+- **Load failures.** 15s timeout + 1 retry + https→http fallback; a dead/parked
+  domain is recorded `unreachable` and the worker moves on (never hangs).
+- **Multi-subpage rosters** (Martin & Bonnett): headcount UNIONS profile-links
+  and SUMS heading-roles across all discovered attorney sub-pages.
+
+### 13.3 Known remaining gaps (tuning, not blockers)
+- **BIPC offices missed.** "16 offices" lives on its non-obvious about page
+  (`/about-buchanan`) / an offices page we didn't reach; office_count came back
+  null. Office count is secondary to headcount; revisit discovery for
+  non-obvious about URLs if office coverage matters.
+- **`heading_roles` on big-firm SPAs** can still under/over-count; those are
+  `needs_render` candidates (deferred headless pass).
+- Discovery occasionally follows a vanity/news link whose text contains
+  "attorneys" — harmless (extra page fetch), tighten `_SKIP_PATH` if noisy.
+
+### 13.4 Verdict
+The general cascade + producer/worker + bulk-upsert architecture is validated
+on real firms. Ready for a full background `run` over the 27k sites (its own
+checkpoint via `enriched_at`); the LLM description layer is the remaining
+increment (needs `ANTHROPIC_API_KEY`).
