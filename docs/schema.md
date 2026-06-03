@@ -193,6 +193,29 @@ outcome:
   order so each unordered pair appears once (check constraint
   `a_id < b_id`).
 
+### `website_enrichment` — one row per unique firm website
+
+Firm-website content enrichment, keyed by the **normalized (bare-domain)
+website** — NOT a per-`firm_source_record` column. A website maps to many
+source records (and eventually one canonical firm), so we crawl + extract each
+unique site once and reference it many times. Re-runs are a set-difference:
+enrich the distinct `firm_source_records.website_normalized` absent here or
+whose `enriched_at` is stale (`enriched_at IS NULL` = never enriched / failed).
+Separate from Martindale *profile* enrichment (`FirmSourceRecord.enrichment_status`).
+
+Key columns: `website` (unique key), `platform`, `is_law_related` +
+`relevance_terms`, the headcount block (`attorney_count_min`,
+`attorney_count_is_min`, `_method`, `_confidence`, `_raw`), `staff_count_min`,
+`office_count` + `office_addresses` (JSON), `years_in_operation_min`,
+`scope`, `notable_signals` (JSON), `phones` (JSON), `description_blurb` (raw) +
+`description_generated` (LLM/template, later), `url_verification_status`
+(`verified`/`legal_but_mismatched`/`not_a_law_firm`/`unreachable`),
+`needs_render` (thin/JS page deferred to a future headless pass), and
+`fetched_at` / `enriched_at` timestamps. Populated by
+`enrichment/website_extract.py` (the extraction cascade) via the
+producer/worker pipeline `pipelines/enrich_websites.py`. See
+`docs/data_sources/firm_websites.md` §12 and `docs/assumptions.md` 2026-06-02.
+
 ## Why these shapes (short version)
 
 - **Firm-level source-record grain** — chosen up front for simplicity.

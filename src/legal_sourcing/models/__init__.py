@@ -16,6 +16,7 @@ from legal_sourcing.models.practice_area import (
 )
 from legal_sourcing.models.review import MatchReviewQueue
 from legal_sourcing.models.source_record import FirmSourceRecord
+from legal_sourcing.models.website_enrichment import WebsiteEnrichment
 
 __all__ = [
     "Base",
@@ -31,4 +32,5 @@ __all__ = [
     "PracticeAreaAlias",
     "TimestampMixin",
     "UnmatchedPracticeArea",
+    "WebsiteEnrichment",
 ]
