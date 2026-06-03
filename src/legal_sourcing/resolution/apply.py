@@ -59,8 +59,13 @@ log = get_logger(__name__)
 DEFAULT_SOURCE_PRIORITY: tuple[str, ...] = (
     "martindale",  # richest enrichment; clean firm names
     "findlaw",  # firm-level cards, real website URLs
-    "az_bar",  # individual attorneys; firm fields often sparse
+    "az_bar",  # state bar: individual attorneys; firm fields sparse
+    "justia",  # bottom: no firm name on listings; mainly a website source
 )
+# NOTE (docs/assumptions.md 2026-06-02): once website enrichment lands it
+# becomes the TOP tier for the fields it owns (attorney_count, description),
+# and `name` needs a FIELD override to keep FindLaw person-names / empty
+# Justia names from winning. Not yet wired (website_enrichment table TBD).
 
 # Per-field overrides on the default priority. Empty for now —
 # defaults work for the current source mix. Add entries when a
@@ -136,14 +141,94 @@ def _pick(
     return None, None, None
 
 
-def _aggregate_attorney_count(members: list[FirmSourceRecord]) -> int | None:
-    """Use MAX across sources — FindLaw cards have 0 (firm-level
-    cards have no attorneys), Martindale has firm-wide headcount,
-    AZ Bar contributes 1 per attorney. The max is the best signal
-    we have without a true cross-source attorney unique-ID.
+# Firm-name markers — used to tell a person-level record (FindLaw lists
+# some individual attorneys as "firm" cards, e.g. Morgan & Morgan) from a
+# real firm name when counting attorneys from records that have no contacts.
+_FIRM_NAME_MARKERS: tuple[str, ...] = (
+    " llp",
+    " lllp",
+    " llc",
+    " pllc",
+    " pc",
+    " p.c",
+    " pa",
+    " p.a",
+    " plc",
+    " ltd",
+    " inc",
+    " corp",
+    "law ",
+    " law",
+    "firm",
+    "group",
+    "associates",
+    "attorneys",
+    "offices",
+    " & ",
+    "counsel",
+    "partners",
+)
+
+
+def _looks_like_firm(name: str | None) -> bool:
+    if not name:
+        return False
+    low = f" {name.strip().lower()} "
+    return any(m in low for m in _FIRM_NAME_MARKERS)
+
+
+def _attorney_identity(contact: dict[str, Any], source: str) -> str | None:
+    """Dedup key for one attorney: email (globally unique) -> normalized
+    name (the cross-source workhorse) -> source-scoped bar/profile id
+    (only when there's no name). Cross-source dedup is name-based and
+    imperfect (no universal attorney ID); email upgrades it, id is a
+    fallback. See docs/assumptions.md 2026-06-02.
     """
-    vals = [m.attorney_count for m in members if m.attorney_count]
-    return max(vals) if vals else None
+    email = (contact.get("email_normalized") or contact.get("email_raw") or "").strip().lower()
+    if email:
+        return f"email:{email}"
+    name = (contact.get("name_normalized") or contact.get("name_raw") or "").strip().lower()
+    if name:
+        return f"name:{name}"
+    cid = (
+        contact.get("entity_number")
+        or contact.get("bar_number")
+        or contact.get("source_attorney_id")
+    )
+    if cid:
+        return f"id:{source}:{cid}"
+    return None
+
+
+def _aggregate_attorney_count(members: list[FirmSourceRecord]) -> int | None:
+    """Count DISTINCT attorneys across the cluster (NOT MAX).
+
+    Each directory record carries its attorney(s) in `contacts`
+    (az_bar / justia / martindale); FindLaw lists some individual
+    attorneys as firm-level cards with empty `contacts` and the person
+    in `name_raw`. We union both, deduped by `_attorney_identity`, so
+    e.g. Kutak Rock's 104 records resolve toward the real headcount
+    instead of MAX=29.
+
+    When website enrichment exists, the website-stated count is
+    authoritative and overwrites this on the canonical Firm
+    (docs/assumptions.md). This is the no-website fallback.
+    """
+    ids: set[str] = set()
+    for m in members:
+        contacts = m.contacts or []
+        if contacts:
+            for c in contacts:
+                key = _attorney_identity(c, m.source)
+                if key:
+                    ids.add(key)
+        elif not _looks_like_firm(m.name_raw):
+            # Person-level record with no contacts (FindLaw per-attorney
+            # card): count the named individual as one attorney.
+            nm = (m.name_normalized or m.name_raw or "").strip().lower()
+            if nm:
+                ids.add(f"name:{nm}")
+    return len(ids) or None
 
 
 def _union_practice_areas(

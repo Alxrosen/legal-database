@@ -143,6 +143,13 @@ def normalize_url(raw: str | None) -> str | None:
     if host.startswith("www."):
         host = host[4:]
 
+    # Reject email addresses mistakenly stored as websites — AZ Bar's
+    # FirmURL field sometimes holds an email (e.g. "name@yahoo.com"),
+    # which would otherwise normalize to a shared domain and pollute the
+    # website match key. The "@" (userinfo) marks it as not a firm site.
+    if "@" in host:
+        return None
+
     # Reject obviously bogus values.
     if not host or "." not in host:
         return None

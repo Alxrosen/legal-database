@@ -47,3 +47,19 @@ def test_normalize_url_never_raises_on_malformed(raw):
 )
 def test_normalize_url(raw, expected):
     assert normalize_url(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        # AZ Bar FirmURL sometimes holds an email, not a website. These
+        # must not normalize to a shared domain (would pollute the
+        # website match key). See assumptions 2026-06-02.
+        "mcginnislawyer@yahoo.com",
+        "richmadril@yahoo.com",
+        "mailto:someone@firm.com",
+        "info@smithlaw.com",
+    ],
+)
+def test_normalize_url_rejects_emails(raw):
+    assert normalize_url(raw) is None
