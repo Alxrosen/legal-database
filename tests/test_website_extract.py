@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from legal_sourcing.enrichment.website_extract import (
     detect_platform,
+    discover_internal_pages,
     extract_headcount,
     extract_offices,
     extract_phones,
@@ -217,3 +218,37 @@ def test_extract_site_empty_is_unreachable():
     site = extract_site([], base_url="")
     assert site.url_verification_status == "unreachable"
     assert site.needs_render
+
+
+# --- page discovery + multi-subpage aggregation ---------------------------
+
+
+def test_discover_internal_pages():
+    home = (
+        "<html><body><nav>"
+        '<a href="/about-us">About Us</a>'
+        '<a href="/our-team">Our Team</a>'
+        '<a href="/attorneys">Our Attorneys</a>'
+        '<a href="/blog/post-1">Blog</a>'
+        '<a href="https://twitter.com/firm">Twitter</a>'
+        "</nav></body></html>"
+    )
+    pages = discover_internal_pages(home, "https://smithlaw.com")
+    assert "https://smithlaw.com/about-us" in pages["about"]
+    assert "https://smithlaw.com/our-team" in pages["team"]
+    assert "https://smithlaw.com/attorneys" in pages["attorneys"]
+    # blog + external links are excluded
+    flat = [u for urls in pages.values() for u in urls]
+    assert not any("/blog/" in u for u in flat)
+    assert not any("twitter.com" in u for u in flat)
+
+
+def test_headcount_aggregates_across_attorney_subpages():
+    # Martin & Bonnett case: roster split across Partners / Associates pages.
+    partners = '<html><body><a href="/attorneys/dan-bonnett">Dan</a><a href="/attorneys/susan-martin">Susan</a></body></html>'
+    associates = '<html><body><a href="/attorneys/jane-roe">Jane</a><a href="/attorneys/dan-bonnett">Dan (dup)</a></body></html>'
+    hc, _ = extract_headcount(
+        [("attorneys", partners), ("attorneys", associates)], base_url="https://mb.com"
+    )
+    assert hc.method == "profile_links"
+    assert hc.count == 3  # dan, susan, jane (dup collapses)

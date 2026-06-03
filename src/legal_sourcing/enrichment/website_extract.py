@@ -28,6 +28,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from urllib.parse import urljoin, urlparse
 
 from selectolax.parser import HTMLParser
 
@@ -290,27 +291,78 @@ def _stated_count(texts: list[str], pattern: re.Pattern[str]) -> tuple[int, bool
     return best
 
 
-def _profile_link_count(team_html: str | bytes, base_url: str) -> int:
+def _profile_link_slugs(team_html: str | bytes) -> set[str]:
+    """Distinct attorney-profile link slugs on a page (absolute or relative)."""
     tree = _tree(team_html)
     slugs: set[str] = set()
     for a in tree.css("a[href]"):
         href = a.attributes.get("href") or ""
-        # match on the href path portion (absolute or relative both work)
         if _PROFILE_LINK.search(href):
-            slugs.add(href.rstrip("/").lower())
-    return len(slugs)
+            slugs.add(href.split("#")[0].rstrip("/").lower())
+    return slugs
+
+
+# Substrings that mark a heading as a PAGE TITLE / section / practice area
+# rather than a person's name — so we don't count "Phoenix Car Accident
+# Attorney" or "Meet Our Attorneys" as people (the Entrekin over-count bug).
+_NOT_PERSON_HEADING: tuple[str, ...] = (
+    "accident",
+    "injury",
+    "practice",
+    " areas",
+    "areas of",
+    "welcome",
+    "contact",
+    "menu",
+    "review",
+    "verdict",
+    "result",
+    "service",
+    "faq",
+    "blog",
+    "news",
+    "testimonial",
+    "why ",
+    "meet ",
+    "our ",
+    "how ",
+    "what ",
+    "case ",
+    "free ",
+    "consultation",
+    "español",
+    "espanol",
+    "attorney",
+    "lawyer",
+    "counsel",
+)
+
+
+def _looks_like_person(name: str) -> bool:
+    """Heading plausibly NAMES a person (2-4 capitalized tokens), not a page
+    title / practice-area / section header."""
+    low = name.lower()
+    if any(bad in low for bad in _NOT_PERSON_HEADING):
+        return False
+    words = [w for w in name.replace(",", " ").split() if w]
+    if not (2 <= len(words) <= 4):
+        return False
+    alpha = [w for w in words if w[:1].isalpha()]
+    return bool(alpha) and all(w[0].isupper() for w in alpha)
 
 
 def _heading_roles(team_html: str | bytes) -> tuple[int, int]:
-    """Count attorney vs staff person-cards by heading + adjacent role text."""
+    """Count attorney vs staff person-cards: a person-NAME heading whose
+    adjacent text carries an attorney- or staff-role keyword."""
     tree = _tree(team_html)
     attorneys = 0
     staff = 0
     for h in tree.css("h2, h3, h4"):
         name = " ".join((h.text() or "").split())
-        if not name or len(name) > 60 or looks_like_firm(name):
+        if not name or len(name) > 60 or looks_like_firm(name) or not _looks_like_person(name):
             continue
-        # role text: the heading's own text + the next sibling block
+        # role text comes from the ADJACENT block (the name itself is gated to
+        # exclude role words, so a real role keyword must be in a sibling).
         ctx = name.lower()
         sib = h.next
         hops = 0
@@ -353,20 +405,27 @@ def extract_headcount(
         n, is_min, ev = stated
         return HeadcountResult(n, is_min, "stated", "high", ev), staff_count
 
-    # 2. profile-link count on team/attorneys pages
+    # 2. profile-link count: UNION distinct attorney-profile slugs across ALL
+    #    team/attorney pages — handles multi-subpage rosters (e.g. Partners /
+    #    Associates / Of Counsel on separate pages, as with Martin & Bonnett).
+    slugs: set[str] = set()
     for html in team_pages:
-        plc = _profile_link_count(html, base_url)
-        if plc >= 2:
-            return HeadcountResult(plc, True, "profile_links", "high", None), staff_count
+        slugs |= _profile_link_slugs(html)
+    if len(slugs) >= 2:
+        return HeadcountResult(len(slugs), True, "profile_links", "high", None), staff_count
 
-    # 3. heading-role classification on team pages
+    # 3. heading-role classification, summed across all team pages
+    att_total = 0
+    stf_total = 0
     for html in team_pages:
         att, stf = _heading_roles(html)
-        if att >= 1:
-            return (
-                HeadcountResult(att, False, "heading_roles", "medium", None),
-                staff_count if staff_count is not None else (stf or None),
-            )
+        att_total += att
+        stf_total += stf
+    if att_total >= 1:
+        return (
+            HeadcountResult(att_total, False, "heading_roles", "medium", None),
+            staff_count if staff_count is not None else (stf_total or None),
+        )
 
     # 4. solo signal
     home = next((html for role, html in pages if role == "home"), None)
@@ -481,6 +540,85 @@ def extract_description_blurb(pages: list[tuple[str, str | bytes]]) -> str | Non
 
 
 # ---------------------------------------------------------------------------
+# Page discovery (which internal pages to fetch beyond the home page)
+
+_NAV_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "about": ("about", "our firm", "the firm", "who we are", "our story", "firm overview"),
+    "team": ("our team", "meet the team", "our people"),
+    "attorneys": (
+        "attorney",
+        "attorneys",
+        "our attorneys",
+        "lawyer",
+        "lawyers",
+        "our lawyers",
+        "professionals",
+        "our attorney",
+    ),
+}
+_KNOWN_PATHS: dict[str, tuple[str, ...]] = {
+    "about": ("/about", "/about-us", "/our-firm", "/firm", "/the-firm"),
+    "team": ("/our-team", "/team", "/our-people", "/people"),
+    "attorneys": ("/attorneys", "/our-attorneys", "/lawyers", "/our-attorney", "/attorney"),
+}
+# Pages that are NOT firm-identity/headcount content (skip when discovering).
+_SKIP_PATH = re.compile(
+    r"/(blog|news|press|insights?|articles?|events?|contact|careers?|jobs|"
+    r"privacy|disclaimer|terms|sitemap|search|login|payment|pay-?bill)\b",
+    re.I,
+)
+
+
+def discover_internal_pages(
+    home_html: str | bytes, base_url: str, *, max_per_role: int = 4
+) -> dict[str, list[str]]:
+    """From the home page, find same-host about / team / attorney URLs to fetch.
+
+    Nav-text + href-keyword scan first (the reliable path per §12.4), then
+    ordered known-path guesses appended as fallbacks. Returns {role: [urls]}
+    with nav hits before guesses; the caller decides how many to actually fetch.
+    Collects up to `max_per_role` attorney links so multi-subpage rosters
+    (Partners/Associates/...) are all captured.
+    """
+    tree = _tree(home_html)
+    host = (urlparse(base_url).netloc or "").lower()
+    out: dict[str, list[str]] = {"about": [], "team": [], "attorneys": []}
+    seen: set[str] = set()
+
+    def _add(role: str, url: str) -> None:
+        key = url.split("#")[0].split("?")[0].rstrip("/")
+        if key and key not in seen and len(out[role]) < max_per_role:
+            seen.add(key)
+            out[role].append(key)
+
+    for a in tree.css("a[href]"):
+        href = a.attributes.get("href") or ""
+        if href.startswith(("mailto:", "tel:", "javascript:", "#")):
+            continue
+        text = " ".join((a.text() or "").split()).lower()
+        full = urljoin(base_url, href)
+        parsed = urlparse(full)
+        if parsed.scheme not in ("http", "https"):
+            continue
+        if host and parsed.netloc and parsed.netloc.lower() != host:
+            continue  # external link
+        path_l = (parsed.path or "").lower()
+        if _SKIP_PATH.search(path_l):
+            continue
+        for role, kws in _NAV_KEYWORDS.items():
+            known = tuple(p.strip("/") for p in _KNOWN_PATHS[role])
+            if any(k in text for k in kws) or any(path_l.rstrip("/").endswith(k) for k in known):
+                _add(role, full)
+                break
+
+    # Ordered known-path guesses as fallbacks (worker tries these if nav missed).
+    for role, paths in _KNOWN_PATHS.items():
+        for path in paths:
+            _add(role, urljoin(base_url, path))
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Compose
 
 
@@ -500,15 +638,20 @@ def extract_site(
     home_html = next((h for r, h in pages if r == "home"), pages[0][1])
     all_text = " ".join(_visible_text(_tree(h)) for _r, h in pages)
 
-    rel = relevance_gate(home_html)
+    # Relevance over ALL fetched pages, not just home: a sparse Wix/Squarespace
+    # home (e.g. TEPLG) can carry <2 legal tokens while the team/about page is
+    # clearly a law firm. OR the gate across pages; union the matched terms.
+    rels = [relevance_gate(h) for _r, h in pages]
+    is_law_related = any(r.is_law_related for r in rels)
+    relevance_terms = sorted({t for r in rels for t in r.terms})
     headcount, staff = extract_headcount(pages, base_url)
     office_count, addresses = extract_offices(home_html)
     years, years_min = extract_years(all_text, now_year=now_year)
 
     out = SiteExtraction(
         platform=detect_platform(home_html),
-        is_law_related=rel.is_law_related,
-        relevance_terms=rel.terms,
+        is_law_related=is_law_related,
+        relevance_terms=relevance_terms,
         attorney_count=headcount.count,
         attorney_count_is_min=headcount.is_min,
         attorney_count_method=headcount.method,
@@ -526,7 +669,7 @@ def extract_site(
     )
     # thin page with nothing extracted -> headless candidate
     out.needs_render = len(all_text) < 400 and out.attorney_count is None
-    out.url_verification_status = "not_a_law_firm" if not rel.is_law_related else "verified"
+    out.url_verification_status = "not_a_law_firm" if not is_law_related else "verified"
     return out
 
 
@@ -535,6 +678,7 @@ __all__ = [
     "RelevanceResult",
     "SiteExtraction",
     "detect_platform",
+    "discover_internal_pages",
     "extract_headcount",
     "extract_offices",
     "extract_phones",
