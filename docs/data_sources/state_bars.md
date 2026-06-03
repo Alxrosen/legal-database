@@ -138,3 +138,82 @@ exact-match required), Arkansas (no public directory), New Hampshire
   config — if a directory needs more than that, push it down to Tier 4
   ("backfill from elsewhere") and keep moving. The win is breadth, not
   per-state polish.
+
+---
+
+## 13. Agent recon findings & triage (VALIDATED 2026-06-03)
+
+Built a generic config-driven harness (`state_bars.py`,
+`scrapers/state_bar.py`, `parsers/state_bar.py`,
+`pipelines/scrape_state_bar.py`) + recon tooling (`scripts/recon_state_bars.py`,
+`recon_state_bars_forms.py [--platforms]`, `recon_imis.py`). Recon'd the 24
+Tier-1+2 endpoints first-hand and **verified the data four platforms actually
+return**. Wyoming is wired + pilot-validated as the reference state.
+
+### 13.1 Is an all-purpose state-bar scraper realistic / idiomatic?
+
+- **As architecture: yes** — a generic spine + small per-platform/per-state
+  extractor functions (this is what was built). A single one-size *parser*:
+  **no** — ≥8 platforms with no shared schema.
+- **But the ROI is low.** The shared "community" AMS platforms expose **thin or
+  members-only** public data. The firm/address/phone we want is reliably public
+  only on the **minority of states with public per-attorney profile pages**
+  (WY-style). So the realistic play is per-state VALUE triage, not per-platform
+  adapters for the thin/gated families.
+
+### 13.2 Platform fingerprints (`recon_state_bars_forms.py --platforms`)
+
+Across 23 captured pages, fragmented: **Memberize-cv5** (AK, KY, MT, NM),
+**iMIS** (AL, MO; also DC, OK nationally), WordPress (AK, FL, ID, WY), then
+OracleAPEX (IA), ColdFusion (TX), Drupal (MD), SharePoint (WI), and several
+custom JS apps. Memberize-cv5 and iMIS are the only meaningful *shared*
+families — and both proved low-value (below).
+
+### 13.3 Data-richness verdicts (VERIFIED by fetching real results)
+
+| Platform (states) | Public data returned | Verdict |
+|---|---|---|
+| **WY** custom WP + public profile pages | firm on **68%** (firm-marker gate) + street/city/zip + phone on ~all | **HIGH** — reference impl |
+| **Memberize-cv5** (KY, MT; AK, NM) | name + city + state + zip only; no firm/street/phone; no per-member detail link | **LOW** — skip |
+| **iMIS public** (MO) | results grid = Name/City/Zip/Status; detail only via stateful `__doPostBack` | **LOW** — skip |
+| **iMIS member-portal** (AL) | members-only; public search returns the form, not results | **GATED** — skip |
+
+WY pilot (25 attorneys) produced clean firm names ("Liberty Law Offices, P.C.",
+"Lonabaugh & Riggs, LLP", …) + addresses + phones; firm-less attorneys kept as
+solo rows resolving on street + phone.
+
+### 13.4 Triage — which states are worth scraping
+
+Legend: ✅ done · 🟡 candidate (server-rendered; firm *claimed* on a
+profile/detail page — **detail-probe before wiring**) · ⚪ thin (name+city/zip
+only) · 🔒 gated/members-only · 🤖 JS shell (needs headless; deferred) ·
+🚫 hostile/unavailable.
+
+- ✅ **WY** — wired + validated.
+- 🟡 **OR, NC, NM, ND, FL, TX, MD, ME, DE, IL** — server-rendered; the doc
+  notes claim firm/address on the profile or detail page. Each needs a quick
+  WY-style detail-probe to confirm the public detail exposes firm before
+  wiring. (FL ~110k / TX ~100k / IL ~90k are mega-states — wire last.) ND's
+  listed search endpoint is the site-wide search, not the lawyer API — needs
+  the real endpoint found first.
+- ⚪ **KY, MT, AK** (cv5), **MO** (iMIS), **MN** (bulk CSV: name/city/zip only),
+  **WI, ID, IA, PA, TN, SC** (server forms but likely list-only / firm
+  unconfirmed) — low priority; revisit only if a per-member detail page with
+  firm turns out to exist.
+- 🔒 **AL, OK, DC, LA, VT** — members-only / login / captcha-gated.
+- 🤖 **GA, HI, IN, MA, MI, MS, NE, NV, NY, OH, RI, UT, VA, WA, WV, KS** — JS
+  shells; need a shared headless harness; deferred per "don't fight too hard."
+- 🚫 **CA** (skipped), **CO** (Cloudflare + many required params), **NJ**
+  (Incapsula WAF + exact-match), **AR, NH** (no public directory), **SD**
+  (referral-only), **CT** (connection reset / WAF).
+
+Basis: Tier-1/2 rows are first-hand recon; Tier-3/4 (🤖/🚫) lean on the
+per-state notes in §"The list" above + platform inference — **spot-verify
+before scraping.**
+
+### 13.5 Recommendation
+
+Value-triage the 🟡 candidates (cheap detail-probe → wire winners on the
+existing spine, WY-style); skip ⚪/🔒/🤖/🚫. State bars are a **lower-yield**
+source than hoped — public firm data is scarce — so treat them as targeted
+fill-in for states Martindale/FindLaw under-cover, not a primary breadth play.
