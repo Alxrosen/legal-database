@@ -887,3 +887,54 @@ record / duplicates results and overloads the row.
 **Enforced where (to build):** `models/website_enrichment.py` + Alembic
 migration; `pipelines/enrich_websites.py`; scraper for fetching firm
 pages (may reuse `BaseScraper`). This entry is the design of record.
+
+---
+
+## 2026-06-02 — canonical precedence redesign (PROPOSED, from sample-merge analysis)
+
+Read-only sample-merge over real website/phone clusters showed the
+current `apply.py` rules are wrong for big firms:
+
+| firm (website) | records (by source) | current attorney_count (MAX) | distinct attorneys observed | website reality |
+|---|---|---|---|---|
+| Kutak Rock | 104 (3 az, 101 justia) | **29** | 196 | ~600 |
+| Morgan & Morgan | 464 (2 az, 450 findlaw, 12 justia) | **5** | ~390 | ~1000+ |
+| Holland & Hart | 57 (6 az, 51 justia) | **20** | 142 | ~500 |
+| Goetz | 1 (az) | 1 | 1 | 40 |
+
+**Validated changes (Alex's spec):**
+- **`attorney_count` = website-stated if present, else COUNT of DISTINCT
+  attorneys** across the cluster — NOT `MAX` (MAX wildly undercounts).
+- **Union multi-valued fields** (practice areas, phones, offices,
+  notable signals). **Phones: union, keep ALL, dedup exact only** (never
+  discard).
+- **Precedence tiers for scalar fields** (firm name, description, year):
+  1. website enrichment (the firm's own site) — TOP
+  2. Martindale ENRICHED / sponsored profiles (rich)
+  3. other directory cards (FindLaw firm-level, Martindale card)
+  4. state bar assns (AZ Bar + ~49 future) + Justia — BOTTOM
+     (Justia used mainly to SOURCE firm websites to scrape).
+- A **running registry of scraped websites** (the website-keyed
+  `website_enrichment` table) replaces any hand-maintained Justia list.
+
+**Pitfalls found (need resolution before building — see chat):**
+1. **Attorneys live in different fields per source**: justia/az_bar in
+   `contacts`; FindLaw person-level records in `name_raw` (contacts
+   empty → mijs.com showed 0 from contacts despite 44 attorneys). The
+   distinct-attorney count must union `contacts` names AND person-level
+   `name_raw`. Cross-source dedup is by normalized name only (no unique
+   ID) → approximate.
+2. **Firm-name hazard**: FindLaw `name_raw` is often a PERSON (Morgan &
+   Morgan = 390 person-named findlaw records), Justia `name_raw` is
+   empty. All-justia / all-findlaw clusters have NO firm name until
+   website enrichment supplies it. Firm name must come from
+   website / Martindale-enriched / az_bar Company — never a FindLaw
+   person-name.
+3. **Lead-gen phones**: a phone shared across MANY distinct firm
+   websites = lead-gen → must NOT merge on it (M&M's line spans 1 site =
+   safe; a toll-free across many sites = unsafe).
+
+Status: precedence direction agreed; open questions in chat
+(attorney dedup aggressiveness, national-vs-office grain, lead-gen phone
+guard) before editing `apply.py`. `justia` also still missing from
+`DEFAULT_SOURCE_PRIORITY`.
