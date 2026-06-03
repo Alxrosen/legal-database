@@ -574,3 +574,34 @@ The general cascade + producer/worker + bulk-upsert architecture is validated
 on real firms. Ready for a full background `run` over the 27k sites (its own
 checkpoint via `enriched_at`); the LLM description layer is the remaining
 increment (needs `ANTHROPIC_API_KEY`).
+
+### 13.5 Second check — agent reads vs scraper, uncurated firms (2026-06-03)
+Fetched 5 real firms straight from the DB and compared a human-style read
+(WebFetch) to the scraper:
+
+| Firm | reality | scraper | result |
+|---|---|---|---|
+| swlaw.com (Snell & Wilmer) | 500+, 17 offices, 1938 | 500 / 17 / 88yr | ✓ |
+| keanmiller.com | "240 attorneys in LA & TX" (About pg) | 240 (stated) | ✓ scraper's multi-page crawl beat a single-page read |
+| macdonaldillig.com | ~47–50, 125yr | 50 (stated) / 125yr | ✓ |
+| fclaw.com → fennemorelaw.com | ~400, news-heavy home | **15 → fixed → 24** | 🐛 press-headline false positive |
+| azag.gov (AZ Attorney General) | government office | unreachable | gov edge |
+
+Findings + fixes:
+- **Press-release false positive.** Fennemore's news-feed home made the stated
+  regex read "15 Attorneys and Legal Professionals **Join**" (a merger headline)
+  as the firm total. FIX: `_stated_count` rejects announcement contexts
+  (join/named/welcomes/expands/...). It now falls to profile-links → 24.
+- **Big-firm roster undercount (LIMITATION, not a bug).** Fennemore's true ~400
+  lives on a JS/paginated `/people` roster we don't fully crawl; profile-links
+  off the home gives a floor (24). This is the `needs_render` / deeper-crawl
+  lever — accept the floor for now, revisit with headless if big-firm accuracy
+  matters. Confidence/method are stored so fusion can weight it.
+- **.gov / .edu are not private firms.** `azag.gov` = AZ Attorney General. FIX:
+  flag `url_verification_status='government_or_edu'`. (Ties into the open
+  government-entity decision in assumptions.md.)
+- **Bulk-upsert homogeneity.** `_unreachable_row` had a subset of columns →
+  SQLite bulk `INSERT … VALUES` CompileError. FIX: `_ROW_DEFAULTS` so every row
+  shares the full keyset (NOT-NULL bools default False).
+- **Validated the multi-page crawl pays off:** keanmiller's total was only on
+  the About page, which the cascade reached and a single home-page read did not.
