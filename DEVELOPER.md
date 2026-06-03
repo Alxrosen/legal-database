@@ -8,10 +8,11 @@ this repo.
 ## What this project does
 
 Scrapes U.S. law-firm directories (AZ State Bar, Martindale-Hubbell,
-FindLaw — Justia and others are planned), normalizes the data, and
-resolves the same firm across sources into a canonical record. The
-output is a SQLite database (Postgres-portable) optimized for
-deal-sourcing research, not for republication.
+FindLaw, Justia — with ~49 more state bars and a firm-website content
+enrichment planned), normalizes the data, and resolves the same firm
+across sources into a canonical record. The output is a SQLite database
+(Postgres-portable) optimized for deal-sourcing research, not for
+republication. (For current state, see AGENTS.md "What's done so far".)
 
 Arizona is the pilot region. The architecture is source-agnostic —
 adding a new source is one parser file, one scraper file, and one
@@ -387,11 +388,17 @@ pipelines:
 
 ## What's NOT here (future work)
 
-- Canonical `Firm` + `FirmSourceRecordLink` row creation (deferred
-  post-M6 threshold sign-off).
+(DONE since this was written: canonical `Firm`+`Link` apply step;
+national `full` sweeps for Martindale/FindLaw/Justia; the Justia source.
+See AGENTS.md for current state.)
+
+- Firm-website content enrichment (designed + recon-validated in
+  `docs/data_sources/firm_websites.md` §12; not built — next task).
+- Avvo (hard-blocked by Cloudflare; see `docs/data_sources/avvo.md`).
+- ~49 more state bar associations.
 - Practice-area review CLI (spec'd in `docs/assumptions.md`).
-- Justia / Avvo sources.
-- Full-directory sweeps — pilot-sized slices only so far.
+- Canonical precedence redesign wiring (decided in assumptions
+  2026-06-02; bundles with website enrichment).
 - Geocoding, year-founded enrichment beyond Martindale subscribers.
 - Postgres migration (SQLite is the pilot; schema is portable).
 
