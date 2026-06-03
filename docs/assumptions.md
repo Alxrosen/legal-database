@@ -827,3 +827,63 @@ deferred to the user. Not yet implemented.
 - `src/legal_sourcing/pipelines/scrape_martindale.py`
   (`_backfill_office_state`).
 - Tests: `tests/test_resolution_data_quality.py`.
+
+---
+
+## 2026-06-02 — website enrichment tracked separately, keyed by website (PROPOSED)
+
+**Context.** We will enrich firms from their OWN websites (attorney
+count, description, offices, etc. — see
+docs/data_sources/firm_websites.md). This must NOT collide with
+Martindale *profile* enrichment (`FirmSourceRecord.enrichment_status`),
+and it must be idempotently re-runnable as new firms/websites appear
+(new directory scrapers; Martindale `enrich` adding websites later).
+
+**Decision (proposed, confirm before building).** Track website
+enrichment in a **dedicated table keyed by normalized website**, NOT a
+per-`FirmSourceRecord` column.
+
+Why a website-keyed table (idiomatic + less complex, not more):
+- One website maps to MANY source records (`forthepeople.com` -> 464)
+  and eventually one canonical Firm. Crawl ONCE per unique site, store
+  once, reference many — a per-record `website_enriched_at` column would
+  re-crawl per record or duplicate the result across 464 rows, and
+  overloads `FirmSourceRecord`.
+- "What to enrich next" is a clean set-difference:
+  `SELECT DISTINCT website_normalized FROM firm_source_records
+   WHERE <valid website> AND website_normalized NOT IN
+   (SELECT website FROM website_enrichment WHERE enriched_at IS NOT NULL
+    AND enriched_at > <staleness cutoff>)`.
+  This auto-handles: (a) new firms/sources on an already-enriched site
+  -> skipped; (b) Martindale `enrich` adding NEW websites -> picked up.
+  Absent row / NULL `enriched_at` = never enriched (or no website).
+- Resolution-agnostic (keyed by the website string); when canonical
+  Firms exist they inherit enrichment via their members' websites.
+
+Proposed columns (subset of firm_websites.md §7): `website` (PK,
+normalized), `resolved_url`, `platform`, `about_page_url`,
+`attorney_count_min`, `attorney_count_is_min`, `attorney_count_raw`,
+`attorney_count_method`, `staff_count_min`, `office_count`,
+`office_addresses` (JSON), `years_in_operation_min`, `description_blurb`,
+`description_generated`, `scope`, `notable_signals` (JSON),
+`phones` (JSON), `url_verification_status`
+(`verified`/`legal_but_mismatched`/`not_a_law_firm`/`unreachable`),
+`url_verification_score`, `fetched_at`, `enriched_at`, `raw_html_path`.
+
+**Overwrite policy.** Website-derived `attorney_count` is the most
+authoritative source and may overwrite the directory count on the
+canonical Firm (post-resolution), keeping the original + provenance.
+Store snapshot date; never overwrite a newer figure with an older fetch.
+
+**Extraction posture.** Hybrid (Alex's call, for cost): heuristic
+cascade for count/offices/years + the legal-relevance gate; LLM only for
+the generated description and genuinely ambiguous counts. Rules in
+docs/data_sources/firm_websites.md §12.
+
+**Alternative considered + rejected:** a `website_enriched_at` timestamp
+column directly on `FirmSourceRecord` — simpler to add but re-crawls per
+record / duplicates results and overloads the row.
+
+**Enforced where (to build):** `models/website_enrichment.py` + Alembic
+migration; `pipelines/enrich_websites.py`; scraper for fetching firm
+pages (may reuse `BaseScraper`). This entry is the design of record.
