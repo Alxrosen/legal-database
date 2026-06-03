@@ -890,7 +890,7 @@ pages (may reuse `BaseScraper`). This entry is the design of record.
 
 ---
 
-## 2026-06-02 — canonical precedence redesign (PROPOSED, from sample-merge analysis)
+## 2026-06-02 — canonical precedence redesign (CONFIRMED by Alex, from sample-merge analysis)
 
 Read-only sample-merge over real website/phone clusters showed the
 current `apply.py` rules are wrong for big firms:
@@ -934,7 +934,38 @@ current `apply.py` rules are wrong for big firms:
    websites = lead-gen → must NOT merge on it (M&M's line spans 1 site =
    safe; a toll-free across many sites = unsafe).
 
-Status: precedence direction agreed; open questions in chat
-(attorney dedup aggressiveness, national-vs-office grain, lead-gen phone
-guard) before editing `apply.py`. `justia` also still missing from
-`DEFAULT_SOURCE_PRIORITY`.
+**Decisions (CONFIRMED by Alex 2026-06-02 — written down to revisit if any prove material):**
+1. **attorney_count** = website-stated if present, else COUNT of
+   distinct attorneys (union of `contacts` names + person-level
+   `name_raw`), accepting imperfect NAME-ONLY cross-source dedup
+   (no unique attorney ID). NEVER `MAX`.
+   *Revisit if* name-only dedup (variant spellings / collisions) visibly
+   distorts counts -> add bar-id / email-based dedup.
+2. **Grain**: multi-office national firms collapse to ONE canonical firm
+   carrying the website's national count (the firm is the entity, not
+   the office). *Revisit if* per-office granularity is needed.
+3. **Lead-gen phone guard**: do NOT merge on a phone ONLY when it is
+   **toll-free** (NANP 800/833/844/855/866/877/888, i.e. `+1 8xx` with
+   those exchange digits) AND it spans > 3 distinct firm websites. Local
+   numbers are NOT suppressed. *Revisit/extend* if other lead-gen
+   indicators surface (shared marketing-vendor lines, etc.).
+4. **FindLaw person-name records** (Morgan & Morgan = 450 person-named
+   findlaw rows; mijs.com = 44) are handled via PRECEDENCE for now (firm
+   name comes from website / Martindale-enriched / az_bar Company, never
+   a FindLaw person-name; their attorneys still feed the distinct count).
+   **MARKED FOR LATER (not yet investigated):** confirm whether the
+   FindLaw parser is mis-emitting per-attorney records as firms, or
+   whether M&M floods FindLaw with per-attorney profiles — affects both
+   the count and the name. Flagged here so we can circle back.
+
+**Field-precedence note:** `name`/`name_normalized` needs a FIELD
+override (`FIELD_PRECEDENCE_OVERRIDES`) ranking firm-name-bearing
+sources (Martindale-enriched, then az_bar `Company`) ABOVE FindLaw
+(person-names) and Justia (empty). `justia` is still to be ADDED to
+`DEFAULT_SOURCE_PRIORITY` (bottom tier, with the state bars).
+
+**To build (bundled with the website_enrichment table + a first
+data-ready canonical draft, so the website TOP tier is included rather
+than retrofitted):** `apply.py` precedence tiers + distinct-attorney
+count + phone-union; `blocking.py` toll-free lead-gen guard; likely a
+`firms.phones` JSON column (the union list) + migration.
