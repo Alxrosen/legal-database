@@ -34,12 +34,14 @@ import gzip
 import hashlib
 import json
 import sys
+import time
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy import create_engine, select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from legal_sourcing.config import get_settings
@@ -366,7 +368,19 @@ def upsert_firm_source_records(session: Session, records: list[dict[str, Any]]) 
                 setattr(existing, k, v)
             updated += 1
 
-    session.commit()
+    # Commit with retry on a transient "database is locked": when several
+    # scrapers write the same SQLite concurrently the busy-timeout can be
+    # exceeded (this crashed the Martindale full run once mid-California).
+    # A few backed-off retries ride over transient contention instead of
+    # aborting a multi-hour run; pending rows stay in the session.
+    for attempt in range(6):
+        try:
+            session.commit()
+            break
+        except OperationalError:
+            if attempt == 5:
+                raise
+            time.sleep(0.5 * (2**attempt))
     return {"inserted": inserted, "updated": updated}
 
 
