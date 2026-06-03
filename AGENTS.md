@@ -123,10 +123,15 @@ uv run python -m legal_sourcing.pipelines.scrape_martindale full \
 uv run python -m legal_sourcing.pipelines.scrape_martindale enrich  # after full
 uv run python -m legal_sourcing.pipelines.scrape_findlaw full \
     --states all --max-pages-per-combo 0
+uv run python -m legal_sourcing.pipelines.scrape_justia full --states all
 
 # Recover a crashed/interrupted full run from disk (NO network):
 uv run python -m legal_sourcing.pipelines.scrape_martindale load [--date YYYY-MM-DD]
 uv run python -m legal_sourcing.pipelines.scrape_findlaw  load [--date YYYY-MM-DD]
+uv run python -m legal_sourcing.pipelines.scrape_justia   load [--date YYYY-MM-DD]
+
+# Derive primary_city/state/postal from offices JSON (run before resolution):
+uv run python -m scripts.backfill_primary_address
 
 # Entity resolution — populate MatchReviewQueue
 uv run python -m legal_sourcing.resolution.run resolve \
@@ -326,55 +331,87 @@ log a warning but the fetch proceeds. Per-source override to
   for that source. Mark verified claims with `CONFIRMED YYYY-MM-DD`.
 - The relevant migration if you touched a SQLAlchemy model.
 
-## What's done so far (state at last commit)
+## What's done so far (state 2026-06-03)
 
-- 3 sources scaffolded and run end-to-end: AZ Bar, Martindale (with
-  subscriber-profile enrichment), FindLaw (practice-area cluster
-  pilot).
-- M6 resolution: blocking + scoring + queue populated. Default
-  thresholds 85 / 60 / 40 — user-confirmed.
-- **Canonical Firm + FirmSourceRecordLink apply step** built and
-  run. `resolution/apply.py` walks `MatchReviewQueue` rows with
-  status in {`auto_approved`, `approved`}, union-finds clusters,
-  creates one Firm per cluster plus links. Idempotent (clears and
-  rebuilds canonical tables each run).
-- 197 passing tests.
-- AGENTS.md and DEVELOPER.md committed and pushed.
+- **4 sources** end-to-end with national `full` + `load` + resumable
+  per-unit checkpoints (`geo.US_STATE_SLUGS`, `pipelines/_checkpoint.py`):
+  AZ Bar, Martindale, FindLaw, **Justia** (new). See run state below.
+- **Data-quality guards** (parser/normalize level; apply via a `load`
+  re-parse to existing rows — no rescrape):
+  - No directory records its OWN domain as a firm website
+    (`normalize.url.strip_self_domain`, per parser).
+  - Aggregator/social websites dropped (`AGGREGATOR_DOMAINS` +
+    `is_aggregator_domain`; applied in `normalize_record`).
+  - Email-as-website rejected in `normalize_url` (`@` guard).
+  - Martindale office **state backfilled from the swept URL**
+    (`STATE_SLUG_TO_ABBR` + `scrape_martindale._backfill_office_state`);
+    cards show only the city.
+- **Canonical resolution**: `_aggregate_attorney_count` now counts
+  DISTINCT attorneys (email -> name -> bar/profile-id dedup; FindLaw
+  person-cards counted, firm-cards not) instead of MAX. `justia` added
+  to `DEFAULT_SOURCE_PRIORITY` (bottom). Full precedence redesign is
+  DECIDED (docs/assumptions.md 2026-06-02: website-TOP tiers, union
+  multi-valued, phones union-keep-all, state-bars+justia bottom) but the
+  website tier / `name` override / phone-union are NOT yet wired — they
+  bundle with the website_enrichment table.
+- **DB-lock crash fix**: `upsert_firm_source_records` retries the commit
+  on `OperationalError` (3 concurrent scrapers once exceeded the SQLite
+  busy-timeout and crashed Martindale).
+- **Website enrichment**: DESIGNED + recon-validated (41 sites + team
+  pages) — see `docs/data_sources/firm_websites.md` §12 and the
+  assumptions entries. NOT built yet (paused right before writing the
+  extraction module `enrichment/website_extract.py`). Hybrid:
+  heuristic cascade + LLM only for the generated description (needs
+  `ANTHROPIC_API_KEY`, not yet added).
+- **228 passing tests**; `make check` clean for everything we touched.
 
-### DB state at last checkpoint (2026-06-01/02)
+### DB / scrape run state (2026-06-03)
 
-- **28,171 AZ Bar firms** loaded (full directory: 35,862 attorneys
-  aggregated). Recovered via `scrape_az_bar load` after the Py 3.14
-  crash described above.
-- Martindale + FindLaw NOT yet in the DB at full scale — only raw
-  files from earlier pilots are on disk (`data/raw/martindale/`,
-  `data/raw/findlaw/`). The DB was cleared before the full-sweep
-  attempt, and only AZ Bar made it back in.
-- `firms` / `match_review_queue` are EMPTY at this checkpoint (the
-  DB was cleared; only the AZ Bar source-record load has run since).
-  Re-run `resolution.run resolve` + `resolution.apply` after the
-  remaining sources are scraped.
+- **AZ Bar**: complete — 28,171 firms.
+- **Justia**: complete — 42,301 firms (all 51 states).
+- **FindLaw**: complete — 7,570 firms / 7,438 distinct (all 51 states;
+  finished 2026-06-03). A few DC state-index pages 403'd late (Cloudflare)
+  — non-fatal, discovery skipped them.
+- **Martindale**: IN PROGRESS / RESUMING. Crashed once mid-California on
+  the DB-lock (now fixed); re-launched and resuming from checkpoint
+  (~1,954 cities, 82k rows, was only ~5/51 states). Detached via WMI,
+  logging to `data/logs/martindale_full_2026-06-02.log`. Re-run the same
+  `full` command any time to resume.
+- `primary_city/state/postal_code` are still **0** in the DB — they live
+  in the `offices` JSON; run `python -m scripts.backfill_primary_address`
+  before resolution (unlocks name_state blocking + geo scoring).
+- `firms` / `match_review_queue` are EMPTY (no canonical build on the
+  current full data yet).
 
-### Next-run playbook
+### Next-run / pre-resolution playbook
 
-1. National scrape of the missing sources (resumable, per-city commit;
-   re-run the same command to resume after any interruption):
-   `scrape_martindale full --states all --max-pages-per-city 0`,
-   then `scrape_martindale enrich`, then
-   `scrape_findlaw full --states all --max-pages-per-combo 0`.
-   Martindale + FindLaw `full` can run concurrently (different hosts,
-   different checkpoint files). A national run is MULTI-DAY at the
-   polite rates — that's expected; the checkpoint makes it safe to
-   stop/restart.
-2. `resolution.run resolve` then `resolution.apply`.
-3. If a `full` run dies in the parse tail, `scrape_<source> load`
-   recovers from disk.
+1. Let **Martindale `full`** finish (resuming; supervise via a watchdog;
+   re-run the same command if it stops).
+2. **`scrape_<source> load`** per source (no network) to apply the new
+   website/state guards to already-scraped rows. Do `martindale load`
+   BEFORE `martindale enrich` (load re-parses city pages and would
+   clobber enrich's websites otherwise).
+3. **`scrape_martindale enrich`** — firm profiles add website/phone/
+   descriptions (Martindale `full` has 0 websites).
+4. **`python -m scripts.backfill_primary_address`** — derive
+   `primary_*` from `offices`.
+5. Decide government/court-entity handling (assumptions 2026-06-02).
+6. **`resolution.run resolve`** then **`resolution.apply`** (wire the
+   precedence redesign first).
+7. Build + run **website enrichment** (firm_websites.md §12).
 
 ## What's intentionally NOT done
 
 - Practice-area review CLI (spec'd in `docs/assumptions.md`, not
   implemented).
-- Justia and Avvo (not yet scoped).
+- **Avvo**: hard-blocked by Cloudflare (a full browser header set does
+  NOT pass — unlike Justia). Documented in `docs/data_sources/avvo.md`;
+  NOT built (needs TLS-impersonation / headless = a "defeat Cloudflare"
+  decision, deferred to the user). (Justia IS done.)
+- **Website enrichment**: designed + recon-validated, NOT built (next
+  task) — `docs/data_sources/firm_websites.md` §12.
+- ~49 more state bar associations (planned by Alex; would slot in at the
+  bottom of the canonical precedence with AZ Bar).
 - Geocoding, year-founded enrichment beyond Martindale subscriber
   pages.
 - Postgres migration (SQLite is the pilot DB; schema is
@@ -384,24 +421,25 @@ log a warning but the fetch proceeds. Per-source override to
 
 ## Running full sweeps in background
 
-The polite-rate scrapers take 30 min to multiple hours per source.
-Use background bash via `run_in_background: true` and chain the
-sequence in a shell script — do not launch them in parallel because
-all three pipelines upsert to the SAME SQLite at the end and
-SQLite serializes writes (occasional contention is fine, but
-overlapping upserts have caused `database is locked` errors).
+National `full` runs are MULTI-DAY at polite rates. How we run them
+(2026-06-02/03): launch each **detached via WMI** so it survives the
+agent session / compaction —
+`Invoke-CimMethod Win32_Process Create -Arguments @{CommandLine="cmd /c
+<venv-python> -m legal_sourcing.pipelines.scrape_<src> full --states all
+... >> data\logs\<src>_full_<date>.log 2>&1"; CurrentDirectory=<proj>}`.
+Supervise with a persistent **Monitor** tailing the log for
+`full_done|full complete|cloudflare|403|429`. Resumability (checkpoints)
+is the real safety net: re-run the same `full` command to resume.
 
-Recommended chain (used in this repo on 2026-06-01):
+Concurrency: per-source DB rows are disjoint and the upsert now **retries
+on `database is locked`**, so concurrent `full` runs are tolerated — but
+3 concurrent writers still once exceeded the busy-timeout and crashed
+Martindale, so prefer not to pile on a 4th heavy writer; WAL mode is an
+un-taken hardening option.
 
-```
-AZ Bar full -> Martindale pilot --max-pages-per-city 0
-            -> Martindale enrich
-            -> FindLaw pilot --max-pages-per-combo 20
-```
-
-Order matters: Martindale's `enrich` step only operates on rows
-already in the DB, so it must run after Martindale's pilot has
-inserted them.
+Order: Martindale `load` (re-parse, applies state/website guards) must
+run BEFORE `martindale enrich` (enrich adds websites that a later `load`
+would clobber); `enrich` only touches rows already in the DB.
 
 ## Test discipline
 
