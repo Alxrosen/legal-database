@@ -319,65 +319,70 @@ def parse_detail_payloads(paths: Iterable[Path]) -> list[dict[str, Any]]:
 
 
 def upsert_firm_source_records(session: Session, records: list[dict[str, Any]]) -> dict[str, int]:
-    """Insert or update FirmSourceRecord rows. Returns counts."""
-    inserted = 0
-    updated = 0
+    """Insert or update FirmSourceRecord rows. Returns counts.
 
-    for r in records:
-        scraped_at = r.get("scraped_at")
-        if isinstance(scraped_at, str):
-            scraped_at = dt.datetime.fromisoformat(scraped_at)
-
-        existing = session.scalar(
-            select(FirmSourceRecord).where(
-                FirmSourceRecord.source == r["source"],
-                FirmSourceRecord.source_firm_id == r["source_firm_id"],
-            )
-        )
-
-        common_fields = dict(
-            source=r["source"],
-            source_firm_id=r["source_firm_id"],
-            source_url=r["source_url"],
-            scraped_at=scraped_at,
-            raw_payload_path=r.get("raw_payload_path"),
-            http_status=r.get("http_status"),
-            name_raw=r.get("name_raw") or "",
-            name_normalized=r.get("name_normalized"),
-            website_raw=r.get("website_raw"),
-            website_normalized=r.get("website_normalized"),
-            phone_raw=r.get("phone_raw"),
-            phone_normalized=r.get("phone_normalized"),
-            year_founded=r.get("year_founded"),
-            attorney_count=r.get("attorney_count"),
-            source_last_updated_at=r.get("source_last_updated_at"),
-            deactivation_status=r.get("deactivation_status"),
-            contacts=r.get("contacts", []),
-            offices=r.get("offices", []),
-            practice_areas_raw=r.get("practice_areas_raw", []),
-            practice_areas_matched=r.get("practice_areas_matched", []),
-            practice_areas_unmatched=r.get("practice_areas_unmatched", []),
-            additional_data=r.get("additional_data", {}),
-        )
-
-        if existing is None:
-            session.add(FirmSourceRecord(**common_fields))
-            inserted += 1
-        else:
-            for k, v in common_fields.items():
-                setattr(existing, k, v)
-            updated += 1
-
-    # Commit with retry on a transient "database is locked": when several
-    # scrapers write the same SQLite concurrently the busy-timeout can be
-    # exceeded (this crashed the Martindale full run once mid-California).
-    # A few backed-off retries ride over transient contention instead of
-    # aborting a multi-hour run; pending rows stay in the session.
+    The whole build + commit is wrapped in a retry: a transient SQLite
+    "database is locked" (a concurrent reader/writer exceeding the
+    busy-timeout) is handled by rolling back and RE-APPLYING the batch,
+    not by a bare commit-retry (which raises PendingRollbackError) and
+    not by aborting a multi-hour run. Combined with WAL mode (readers
+    don't block the writer) this is what keeps the Martindale full run
+    from crashing. The input `records` is unchanged across retries, so
+    re-running the loop re-applies everything safely.
+    """
     for attempt in range(6):
         try:
+            inserted = 0
+            updated = 0
+            for r in records:
+                scraped_at = r.get("scraped_at")
+                if isinstance(scraped_at, str):
+                    scraped_at = dt.datetime.fromisoformat(scraped_at)
+
+                existing = session.scalar(
+                    select(FirmSourceRecord).where(
+                        FirmSourceRecord.source == r["source"],
+                        FirmSourceRecord.source_firm_id == r["source_firm_id"],
+                    )
+                )
+
+                common_fields = dict(
+                    source=r["source"],
+                    source_firm_id=r["source_firm_id"],
+                    source_url=r["source_url"],
+                    scraped_at=scraped_at,
+                    raw_payload_path=r.get("raw_payload_path"),
+                    http_status=r.get("http_status"),
+                    name_raw=r.get("name_raw") or "",
+                    name_normalized=r.get("name_normalized"),
+                    website_raw=r.get("website_raw"),
+                    website_normalized=r.get("website_normalized"),
+                    phone_raw=r.get("phone_raw"),
+                    phone_normalized=r.get("phone_normalized"),
+                    year_founded=r.get("year_founded"),
+                    attorney_count=r.get("attorney_count"),
+                    source_last_updated_at=r.get("source_last_updated_at"),
+                    deactivation_status=r.get("deactivation_status"),
+                    contacts=r.get("contacts", []),
+                    offices=r.get("offices", []),
+                    practice_areas_raw=r.get("practice_areas_raw", []),
+                    practice_areas_matched=r.get("practice_areas_matched", []),
+                    practice_areas_unmatched=r.get("practice_areas_unmatched", []),
+                    additional_data=r.get("additional_data", {}),
+                )
+
+                if existing is None:
+                    session.add(FirmSourceRecord(**common_fields))
+                    inserted += 1
+                else:
+                    for k, v in common_fields.items():
+                        setattr(existing, k, v)
+                    updated += 1
+
             session.commit()
-            break
+            return {"inserted": inserted, "updated": updated}
         except OperationalError:
+            session.rollback()
             if attempt == 5:
                 raise
             time.sleep(0.5 * (2**attempt))
