@@ -252,3 +252,36 @@ def test_headcount_aggregates_across_attorney_subpages():
     )
     assert hc.method == "profile_links"
     assert hc.count == 3  # dan, susan, jane (dup collapses)
+
+
+# --- announcement / press-release guard + gov flag (pilot findings) -------
+
+
+def test_headcount_skips_announcement_headline():
+    # Fennemore case: a merger headline must NOT be read as the firm total.
+    news = (
+        "<html><body><p>Fennemore expands in Northern California. "
+        "15 Attorneys and Legal Professionals Join the firm.</p></body></html>"
+    )
+    hc, _ = extract_headcount([("home", news)], base_url="https://x.com")
+    assert hc.count != 15
+
+
+def test_headcount_keeps_real_stated_total():
+    ok = (
+        "<html><body><p>About us. With 240 attorneys in Louisiana and Texas, "
+        "we serve clients.</p></body></html>"
+    )
+    hc, _ = extract_headcount([("home", ok)], base_url="https://x.com")
+    assert hc.count == 240
+    assert hc.method == "stated"
+
+
+def test_extract_site_flags_gov_host():
+    html = (
+        "<html><head><title>Attorney General</title></head><body>"
+        "<p>The Attorney General legal office serves the public with attorneys "
+        "and counsel and litigation.</p></body></html>"
+    )
+    site = extract_site([("home", html)], base_url="https://www.azag.gov")
+    assert site.url_verification_status == "government_or_edu"

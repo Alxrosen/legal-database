@@ -52,6 +52,38 @@ log = get_logger(__name__)
 
 _UPDATE_SKIP = ("id", "website", "created_at")
 
+# Every row dict MUST carry the same keys (a bulk INSERT ... VALUES needs
+# homogeneous dicts), and the NOT-NULL boolean columns must never be None.
+_ROW_DEFAULTS: dict[str, Any] = {
+    "resolved_url": None,
+    "platform": None,
+    "pages_crawled": None,
+    "is_law_related": None,
+    "relevance_terms": None,
+    "attorney_count_min": None,
+    "attorney_count_is_min": False,
+    "attorney_count_method": None,
+    "attorney_count_confidence": None,
+    "attorney_count_raw": None,
+    "staff_count_min": None,
+    "office_count": None,
+    "office_addresses": None,
+    "years_in_operation_min": None,
+    "years_is_min": False,
+    "scope": None,
+    "notable_signals": None,
+    "phones": None,
+    "description_blurb": None,
+    "description_generated": None,
+    "url_verification_status": None,
+    "url_verification_score": None,
+    "needs_render": False,
+    "http_status": None,
+    "raw_html_path": None,
+    "fetched_at": None,
+    "enriched_at": None,
+}
+
 
 # ---------------------------------------------------------------------------
 # Raw IO
@@ -90,6 +122,7 @@ def _row_from_site(
 ) -> dict[str, Any]:
     now = datetime.now(UTC)
     return {
+        **_ROW_DEFAULTS,
         "website": website,
         "resolved_url": resolved_url,
         "platform": site.platform,
@@ -122,9 +155,9 @@ def _row_from_site(
 def _unreachable_row(website: str, *, http_status: int | None = None) -> dict[str, Any]:
     now = datetime.now(UTC)
     return {
+        **_ROW_DEFAULTS,
         "website": website,
         "url_verification_status": "unreachable",
-        "needs_render": False,
         "http_status": http_status,
         "fetched_at": now,
         "enriched_at": now,

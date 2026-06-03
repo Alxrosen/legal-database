@@ -274,8 +274,38 @@ def relevance_gate(html: str | bytes) -> RelevanceResult:
 # Headcount cascade (§3, §4, §12.3)
 
 
+# "N attorneys" phrasings that are NEWS / announcements, not a firm-wide total
+# (e.g. Fennemore's "15 Attorneys and Legal Professionals Join" merger headline,
+# "six attorneys named to Super Lawyers", "welcomes 3 new associates").
+_ANNOUNCE_TRAILING: tuple[str, ...] = (
+    "join",
+    "named",
+    "welcom",
+    "elect",
+    "promot",
+    "honor",
+    "recogn",
+    "listed",
+    "rejoin",
+    "appoint",
+    "lateral",
+    "select",
+    "awarded",
+)
+_ANNOUNCE_LEADING: tuple[str, ...] = (
+    "welcom",
+    "expand",
+    "announc",
+    "congratulat",
+    "adds ",
+    "adding ",
+    "added ",
+)
+
+
 def _stated_count(texts: list[str], pattern: re.Pattern[str]) -> tuple[int, bool, str] | None:
-    """Highest plausible '<n> attorneys/lawyers' (or staff) across texts."""
+    """Highest plausible '<n> attorneys/lawyers' (or staff) across texts,
+    EXCLUDING press-release / announcement contexts that aren't a firm total."""
     best: tuple[int, bool, str] | None = None
     for text in texts:
         for m in pattern.finditer(text):
@@ -285,6 +315,12 @@ def _stated_count(texts: list[str], pattern: re.Pattern[str]) -> tuple[int, bool
                 continue
             if n <= 0 or n > 100000:
                 continue
+            tail = text[m.end() : m.end() + 30].lower()
+            head = text[max(0, m.start() - 30) : m.start()].lower()
+            if any(w in tail for w in _ANNOUNCE_TRAILING) or any(
+                w in head for w in _ANNOUNCE_LEADING
+            ):
+                continue  # a "N attorneys join/named/..." headline, not a total
             if best is None or n > best[0]:
                 snippet = text[max(0, m.start() - 30) : m.end() + 30].strip()
                 best = (n, is_min, snippet)
@@ -670,6 +706,11 @@ def extract_site(
     # thin page with nothing extracted -> headless candidate
     out.needs_render = len(all_text) < 400 and out.attorney_count is None
     out.url_verification_status = "not_a_law_firm" if not is_law_related else "verified"
+    # .gov / .edu hosts are government offices / clinics, not private firms
+    # (e.g. azag.gov = AZ Attorney General) — flag rather than count as a firm.
+    host = (urlparse(base_url).netloc or "").lower()
+    if host.endswith((".gov", ".edu")):
+        out.url_verification_status = "government_or_edu"
     return out
 
 
