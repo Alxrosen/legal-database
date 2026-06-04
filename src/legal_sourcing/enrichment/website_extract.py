@@ -380,6 +380,8 @@ _ANNOUNCE_TRAILING: tuple[str, ...] = (
     "lateral",
     "select",
     "awarded",
+    "per state",  # "Top 40 Under 40 ... only 40 attorneys per state" (award quota)
+    "per year",
 )
 _ANNOUNCE_LEADING: tuple[str, ...] = (
     "welcom",
@@ -390,6 +392,7 @@ _ANNOUNCE_LEADING: tuple[str, ...] = (
     "adding ",
     "added ",
     "top ",  # "...Top 100 Lawyers" (an award/ranking, not a firm headcount)
+    "there are ",  # "...there are ~4000 lawyers throughout the nation" (population stat)
 )
 
 # A stated attorney/lawyer count above this is almost never a single firm's own
@@ -631,7 +634,11 @@ def extract_years(text: str, *, now_year: int | None = None) -> tuple[int | None
     fm = _FOUNDED.search(text)
     if fm:
         yr = int(fm.group(1))
-        if 1700 <= yr <= now_year:
+        # Floor at 1780: no US law firm predates ~1790 (Cadwalader, 1792, is the
+        # oldest), so an earlier "founded/since YYYY" is a city/historical
+        # reference, not the firm ("...North America. Founded in 1764 by French
+        # [settlers]" = St. Louis, on missourilawyers.com -> bogus 262 years).
+        if 1780 <= yr <= now_year:
             return now_year - yr, False
     best: tuple[int, bool] | None = None
     for m in _YEARS.finditer(text):

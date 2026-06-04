@@ -247,7 +247,12 @@ def websites_to_enrich(engine, *, limit: int | None = None) -> list[str]:
         ).all()
     out: list[str] = []
     for (w,) in rows:
-        if not w or w in done or is_aggregator_domain(w):
+        # Skip already-done, aggregator domains, and email-as-website junk
+        # (~154 `FirmURL` values are emails like "x@gmail.com"; crawling them
+        # just hits the mail host and writes a bogus row). The upstream
+        # normalize_url @-guard is in Mastermind's lane; this is a producer
+        # backstop so the enrichment run never wastes a fetch on one.
+        if not w or w in done or "@" in w or is_aggregator_domain(w):
             continue
         out.append(w)
         if limit and len(out) >= limit:

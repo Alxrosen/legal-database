@@ -192,6 +192,14 @@ def test_years_skips_combined_experience():
     assert extract_years("Serving clients for 30 years")[0] == 30
 
 
+def test_years_rejects_prehistoric_founding():
+    # missourilawyers case: "Founded in 1764 by French settlers" is St. Louis
+    # city history, not the firm (no US firm predates ~1790).
+    assert extract_years("...in North America. Founded in 1764 by French.", now_year=2026)[0] is None
+    # a genuinely old firm (Cadwalader, 1792) is still accepted
+    assert extract_years("Established in 1850.", now_year=2026)[0] == 176
+
+
 # --- offices / phones / platform ------------------------------------------
 
 
@@ -397,6 +405,28 @@ def test_headcount_caps_statewide_population_stat():
     )
     hc, _ = extract_headcount([("home", html)], base_url="https://x.com")
     assert hc.count != 15000
+
+
+def test_headcount_skips_population_there_are():
+    # vansantlaw case: "there are approximately 4000 lawyers throughout the
+    # nation" is a population stat (firm has 5), not a headcount.
+    html = (
+        "<html><body><p>Since 1993, there are approximately 4000 lawyers "
+        "throughout the nation who handle these cases.</p></body></html>"
+    )
+    hc, _ = extract_headcount([("home", html)], base_url="https://x.com")
+    assert hc.count != 4000
+
+
+def test_headcount_skips_award_quota_per_state():
+    # vansantlaw case: "Top 40 Under 40 is restricted to only 40 attorneys per
+    # state" is an award quota, not the firm's headcount.
+    html = (
+        "<html><body><p>The Top 40 Under 40 is restricted to only 40 attorneys "
+        "per state.</p></body></html>"
+    )
+    hc, _ = extract_headcount([("home", html)], base_url="https://x.com")
+    assert hc.count != 40
 
 
 def test_headcount_skips_top_n_award():
