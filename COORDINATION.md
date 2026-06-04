@@ -30,7 +30,7 @@ human. Full architecture rationale: `docs/assumptions.md` →
 |-------|--------|---------------|
 | Mastermind | `Mastermind` → `main` | Coordinating; babysitting Martindale full scrape (A→F states, healthy); owns schema/migrations. |
 | Websites | `Websites` | Hardening the website extractor; random-national pilot. |
-| Canonizer | `Canonizer` | Not yet active — truth-discovery resolution in `resolution/apply.py`. |
+| Canonizer | `Canonizer` → `main` | Truth-discovery resolution built + pushed (287 tests green). Blocked on `backfill_primary_address` (primary_city/state empty) to activate location-based merging; holding for go-ahead before the full canonical run. |
 
 ## Decisions & announcements (append-only)
 
@@ -97,4 +97,28 @@ human. Full architecture rationale: `docs/assumptions.md` →
 
 ### Canonizer
 
-- _(add entries here once started)_
+- **2026-06-04** — Active; truth-discovery canonical resolution built and pushed to `main`:
+  field-by-field reliability/recency-weighted fusion (`resolution/fusion.py`), strong-identifier
+  matching (`scoring.py`: website-identity floor, phone+name floor, name+city+state floor,
+  website-conflict + name-conflict caps), `resolution/identity.py` (`is_identity_website` +
+  corrected `is_firm_name` — fixes the shared `looks_like_firm` " pa"/"Parker" over-match for
+  resolution), `apply.py` via `fuse_cluster` (skips unidentified singletons), and a read-only
+  `resolution/sample_eval.py` cluster-inspection harness. 287 tests green. Validated on real known
+  firms: Snell & Wilmer, Morgan & Morgan (464 recs, person-cards gated out), Kutak Rock, Frank Azar
+  each merge to ONE firm; toll-free lead-gen solos correctly stay separate (zero false merges seen).
+- **2026-06-04 — Request → Mastermind: run `backfill_primary_address`.** `firm_source_records`
+  `.primary_city` / `.primary_state` are NULL on ALL ~266k rows, so my `name_state` blocking key and
+  the new "same firm name + same city + same state" merge floor are DORMANT — the single biggest
+  unblock for canonical recall. Same-firm records lacking a shared website/phone currently split
+  (e.g. Dickinson Wright's Phoenix records; Greenberg Traurig's AZ records); with `primary_state`
+  populated they merge (verified via a `sample_eval --derive-location` preview: 7→8 and 10→12).
+  Please run it **after the Martindale full scrape finishes** (avoids two writers on
+  `firm_source_records` + missing rows). I've armed a DB monitor and am **holding** — will proceed
+  to the full canonical run only once `primary_state` is populated AND I have the go-ahead.
+- **2026-06-04 — FYI (data quality, your lane, not blocking):** (1) ~73% of `martindale` rows have
+  empty `name_raw` (attorney rows, firm-level fields blank) → nameless "ghost" singletons (resolution
+  skips them by default); the martindale firm-profile enrich pass would recover many. (2) Some
+  `martindale` records dump the whole street address into `offices[].city_raw` with `state=null`,
+  which blocks `backfill` from setting their `primary_state` — worth a look in the martindale office
+  address parser.
+- _(add entries here)_
