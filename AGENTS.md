@@ -431,15 +431,27 @@ log a warning but the fetch proceeds. Per-source override to
 
 ## Parallel Claude sessions (multi-agent hygiene)
 
-Multiple Claude sessions may work this repo at once (e.g. one on website
-enrichment, one on resolution). In a SHARED working tree they collide: lost
-edits / "file modified since read", git-staging races, duplicate Alembic heads,
-and SQLite contention. Rules: **commit only specific files (`git add <files>`,
-never `-A`/`.`)** and stay in your file lane; a parallel session may leave
-**uncommitted WIP in files you didn't write — do NOT commit or revert it**. A
-new parallel session should run in a **dedicated `git worktree` on its own
-branch** + a **DB snapshot** (the live DB is gitignored, so copy it in / point
-`DB_PATH` at it) to avoid contention and resolving a moving dataset.
+Multiple Claude sessions work this repo at once: **Mastermind** (coordinator /
+integration), **Websites** (site enrichment), **Canonizer** (resolution). Each
+runs in a **dedicated `git worktree` on its own branch** (`Mastermind` /
+`Websites` / `Canonizer`) — a shared working tree collides (lost edits, staging
+races, duplicate Alembic heads). They share **one live WAL database**: each
+worktree's `.env` points `DB_PATH` (+ `RAW_DATA_DIR`/`PROCESSED_DATA_DIR`) at the
+**absolute** path of the main checkout's DB (the relative default would make each
+worktree silently open its own empty DB).
+
+Rules of engagement:
+- **Commit only specific files** (`git add <files>`, never `-A`/`.`) and stay in
+  your file lane; a parallel session may leave **uncommitted WIP in files you
+  didn't write — do NOT commit or revert it**.
+- **All DB access via `legal_sourcing.db.make_engine()`** (busy_timeout=30s + WAL).
+- **Disjoint writes**: Martindale→`firm_source_records`, Websites→`website_enrichment`,
+  Canonizer→`firms`/`firm_source_record_links`/`match_review_queue`. Read anything.
+- **Migrations are Mastermind-only**, run only when scrapes are quiesced (DDL against
+  a live writer is the one genuinely unsafe operation; a plain add-column is fine).
+- **Coordinate via `COORDINATION.md`** on `main` (pull to read; edit your own section
+  + push to post). Full rationale: `docs/assumptions.md` "2026-06-04 — Multi-agent
+  shared database".
 
 ## What's intentionally NOT done
 
