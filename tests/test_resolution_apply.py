@@ -111,3 +111,78 @@ def test_unionfind_path_compression_idempotent():
     # second find call should also return same root (path-compression
     # doesn't corrupt the data).
     assert uf.find(1) == r1
+
+
+# ---- apply_decisions integration (real DB orchestration) ------------------
+
+
+def test_apply_decisions_clusters_merges_and_skips_ghosts(monkeypatch, tmp_path):
+    """Union-find from the approved queue -> fuse -> firms/links, and singleton
+    records with no name/phone/website are skipped by default."""
+    from datetime import UTC, datetime
+
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import Session
+
+    from legal_sourcing.models import (
+        Firm,
+        FirmSourceRecord,
+        FirmSourceRecordLink,
+        MatchReviewQueue,
+    )
+    from legal_sourcing.models.base import Base
+    from legal_sourcing.resolution import apply as apply_mod
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'canon.sqlite'}")
+    Base.metadata.create_all(engine)
+    ts = datetime(2026, 1, 1, tzinfo=UTC)
+
+    def _fsr(**kw):
+        base = dict(source="az_bar", source_url="https://x", scraped_at=ts, name_raw="")
+        base.update(kw)
+        return FirmSourceRecord(**base)
+
+    with Session(engine) as s:
+        a = _fsr(
+            name_raw="Acme Law LLP",
+            name_normalized="acme law",
+            website_normalized="acme.law",
+            phone_normalized="+16025550000",
+        )
+        b = _fsr(  # same firm via shared website; Justia-style empty name
+            source="justia",
+            name_normalized=None,
+            website_normalized="acme.law",
+            phone_normalized="+16025550001",
+        )
+        ghost = _fsr(source="martindale")  # no name/phone/website -> skipped
+        solo = _fsr(source="martindale", name_raw="Solo Firm PLLC", name_normalized="solo firm")
+        s.add_all([a, b, ghost, solo])
+        s.flush()
+        lo, hi = sorted([a.id, b.id])
+        s.add(
+            MatchReviewQueue(
+                source_record_a_id=lo,
+                source_record_b_id=hi,
+                score_total=90.0,
+                status="auto_approved",
+            )
+        )
+        s.commit()
+
+    monkeypatch.setattr(apply_mod, "make_engine", lambda: engine)
+    counts = apply_mod.apply_decisions()
+
+    assert counts["skipped_unidentified"] == 1  # the ghost
+    assert counts["multi_member_firms"] == 1  # a + b merged
+    assert counts["singletons"] == 1  # solo
+
+    with Session(engine) as s:
+        firms = s.scalars(select(Firm)).all()
+        links = s.scalars(select(FirmSourceRecordLink)).all()
+    assert sorted(f.name for f in firms) == ["Acme Law LLP", "Solo Firm PLLC"]
+    # a+b -> 2 links on one firm; solo -> 1 link; ghost -> none.
+    assert len(links) == 3
+    acme = next(f for f in firms if f.name == "Acme Law LLP")
+    assert acme.website_normalized == "acme.law"
+    assert "name" in acme.field_provenance

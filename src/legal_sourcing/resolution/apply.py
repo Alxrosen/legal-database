@@ -114,6 +114,18 @@ def _enrichment_for(
     return enrichment_by_website.get(web)
 
 
+def _is_identified(rec: FirmSourceRecord) -> bool:
+    """A record carries firm identity if it has any of name / phone / website.
+    Records with none (≈55% of the corpus — attorney rows whose firm-level
+    fields are empty) can't be a distinct firm; as singletons they'd be
+    nameless junk, so apply skips them by default (source data is untouched)."""
+    return bool(
+        (rec.name_raw or "").strip()
+        or (rec.phone_normalized or "").strip()
+        or (rec.website_normalized or "").strip()
+    )
+
+
 # ---------------------------------------------------------------------------
 # Main apply
 
@@ -121,8 +133,14 @@ def _enrichment_for(
 def apply_decisions(
     *,
     statuses: tuple[str, ...] = ("auto_approved", "approved"),
+    skip_unidentified: bool = True,
 ) -> dict[str, int]:
-    """Build canonical Firm + Link rows from current resolution state."""
+    """Build canonical Firm + Link rows from current resolution state.
+
+    Singleton components whose one record has no name/phone/website are skipped
+    by default (they can't be a usable firm); pass ``skip_unidentified=False``
+    to materialize them anyway.
+    """
     configure_logging()
 
     engine = make_engine()
@@ -130,6 +148,7 @@ def apply_decisions(
         "components": 0,
         "singletons": 0,
         "multi_member_firms": 0,
+        "skipped_unidentified": 0,
         "links": 0,
         "queue_rows_consumed": 0,
         "queue_rows_linked": 0,
@@ -147,7 +166,7 @@ def apply_decisions(
         ).all()
         counts["queue_rows_consumed"] = len(approved)
         uf = _UnionFind()
-        all_ids = [r.id for r in session.scalars(select(FirmSourceRecord.id)).all()]
+        all_ids = list(session.scalars(select(FirmSourceRecord.id)).all())
         for rid in all_ids:
             uf.find(rid)
         for m in approved:
@@ -169,6 +188,9 @@ def apply_decisions(
         for root, member_ids in components.items():
             members = [member_records[i] for i in member_ids]
             if len(members) == 1:
+                if skip_unidentified and not _is_identified(members[0]):
+                    counts["skipped_unidentified"] += 1
+                    continue
                 counts["singletons"] += 1
             else:
                 counts["multi_member_firms"] += 1
@@ -189,9 +211,12 @@ def apply_decisions(
             firm_by_root[root] = firm
         session.flush()  # populate firm.id values
 
-        # 5) Insert FirmSourceRecordLink rows.
+        # 5) Insert FirmSourceRecordLink rows (skipping any unmaterialized
+        # unidentified-singleton components).
         for root, member_ids in components.items():
-            firm = firm_by_root[root]
+            firm = firm_by_root.get(root)
+            if firm is None:
+                continue
             for rid in member_ids:
                 session.add(
                     FirmSourceRecordLink(
@@ -224,17 +249,26 @@ def main() -> int:
         "status='approved' (skip auto_approved). Useful for re-running "
         "apply against a queue that's been hand-reviewed.",
     )
+    parser.add_argument(
+        "--keep-unidentified",
+        action="store_true",
+        help="Also materialize singleton firms with no name/phone/website "
+        "(skipped by default as they can't be a usable firm).",
+    )
     args = parser.parse_args()
     statuses: tuple[str, ...] = (
         ("approved",) if args.include_pending_approved_only else ("auto_approved", "approved")
     )
-    counts = apply_decisions(statuses=statuses)
+    counts = apply_decisions(statuses=statuses, skip_unidentified=not args.keep_unidentified)
+    firms_created = counts["multi_member_firms"] + counts["singletons"]
     print(
         f"Apply complete:\n"
         f"  match-queue rows consumed: {counts['queue_rows_consumed']}\n"
-        f"  canonical firms          : {counts['components']}\n"
+        f"  components (total)       : {counts['components']}\n"
+        f"  canonical firms created  : {firms_created}\n"
         f"    multi-member           : {counts['multi_member_firms']}\n"
         f"    singletons             : {counts['singletons']}\n"
+        f"  skipped (unidentified)   : {counts['skipped_unidentified']}\n"
         f"  firm_source_record_links : {counts['links']}\n"
         f"  match-queue rows tagged with resulting_firm_id: {counts['queue_rows_linked']}"
     )
