@@ -36,6 +36,28 @@ from legal_sourcing.resolution.fusion import fuse_cluster
 from legal_sourcing.resolution.scoring import score_pair
 
 
+def _derive_location(rec: FirmSourceRecord) -> None:
+    """Populate primary_city/primary_state from offices JSON if empty -- mirrors
+    the Mastermind backfill, so --derive-location previews post-backfill
+    clustering (the name+city+state floor) without writing the DB."""
+    if (rec.primary_state or "").strip():
+        return
+    chosen = None
+    for o in rec.offices or []:
+        nm = o.get("normalized") or {}
+        city = nm.get("city") or o.get("city_raw")
+        state = nm.get("state") or o.get("state_raw")
+        if not (city or state):
+            continue
+        if o.get("is_primary"):
+            chosen = (city, state)
+            break
+        if chosen is None:
+            chosen = (city, state)
+    if chosen:
+        rec.primary_city, rec.primary_state = chosen
+
+
 def _expand(session: Session, seed: list[FirmSourceRecord], *, max_records: int, max_hops: int = 3):
     """BFS over phone/website blocking keys from the seed to gather the
     (approximate) full connected neighborhood. Capped for speed."""
@@ -131,6 +153,12 @@ def main() -> int:
     g.add_argument("--random", type=int)
     ap.add_argument("--merge-threshold", type=float, default=85.0)
     ap.add_argument("--max-records", type=int, default=2500)
+    ap.add_argument(
+        "--derive-location",
+        action="store_true",
+        help="Derive primary_city/state from offices JSON in-memory to preview "
+        "post-backfill clustering (the name+city+state floor).",
+    )
     ap.add_argument("--show", type=int, default=8, help="How many largest components to print.")
     args = ap.parse_args()
 
@@ -158,6 +186,9 @@ def main() -> int:
         seed_ids = {r.id for r in seed}
         print(f"seed records: {len(seed)}")
         records = _expand(session, seed, max_records=args.max_records)
+        if args.derive_location:
+            for r in records:
+                _derive_location(r)
         comps, edges = _cluster(records, args.merge_threshold)
         multi = {root: ids for root, ids in comps.items() if len(ids) > 1}
         print(

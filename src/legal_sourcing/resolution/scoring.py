@@ -81,6 +81,13 @@ NAME_CONFLICT_CAP = 55.0
 # the floor won't fire for them.
 PHONE_NAME_FLOOR = 86.0
 STRONG_NAME_SIM = 0.85
+# A strongly-matching name in the SAME city + state is the same firm even with no
+# shared website/phone -- a firm's records across sources/offices often lack a
+# common identifier (e.g. Dickinson Wright's Phoenix records). Needs the
+# primary_city/primary_state backfill populated; uses a higher name bar than the
+# phone floor since city+state is weaker corroboration than an exact phone.
+NAME_LOCATION_FLOOR = 86.0
+NAME_SIM_FOR_LOCATION = 0.90
 # Two records with DIFFERENT identity websites are different firms; cap the score
 # so a coincidental name or phone match can't auto-merge them.
 WEBSITE_CONFLICT_CAP = 50.0
@@ -217,6 +224,13 @@ def score_pair(
         and name_sim >= STRONG_NAME_SIM
     ):
         total = max(total, PHONE_NAME_FLOOR)
+    if (
+        name_sim is not None
+        and name_sim >= NAME_SIM_FOR_LOCATION
+        and components.get("city_match") == 1.0
+        and components.get("state_match") == 1.0
+    ):
+        total = max(total, NAME_LOCATION_FLOOR)
     # Caps (contradicting evidence wins).
     if name_conflict:
         total = min(total, NAME_CONFLICT_CAP)

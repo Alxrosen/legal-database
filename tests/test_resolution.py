@@ -232,3 +232,103 @@ def test_score_pair_state_mismatch_caps_total():
     s = score_pair(a, b)
     # name_sim=1*45 + city_match=0*5 + state_match=0*5 = 45.
     assert s["total"] == pytest.approx(45.0)
+
+
+# ---- strong-identifier floors / caps -----------------------------------
+
+
+def test_website_identity_match_floors_despite_phone_diff():
+    """Same identity domain + same name but DIFFERENT office phones -> auto."""
+    a = _rec(
+        id=1,
+        name_normalized="acme law",
+        name_raw="Acme Law LLP",
+        website_normalized="acme.law",
+        phone_normalized="+16020000001",
+    )
+    b = _rec(
+        id=2,
+        name_normalized="acme law",
+        name_raw="Acme Law LLP",
+        website_normalized="acme.law",
+        phone_normalized="+16020000002",
+    )
+    assert score_pair(a, b)["total"] >= 85.0
+
+
+def test_aggregator_website_is_not_a_merge_signal():
+    """Two records that both list facebook.com are NOT thereby a match."""
+    a = _rec(id=1, website_normalized="facebook.com")
+    b = _rec(id=2, website_normalized="facebook.com")
+    s = score_pair(a, b)
+    assert s["components"]["website_exact"] is None
+    assert s["total"] < 60.0
+
+
+def test_phone_plus_strong_name_floors():
+    """Same phone + same name, no website -> auto (websiteless firms)."""
+    a = _rec(
+        id=1,
+        name_normalized="smith jones",
+        name_raw="Smith Jones LLP",
+        phone_normalized="+16025551234",
+    )
+    b = _rec(
+        id=2,
+        name_normalized="smith jones",
+        name_raw="Smith Jones LLP",
+        phone_normalized="+16025551234",
+    )
+    assert score_pair(a, b)["total"] >= 85.0
+
+
+def test_name_plus_location_floors():
+    """Same name + same city + same state, no phone/website -> auto."""
+    a = _rec(
+        id=1,
+        name_normalized="smith jones",
+        name_raw="Smith Jones LLP",
+        primary_city="Phoenix",
+        primary_state="AZ",
+    )
+    b = _rec(
+        id=2,
+        name_normalized="smith jones",
+        name_raw="Smith Jones LLP",
+        primary_city="Phoenix",
+        primary_state="AZ",
+    )
+    assert score_pair(a, b)["total"] >= 85.0
+
+
+def test_website_conflict_caps_phone_and_name_match():
+    """Same name + same phone but DIFFERENT identity websites = different firms."""
+    a = _rec(
+        id=1,
+        name_normalized="acme law",
+        name_raw="Acme Law LLP",
+        phone_normalized="+16025551234",
+        website_normalized="acme.law",
+    )
+    b = _rec(
+        id=2,
+        name_normalized="acme law",
+        name_raw="Acme Law LLP",
+        phone_normalized="+16025551234",
+        website_normalized="acmelaw.net",
+    )
+    assert score_pair(a, b)["total"] < 85.0
+
+
+def test_name_conflict_caps_website_match():
+    """Two clearly-different firm names sharing one domain are not auto-merged."""
+    a = _rec(
+        id=1, name_normalized="acme law", name_raw="Acme Law LLP", website_normalized="shared.com"
+    )
+    b = _rec(
+        id=2,
+        name_normalized="zenith partners",
+        name_raw="Zenith Partners LLP",
+        website_normalized="shared.com",
+    )
+    assert score_pair(a, b)["total"] < 85.0
