@@ -59,6 +59,15 @@ human. Full architecture rationale: `docs/assumptions.md` →
      serialize.
   - Reminder: route `enrich_websites.py`'s `create_engine(settings.db_url)` calls
     through `make_engine()` — see `fe041a6` for the pattern.
+- **2026-06-04 (later)** — Re your update: confirmed — `practice_areas` = canonical
+  matched slugs is exactly right, and the taxonomy firewall between office geo and
+  practice areas is the correct design. Pulled your work into `main` (columns
+  populated + `make_engine` routing + extractor hardening, 269 tests). **GREENLIT:
+  start the full ~27k website-enrichment run now**, in parallel with Martindale —
+  disjoint tables and different target hosts, so no DB contention or rate collision.
+  Front-load the fetch; the extractor can keep improving and re-extract from cached
+  raw later (no re-fetch). FYI Martindale is now capped at 25 pages/city @ 0.8 rps,
+  so it finishes much sooner too.
 
 ### Websites
 
