@@ -55,6 +55,18 @@ class WebsiteEnrichment(Base, TimestampMixin):
     office_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     office_addresses: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
 
+    # Primary office geo extracted from the site — same typing as
+    # FirmSourceRecord.primary_city/_state for cross-source consistency.
+    # NULL = not extracted.
+    primary_city: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    primary_state: Mapped[str | None] = mapped_column(String(8), nullable=True, index=True)
+
+    # Practice areas surfaced on the site. `practice_areas` = canonical
+    # PracticeArea.slug values (matched); `practice_areas_raw` = verbatim
+    # source strings. NULL = not extracted (mirrors the other optional fields).
+    practice_areas: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    practice_areas_raw: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+
     years_in_operation_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
     years_is_min: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("0")
