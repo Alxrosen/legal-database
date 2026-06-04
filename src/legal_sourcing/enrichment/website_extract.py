@@ -34,6 +34,7 @@ from selectolax.parser import HTMLParser
 
 from legal_sourcing.normalize.name import looks_like_firm
 from legal_sourcing.normalize.phone import normalize_phone
+from legal_sourcing.normalize.practice_areas import get_taxonomy
 from legal_sourcing.normalize.url import is_aggregator_domain, safe_urlparse
 
 # ---------------------------------------------------------------------------
@@ -236,10 +237,18 @@ class SiteExtraction:
     staff_count: int | None = None
     office_count: int | None = None
     office_addresses: list[dict[str, str]] = field(default_factory=list)
+    # The firm's PRIMARY office location (where it is set up) — derived from the
+    # zip-anchored footer addresses, NOT from jurisdiction/"we serve" copy.
+    primary_city: str | None = None
+    primary_state: str | None = None
     years_in_operation: int | None = None
     years_is_min: bool = False
     phones: list[str] = field(default_factory=list)
     notable_signals: list[str] = field(default_factory=list)
+    # Legal specialties the firm advertises (canonical slugs + verbatim). Matched
+    # via the practice-area taxonomy, so office LOCATIONS can never leak in here.
+    practice_areas: list[str] = field(default_factory=list)
+    practice_areas_raw: list[str] = field(default_factory=list)
     scope: str | None = None
     description_blurb: str | None = None
     needs_render: bool = False
@@ -677,6 +686,60 @@ def extract_notable_signals(text: str) -> list[str]:
     return [label for needle, label in _NOTABLE if needle in low]
 
 
+# A link path that indicates a practice-area page (a sub-segment must follow).
+_PRACTICE_PATH = re.compile(
+    r"/(?:practice-areas?|areas?-of-practice|our-practices?|practice|services?|"
+    r"what-we-do|expertise)/",
+    re.I,
+)
+
+
+def extract_practice_areas(
+    pages: list[tuple[str, str | bytes]], *, base_url: str = ""
+) -> tuple[list[str], list[str]]:
+    """Legal specialties the firm advertises, matched to the canonical taxonomy.
+
+    Returns ``(matched_slugs, raw_phrases)``. Candidates are internal-link anchor
+    texts plus the trailing slug of any ``/practice(-areas)/{slug}`` path; each is
+    matched via ``get_taxonomy().match`` (exact-on-normalized). Only real legal
+    practice areas survive the match, so office LOCATIONS — city / "we serve X" /
+    jurisdiction links — can NEVER appear here (this field is the firm's
+    specialty, not where it sits or where its lawyers are licensed). ``raw`` keeps
+    the verbatim phrase that produced each matched slug, for audit.
+    """
+    tax = get_taxonomy()
+    host = _host(base_url)
+    slugs: list[str] = []
+    raw: list[str] = []
+    seen_raw: set[str] = set()
+    for _role, html in pages:
+        for a in _tree(html).css("a[href]"):
+            href = a.attributes.get("href") or ""
+            if href.startswith(("mailto:", "tel:", "javascript:", "#")):
+                continue
+            parsed = safe_urlparse(urljoin(base_url, href))
+            if parsed and host and parsed.netloc and parsed.netloc.lower() != host:
+                continue  # external link
+            candidates = [" ".join((a.text() or "").split())]
+            path = (parsed.path if parsed else "") or ""
+            if _PRACTICE_PATH.search(path):
+                seg = path.split("#")[0].split("?")[0].rstrip("/").split("/")[-1]
+                candidates.append(seg.replace("-", " ").replace("_", " "))
+            for cand in candidates:
+                cand = cand.strip()
+                if not cand or len(cand) > 60:
+                    continue
+                slug = tax.match(cand)
+                if not slug:
+                    continue
+                if cand.lower() not in seen_raw:
+                    seen_raw.add(cand.lower())
+                    raw.append(cand)
+                if slug not in slugs:
+                    slugs.append(slug)
+    return slugs, raw
+
+
 def extract_scope(text: str) -> str | None:
     low = text.lower()
     if "national law firm" in low or "nationwide" in low or "across the country" in low:
@@ -811,6 +874,11 @@ def extract_site(
     headcount, staff = extract_headcount(pages, base_url)
     office_count, addresses = extract_offices(home_html)
     years, years_min = extract_years(all_text, now_year=now_year)
+    practice_areas, practice_areas_raw = extract_practice_areas(pages, base_url=base_url)
+    # Primary office = the first zip-anchored footer address (HQ, by document
+    # order) — a real location, never inferred from "we serve"/jurisdiction copy.
+    primary_city = addresses[0]["city"] if addresses else None
+    primary_state = addresses[0]["state"] if addresses else None
 
     out = SiteExtraction(
         platform=detect_platform(home_html),
@@ -824,10 +892,14 @@ def extract_site(
         staff_count=staff,
         office_count=office_count,
         office_addresses=addresses,
+        primary_city=primary_city,
+        primary_state=primary_state,
         years_in_operation=years,
         years_is_min=years_min,
         phones=extract_phones(home_html),
         notable_signals=extract_notable_signals(all_text),
+        practice_areas=practice_areas,
+        practice_areas_raw=practice_areas_raw,
         scope=extract_scope(all_text),
         description_blurb=extract_description_blurb(pages),
     )
@@ -861,6 +933,7 @@ __all__ = [
     "extract_headcount",
     "extract_offices",
     "extract_phones",
+    "extract_practice_areas",
     "extract_site",
     "extract_years",
     "relevance_gate",

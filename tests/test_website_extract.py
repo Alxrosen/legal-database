@@ -14,6 +14,7 @@ from legal_sourcing.enrichment.website_extract import (
     extract_headcount,
     extract_offices,
     extract_phones,
+    extract_practice_areas,
     extract_site,
     extract_years,
     relevance_gate,
@@ -195,7 +196,9 @@ def test_years_skips_combined_experience():
 def test_years_rejects_prehistoric_founding():
     # missourilawyers case: "Founded in 1764 by French settlers" is St. Louis
     # city history, not the firm (no US firm predates ~1790).
-    assert extract_years("...in North America. Founded in 1764 by French.", now_year=2026)[0] is None
+    assert (
+        extract_years("...in North America. Founded in 1764 by French.", now_year=2026)[0] is None
+    )
     # a genuinely old firm (Cadwalader, 1792) is still accepted
     assert extract_years("Established in 1850.", now_year=2026)[0] == 176
 
@@ -438,6 +441,49 @@ def test_headcount_skips_top_n_award():
     )
     hc, _ = extract_headcount([("home", html)], base_url="https://x.com")
     assert hc.count != 100
+
+
+PRACTICE_HOME = """
+<html><head><title>Smith Law | Personal Injury Lawyers</title></head><body>
+<nav>
+  <a href="/about">About Us</a>
+  <a href="/practice-areas/personal-injury">Personal Injury</a>
+  <a href="/practice-areas/family-law">Family Law</a>
+  <a href="/practice-areas/car-accidents">Car Accidents</a>
+  <a href="/locations/phoenix">Phoenix</a>
+  <a href="/contact">Contact</a>
+</nav>
+<footer>123 Main St Suite 200 Phoenix, AZ 85016</footer>
+</body></html>
+"""
+
+
+def test_extract_practice_areas_matches_taxonomy_not_location():
+    slugs, raw = extract_practice_areas([("home", PRACTICE_HOME)], base_url="https://smithlaw.com")
+    assert set(slugs) == {"personal-injury", "family-law", "auto-accidents"}
+    # location / nav links never become practice areas (taxonomy is the firewall)
+    assert "phoenix" not in slugs
+    assert "Personal Injury" in raw
+
+
+def test_extract_practice_areas_from_path_slug():
+    # icon-only link (no anchor text) -> slug comes from the /practice-areas/ path
+    home = (
+        '<html><body><a href="/practice-areas/wrongful-death"><img src="x.png"></a></body></html>'
+    )
+    slugs, _ = extract_practice_areas([("home", home)], base_url="https://x.com")
+    assert "wrongful-death" in slugs
+
+
+def test_extract_site_separates_office_location_from_practice_areas():
+    # The user's constraint: office LOCATION (where the firm sits) must not be
+    # confused with PRACTICE AREAS (what it does). Phoenix is the office city,
+    # never a practice area; personal-injury is a practice area, never a place.
+    site = extract_site([("home", PRACTICE_HOME)], base_url="https://smithlaw.com")
+    assert site.primary_city == "Phoenix"
+    assert site.primary_state == "AZ"
+    assert "personal-injury" in site.practice_areas
+    assert "phoenix" not in [s.lower() for s in site.practice_areas]
 
 
 def test_extract_site_flags_gov_host():
