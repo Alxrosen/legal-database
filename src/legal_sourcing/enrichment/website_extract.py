@@ -529,10 +529,15 @@ def extract_headcount(
         return HeadcountResult(n, is_min, "stated", "high", ev), staff_count
 
     # 2. profile-link count: UNION distinct attorney-profile slugs across ALL
-    #    team/attorney pages — handles multi-subpage rosters (e.g. Partners /
-    #    Associates / Of Counsel on separate pages, as with Martin & Bonnett).
+    #    crawled pages (not just team/attorney pages) — handles multi-subpage
+    #    rosters (Partners / Associates / Of Counsel on separate pages, as with
+    #    Martin & Bonnett) AND firms that link each /attorney/{slug} straight
+    #    from the home/about page with no separate roster index discovered
+    #    (peterferracuti.com: 3 attorney links on the home page -> previously
+    #    fell through to `unknown`). Heading-role classification below stays
+    #    team-only, since home-page headings are marketing copy, not people.
     slugs: set[str] = set()
-    for html in team_pages:
+    for _role, html in pages:
         slugs |= _profile_link_slugs(html)
     if len(slugs) >= 2:
         return HeadcountResult(len(slugs), True, "profile_links", "high", None), staff_count

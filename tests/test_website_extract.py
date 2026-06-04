@@ -309,6 +309,22 @@ def test_headcount_aggregates_across_attorney_subpages():
     assert hc.count == 3  # dan, susan, jane (dup collapses)
 
 
+def test_headcount_profile_links_counted_on_home_page():
+    # peterferracuti case: attorney-profile links live on the HOME page and no
+    # separate /attorneys index was discovered -> must still be counted, not
+    # ignored as "not a team page" (previously fell through to unknown).
+    home = (
+        "<html><body><footer>"
+        '<a href="/attorney/dunn-travis">Travis Dunn</a>'
+        '<a href="/attorney/ferracuti-alexis-p">Alexis Ferracuti</a>'
+        '<a href="/attorney/ludwinski-matthew">Matthew Ludwinski</a>'
+        "</footer></body></html>"
+    )
+    hc, _ = extract_headcount([("home", home)], base_url="https://x.com")
+    assert hc.method == "profile_links"
+    assert hc.count == 3
+
+
 # --- announcement / press-release guard + gov flag (pilot findings) -------
 
 
