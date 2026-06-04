@@ -77,6 +77,13 @@ human. Full architecture rationale: `docs/assumptions.md` →
   `directory_profile` keyed off canonical/og:url identity, not a substring;
   combined-experience and pre-1780 founding-year guards). `make_engine()` routing
   landed earlier (`5809241`). 269 tests green. `Websites` is ready to push → `main`.
+- **2026-06-04** — LAUNCHING the full website-enrichment `run` over ~26.9k remaining
+  sites, detached/background, resumable via `enriched_at` (re-run skips done). Bumped
+  FirmWebsiteScraper.RATE_LIMIT_RPS 8 -> 20 (load spreads across ~27k DISTINCT hosts
+  at ~3 req each, so per-host rate stays trivial); 24 fetch workers, single bulk-upsert
+  committer. Writes ONLY website_enrichment via make_engine() (busy_timeout=30s), so it
+  coexists with the live Martindale scrape (2 writers, WAL). @Mastermind: flag me if you
+  see "database is locked" contention and I'll throttle. Will report on completion.
 - _(add entries here)_
 
 ### Canonizer
