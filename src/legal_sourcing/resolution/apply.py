@@ -2,27 +2,21 @@
 
 What it does:
 
-  1. Reads `MatchReviewQueue` rows with status in
-     {`auto_approved`, `approved`} — i.e. the system-merged pairs
-     plus any human-approved-in-review pairs.
-  2. Union-finds connected components across `source_record_a_id`
-     and `source_record_b_id`. A component is one canonical firm
-     with N source-record members.
-  3. Source records NOT in any approved match become singleton
-     components (one Firm with one Link).
-  4. For each component:
-       - Pick canonical field values via source-priority precedence
-         (preferring more-enriched sources for each field).
-       - Insert a `firms` row capturing both raw and normalized
-         forms, plus `field_provenance` JSON recording which source
-         supplied each field.
-       - Insert one `firm_source_record_links` row per member.
-       - Update each member `MatchReviewQueue` row with
-         `resulting_firm_id`.
+  1. Reads `MatchReviewQueue` rows with status in {`auto_approved`,
+     `approved`} — the system-merged pairs plus any human-approved ones.
+  2. Union-finds connected components across `source_record_a_id` /
+     `source_record_b_id`. Each component is one canonical firm with N
+     source-record members; records in no approved pair are singletons.
+  3. For each component, fuses its member source records (plus the matching
+     `WebsiteEnrichment` row, joined on the cluster's website) into one
+     canonical `Firm` via :func:`resolution.fusion.fuse_cluster` — a
+     reliability- and recency-weighted, field-by-field truth-discovery vote
+     (see resolution/fusion.py). Writes the `Firm` (with `field_provenance`),
+     one `firm_source_record_links` row per member, and stamps each consumed
+     `MatchReviewQueue` row with `resulting_firm_id`.
 
 The apply step is idempotent and re-runnable: it clears `firms` and
-`firm_source_record_links` at the start. Source-record data is
-untouched.
+`firm_source_record_links` at the start. Source-record data is untouched.
 
 CLI:
     uv run python -m legal_sourcing.resolution.apply
@@ -32,10 +26,8 @@ from __future__ import annotations
 
 import argparse
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Iterable
-from datetime import UTC, datetime
-from typing import Any
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -46,32 +38,25 @@ from legal_sourcing.models import (
     FirmSourceRecord,
     FirmSourceRecordLink,
     MatchReviewQueue,
+    WebsiteEnrichment,
 )
-from legal_sourcing.normalize.name import looks_like_firm
+from legal_sourcing.resolution.fusion import _aggregate_attorney_count, fuse_cluster
+from legal_sourcing.resolution.identity import is_firm_name, is_identity_website
 from legal_sourcing.utils.logging import configure_logging, get_logger
 
 log = get_logger(__name__)
 
+# Re-exported from their original home for callers/tests that still import them
+# here. The implementations now live in resolution.fusion / resolution.identity.
+_looks_like_firm = is_firm_name
 
-# Source precedence: order of preference when picking a canonical
-# field value. The first source in this list whose record has a
-# non-empty value for the field wins. Tunable per field via
-# FIELD_PRECEDENCE_OVERRIDES below.
-DEFAULT_SOURCE_PRIORITY: tuple[str, ...] = (
-    "martindale",  # richest enrichment; clean firm names
-    "findlaw",  # firm-level cards, real website URLs
-    "az_bar",  # state bar: individual attorneys; firm fields sparse
-    "justia",  # bottom: no firm name on listings; mainly a website source
-)
-# NOTE (docs/assumptions.md 2026-06-02): once website enrichment lands it
-# becomes the TOP tier for the fields it owns (attorney_count, description),
-# and `name` needs a FIELD override to keep FindLaw person-names / empty
-# Justia names from winning. Not yet wired (website_enrichment table TBD).
-
-# Per-field overrides on the default priority. Empty for now —
-# defaults work for the current source mix. Add entries when a
-# source clearly wins on a specific field.
-FIELD_PRECEDENCE_OVERRIDES: dict[str, tuple[str, ...]] = {}
+__all__ = [
+    "_UnionFind",
+    "_aggregate_attorney_count",
+    "_looks_like_firm",
+    "apply_decisions",
+    "main",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -109,194 +94,24 @@ class _UnionFind:
 
 
 # ---------------------------------------------------------------------------
-# Canonical-field selection
+# Website-enrichment join
 
 
-def _priority_for(field: str) -> tuple[str, ...]:
-    return FIELD_PRECEDENCE_OVERRIDES.get(field, DEFAULT_SOURCE_PRIORITY)
-
-
-def _pick(
-    field: str,
+def _enrichment_for(
     members: list[FirmSourceRecord],
-) -> tuple[Any, int | None, str | None]:
-    """Pick the canonical value for `field` across `members`.
-
-    Returns ``(value, source_record_id, source_name)`` so the caller
-    can record provenance. Returns ``(None, None, None)`` if no member
-    has a non-empty value.
-    """
-    by_source: dict[str, FirmSourceRecord] = {m.source: m for m in members}
-    for src in _priority_for(field):
-        rec = by_source.get(src)
-        if rec is None:
-            continue
-        v = getattr(rec, field, None)
-        if v not in (None, "", [], {}):
-            return v, rec.id, rec.source
-    # Fallback: any non-empty value, take the first.
-    for m in members:
-        v = getattr(m, field, None)
-        if v not in (None, "", [], {}):
-            return v, m.id, m.source
-    return None, None, None
-
-
-# Firm-vs-person detection lives in normalize.name (shared with the state-bar
-# parser, whose firm field may also hold a person's name). Aliased here for the
-# existing call sites / tests.
-_looks_like_firm = looks_like_firm
-
-
-def _attorney_identity(contact: dict[str, Any], source: str) -> str | None:
-    """Dedup key for one attorney: email (globally unique) -> normalized
-    name (the cross-source workhorse) -> source-scoped bar/profile id
-    (only when there's no name). Cross-source dedup is name-based and
-    imperfect (no universal attorney ID); email upgrades it, id is a
-    fallback. See docs/assumptions.md 2026-06-02.
-    """
-    email = (contact.get("email_normalized") or contact.get("email_raw") or "").strip().lower()
-    if email:
-        return f"email:{email}"
-    name = (contact.get("name_normalized") or contact.get("name_raw") or "").strip().lower()
-    if name:
-        return f"name:{name}"
-    cid = (
-        contact.get("entity_number")
-        or contact.get("bar_number")
-        or contact.get("source_attorney_id")
-    )
-    if cid:
-        return f"id:{source}:{cid}"
-    return None
-
-
-def _aggregate_attorney_count(members: list[FirmSourceRecord]) -> int | None:
-    """Count DISTINCT attorneys across the cluster (NOT MAX).
-
-    Each directory record carries its attorney(s) in `contacts`
-    (az_bar / justia / martindale); FindLaw lists some individual
-    attorneys as firm-level cards with empty `contacts` and the person
-    in `name_raw`. We union both, deduped by `_attorney_identity`, so
-    e.g. Kutak Rock's 104 records resolve toward the real headcount
-    instead of MAX=29.
-
-    When website enrichment exists, the website-stated count is
-    authoritative and overwrites this on the canonical Firm
-    (docs/assumptions.md). This is the no-website fallback.
-    """
-    ids: set[str] = set()
-    for m in members:
-        contacts = m.contacts or []
-        if contacts:
-            for c in contacts:
-                key = _attorney_identity(c, m.source)
-                if key:
-                    ids.add(key)
-        elif not _looks_like_firm(m.name_raw):
-            # Person-level record with no contacts (FindLaw per-attorney
-            # card): count the named individual as one attorney.
-            nm = (m.name_normalized or m.name_raw or "").strip().lower()
-            if nm:
-                ids.add(f"name:{nm}")
-    return len(ids) or None
-
-
-def _union_practice_areas(
-    members: list[FirmSourceRecord],
-) -> tuple[list[str], list[str], list[str]]:
-    """Union practice areas across sources. Returns (raw, matched,
-    unmatched) lists with duplicates removed but order roughly
-    preserved.
-    """
-    raw: list[str] = []
-    matched: list[str] = []
-    unmatched: list[str] = []
-    for m in members:
-        for k in m.practice_areas_raw or []:
-            if k not in raw:
-                raw.append(k)
-        for k in m.practice_areas_matched or []:
-            if k not in matched:
-                matched.append(k)
-        for k in m.practice_areas_unmatched or []:
-            if k not in unmatched:
-                unmatched.append(k)
-    return raw, matched, unmatched
-
-
-def _make_field_provenance(
-    members: list[FirmSourceRecord],
-    chosen: dict[str, tuple[Any, int | None, str | None]],
-) -> dict[str, Any]:
-    """Build the `firms.field_provenance` JSON. One entry per
-    canonical field that was picked, recording which source record
-    supplied the value and when.
-    """
-    written_at = datetime.now(UTC).isoformat()
-    prov: dict[str, Any] = {}
-    for field, (_value, source_record_id, source) in chosen.items():
-        if source_record_id is None:
-            continue
-        prov[field] = {
-            "source_record_id": source_record_id,
-            "source": source,
-            "written_at": written_at,
-        }
-    return prov
-
-
-# ---------------------------------------------------------------------------
-# Per-component build
-
-
-def _build_firm_from_component(
-    members: list[FirmSourceRecord],
-) -> tuple[Firm, dict[str, Any]]:
-    """Construct (but don't persist) a Firm row from a component plus
-    provenance JSON. Returns the Firm and the field_provenance dict
-    (the Firm holds it on the column too, but we return it separately
-    so the caller can log).
-    """
-    # Per-field picks.
-    chosen: dict[str, tuple[Any, int | None, str | None]] = {}
-    for field in (
-        "name_raw",
-        "name_normalized",
-        "website_raw",
-        "website_normalized",
-        "phone_raw",
-        "phone_normalized",
-        "year_founded",
-    ):
-        chosen[field] = _pick(field, members)
-
-    attorney_count = _aggregate_attorney_count(members)
-    if attorney_count is not None:
-        # Provenance for attorney_count: the source that supplied the
-        # max value.
-        max_source = max(
-            (m for m in members if m.attorney_count),
-            key=lambda m: m.attorney_count or 0,
-        )
-        chosen["attorney_count"] = (attorney_count, max_source.id, max_source.source)
-    else:
-        chosen["attorney_count"] = (None, None, None)
-
-    field_provenance = _make_field_provenance(members, chosen)
-
-    firm = Firm(
-        name=chosen["name_raw"][0] or "",
-        name_normalized=chosen["name_normalized"][0],
-        website=chosen["website_raw"][0],
-        website_normalized=chosen["website_normalized"][0],
-        phone=chosen["phone_raw"][0],
-        phone_normalized=chosen["phone_normalized"][0],
-        year_founded=chosen["year_founded"][0],
-        attorney_count=chosen["attorney_count"][0],
-        field_provenance=field_provenance,
-    )
-    return firm, field_provenance
+    enrichment_by_website: dict[str, WebsiteEnrichment],
+) -> WebsiteEnrichment | None:
+    """The WebsiteEnrichment row for the cluster's dominant identity website
+    (the firm's own domain), or None."""
+    webs = [
+        m.website_normalized
+        for m in members
+        if m.website_normalized and is_identity_website(m.website_normalized)
+    ]
+    if not webs:
+        return None
+    web = Counter(webs).most_common(1)[0][0]
+    return enrichment_by_website.get(web)
 
 
 # ---------------------------------------------------------------------------
@@ -320,25 +135,21 @@ def apply_decisions(
         "queue_rows_linked": 0,
     }
     with Session(engine) as session:
-        # 1) Clear existing canonical rows. This is the only place
-        # firms / firm_source_record_links are written; clearing is
-        # safe and makes the apply step idempotent.
+        # 1) Clear existing canonical rows (the only place firms /
+        # firm_source_record_links are written; clearing keeps apply idempotent).
         n_links = session.execute(delete(FirmSourceRecordLink)).rowcount
         n_firms = session.execute(delete(Firm)).rowcount
         log.info("apply.cleared", firms=n_firms, links=n_links)
 
-        # 2) Build union-find from the approved match-queue rows.
+        # 2) Union-find from the approved match-queue rows.
         approved = session.scalars(
             select(MatchReviewQueue).where(MatchReviewQueue.status.in_(statuses))
         ).all()
         counts["queue_rows_consumed"] = len(approved)
         uf = _UnionFind()
-
-        # Make sure every source-record id ends up in UF (singletons too).
-        all_ids = [r.id for r in session.scalars(select(FirmSourceRecord)).all()]
+        all_ids = [r.id for r in session.scalars(select(FirmSourceRecord.id)).all()]
         for rid in all_ids:
             uf.find(rid)
-
         for m in approved:
             uf.union(m.source_record_a_id, m.source_record_b_id)
 
@@ -347,8 +158,12 @@ def apply_decisions(
         counts["components"] = len(components)
         log.info("apply.components", count=len(components), total_records=len(all_ids))
 
-        # 4) Build Firm + Links per component.
+        # 4) Build Firm + Links per component, fusing with the truth-discovery
+        # vote. Preload all WebsiteEnrichment rows for the per-cluster join.
         member_records = {r.id: r for r in session.scalars(select(FirmSourceRecord)).all()}
+        enrichment_by_website = {
+            e.website: e for e in session.scalars(select(WebsiteEnrichment)).all()
+        }
 
         firm_by_root: dict[int, Firm] = {}
         for root, member_ids in components.items():
@@ -357,7 +172,19 @@ def apply_decisions(
                 counts["singletons"] += 1
             else:
                 counts["multi_member_firms"] += 1
-            firm, _prov = _build_firm_from_component(members)
+            enrichment = _enrichment_for(members, enrichment_by_website)
+            result = fuse_cluster(members, enrichment)
+            firm = Firm(
+                name=result.name,
+                name_normalized=result.name_normalized,
+                website=result.website,
+                website_normalized=result.website_normalized,
+                phone=result.phone,
+                phone_normalized=result.phone_normalized,
+                year_founded=result.year_founded,
+                attorney_count=result.attorney_count,
+                field_provenance=result.field_provenance,
+            )
             session.add(firm)
             firm_by_root[root] = firm
         session.flush()  # populate firm.id values
@@ -374,12 +201,9 @@ def apply_decisions(
                     )
                 )
                 counts["links"] += 1
-
         session.flush()
 
-        # 6) Update MatchReviewQueue.resulting_firm_id where both
-        # sides ended up in the same component (always true for
-        # approved rows, but explicit is better).
+        # 6) Stamp MatchReviewQueue.resulting_firm_id for approved rows.
         for m in approved:
             root_a = uf.find(m.source_record_a_id)
             root_b = uf.find(m.source_record_b_id)

@@ -29,6 +29,7 @@ from collections import defaultdict
 from collections.abc import Iterable, Iterator
 
 from legal_sourcing.models import FirmSourceRecord
+from legal_sourcing.resolution.identity import is_identity_website
 
 # Length of the name prefix used in the (name_prefix, state) key. Eight
 # characters is short enough to survive minor suffix differences
@@ -50,7 +51,9 @@ def make_blocking_keys(record: FirmSourceRecord) -> set[str]:
         keys.add(f"phone:{phone}")
 
     website = (record.website_normalized or "").strip()
-    if website:
+    # Skip aggregator / social / website-builder domains: a shared non-identity
+    # domain (facebook.com, weebly.com, ...) would bucket unrelated firms.
+    if website and is_identity_website(website):
         keys.add(f"website:{website}")
 
     name_norm = (record.name_normalized or "").strip()

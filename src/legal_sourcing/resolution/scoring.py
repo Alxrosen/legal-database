@@ -44,6 +44,7 @@ from typing import Any
 from rapidfuzz import fuzz
 
 from legal_sourcing.models import FirmSourceRecord
+from legal_sourcing.resolution.identity import is_firm_name, is_identity_website
 
 DEFAULT_WEIGHTS: dict[str, float] = {
     # Weights chosen so all five positive components sum to exactly 100,
@@ -58,6 +59,31 @@ DEFAULT_WEIGHTS: dict[str, float] = {
     # is -1 when applied so the total nudges DOWN.
     "suffix_diff_penalty": 5.0,
 }
+
+# A shared *identity* website (not an aggregator / website-builder platform
+# domain) is, in this corpus, a near-certain same-firm signal: every
+# non-aggregator domain in the DB maps to exactly one firm (verified on
+# swlaw.com, forthepeople.com, kutakrock.com, ...). So a website-exact match
+# floors the pair into the auto-merge band even when office phones differ or a
+# name is missing -- which otherwise shatters multi-office firms (Snell &
+# Wilmer fragmented into 38 singletons before this).
+WEBSITE_MERGE_FLOOR = 88.0
+# ...UNLESS both records carry clearly-different FIRM names (two real firms that
+# happen to share one domain): then cap the score out of the auto band so a
+# human reviews it.
+NAME_CONFLICT_SIM = 0.40
+NAME_CONFLICT_CAP = 55.0
+
+# Same phone + a strongly-matching name (same office line AND same name) is also
+# decisive -- and it's the only strong signal for the ~83% of records that carry
+# no website. Floor it into the auto band. The name requirement guards against
+# shared lead-gen / toll-free numbers: different firms have different names, so
+# the floor won't fire for them.
+PHONE_NAME_FLOOR = 86.0
+STRONG_NAME_SIM = 0.85
+# Two records with DIFFERENT identity websites are different firms; cap the score
+# so a coincidental name or phone match can't auto-merge them.
+WEBSITE_CONFLICT_CAP = 50.0
 
 
 def _name_suffix(record: FirmSourceRecord) -> str | None:
@@ -110,13 +136,14 @@ def score_pair(
     w = weights or DEFAULT_WEIGHTS
     components: dict[str, float | None] = {}
 
-    # Name similarity — always computed; missing names treated as 0.
+    # Name similarity. A MISSING name is neutral (None, omitted), not 0 -- Justia
+    # carries no firm name, and scoring it 0 wrongly penalized every Justia pair.
     name_a = (a.name_normalized or "").strip()
     name_b = (b.name_normalized or "").strip()
     if name_a and name_b:
         components["name_sim"] = fuzz.token_set_ratio(name_a, name_b) / 100.0
     else:
-        components["name_sim"] = 0.0
+        components["name_sim"] = None
 
     # Phone exact-match (when both present).
     pa = (a.phone_normalized or "").strip()
@@ -129,7 +156,9 @@ def score_pair(
     # Website exact-match (when both present).
     wa = (a.website_normalized or "").strip().lower()
     wb = (b.website_normalized or "").strip().lower()
-    if wa and wb:
+    # Only IDENTITY domains count: a shared aggregator / social / platform domain
+    # (facebook.com, weebly.com, ...) is not evidence of the same firm.
+    if wa and wb and is_identity_website(wa) and is_identity_website(wb):
         components["website_exact"] = 1.0 if wa == wb else 0.0
     else:
         components["website_exact"] = None
@@ -168,6 +197,31 @@ def score_pair(
         if v is None:
             continue
         total += weight * v
-    total = max(0.0, min(100.0, total))
 
+    # Strong-identifier overrides. First apply positive FLOORS (decisive
+    # same-firm evidence), then CAPS for contradicting evidence -- caps are
+    # applied last so they win over a floor when signals conflict.
+    name_sim = components.get("name_sim")
+    name_conflict = (
+        name_sim is not None
+        and name_sim < NAME_CONFLICT_SIM
+        and is_firm_name(a.name_raw)
+        and is_firm_name(b.name_raw)
+    )
+    # Floors.
+    if components.get("website_exact") == 1.0 and not name_conflict:
+        total = max(total, WEBSITE_MERGE_FLOOR)
+    if (
+        components.get("phone_exact") == 1.0
+        and name_sim is not None
+        and name_sim >= STRONG_NAME_SIM
+    ):
+        total = max(total, PHONE_NAME_FLOOR)
+    # Caps (contradicting evidence wins).
+    if name_conflict:
+        total = min(total, NAME_CONFLICT_CAP)
+    if components.get("website_exact") == 0.0:
+        total = min(total, WEBSITE_CONFLICT_CAP)
+
+    total = max(0.0, min(100.0, total))
     return {"components": components, "total": round(total, 2)}
