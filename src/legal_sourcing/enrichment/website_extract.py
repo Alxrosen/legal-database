@@ -28,12 +28,14 @@ import json
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 
 from selectolax.parser import HTMLParser
 
 from legal_sourcing.normalize.name import looks_like_firm
 from legal_sourcing.normalize.phone import normalize_phone
+from legal_sourcing.normalize.practice_areas import get_taxonomy
+from legal_sourcing.normalize.url import is_aggregator_domain, safe_urlparse
 
 # ---------------------------------------------------------------------------
 # Vocabulary
@@ -92,8 +94,11 @@ _STAFF_ROLE = (
 )
 
 _PLATFORM_FINGERPRINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    # order matters: directory-profile first (it's NOT the firm's own site)
-    ("directory_profile", ("findlaw.com/lawfirm", "martindale.com", "justia.com", "avvo.com")),
+    # NB: directory_profile is NOT a substring fingerprint — firms publish
+    # outbound links to their own Avvo/Justia/Martindale profiles (often in a
+    # JSON-LD `sameAs`), so a bare "justia.com" in the HTML is no signal the
+    # page IS a directory. It's detected from the page's declared identity
+    # (canonical / og:url) in detect_platform() instead.
     ("wix", ("wix.com", "wixstatic.com", "wixsite.com")),
     ("squarespace", ("squarespace.com", "static1.squarespace")),
     ("webflow", ("website-files.com", "webflow.io")),
@@ -123,15 +128,84 @@ _NOTABLE = (
     ("board certified", "board certified"),
 )
 
-_STATED_COUNT = re.compile(r"(\d[\d,]{0,6})\s*\+?\s*(attorneys?|lawyers?)\b", re.I)
-_STAFF_COUNT = re.compile(
-    r"(\d[\d,]{0,6})\s*\+?\s*(staff|employees|professionals|team members)\b", re.I
-)
-_OFFICE_COUNT = re.compile(r"(\d{1,3})\s*\+?\s*(offices?|locations?)\b", re.I)
+# Leading number for "<n> attorneys/staff/offices". Two guards on the first
+# digit: (?<![\d.\-]) stops a phone-number tail / longer digit run from being
+# read as a count ("...Call 478-621-4980 Lawyers" must NOT yield 4980); and the
+# leading digit is [1-9], so a zero-padded section/ordinal marker is rejected
+# ("...AI for Legal Practice 02 Attorneys Mentorship..." on burnerlaw.com must
+# NOT yield 2). Real counts ("40+ Lawyers", "Our 450 attorneys", "1,100+") still
+# match — none are written with a leading zero.
+_N = r"(?<![\d.\-])([1-9][\d,]{0,6})"
+_STATED_COUNT = re.compile(rf"{_N}\s*\+?\s*(attorneys?|lawyers?)\b", re.I)
+_STAFF_COUNT = re.compile(rf"{_N}\s*\+?\s*(staff|employees|professionals|team members)\b", re.I)
+_OFFICE_COUNT = re.compile(r"(?<![\d.\-])([1-9]\d{0,2})\s*\+?\s*(offices?|locations?)\b", re.I)
 _YEARS = re.compile(r"(\d{1,3})\s*\+?\s*(?:years?|yrs?)\b", re.I)
 _FOUNDED = re.compile(r"(?:founded|established|since|serving\D{0,20}since)\D{0,12}(\d{4})", re.I)
 _PHONE = re.compile(r"\(?\b\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}\b")
 _CITY_STATE_ZIP = re.compile(r"([A-Za-z][A-Za-z.\s]{1,38}?),\s*([A-Z]{2})\s+(\d{5})(?:-\d{4})?")
+# Street-suffix / unit / compound-directional tokens that must NOT be read as
+# part of a city when walking back through flat footer text ("...Inverness
+# Drive East Englewood, CO" -> "Englewood", not "Drive East Englewood"). Excludes
+# "st"/"saint" on purpose: Saint-cities (St Petersburg, St Louis) are common and
+# outweigh the rare "<Street> St <City>" leak; a single cardinal "N/S/E/W" is
+# caught by the single-letter rule, while the word forms (north/south/east/west)
+# are KEPT so directional-prefixed cities (West Palm Beach) survive.
+_STREET_STOP: frozenset[str] = frozenset(
+    {
+        "drive",
+        "dr",
+        "avenue",
+        "ave",
+        "boulevard",
+        "blvd",
+        "road",
+        "rd",
+        "lane",
+        "ln",
+        "court",
+        "ct",
+        "way",
+        "place",
+        "pl",
+        "parkway",
+        "pkwy",
+        "highway",
+        "hwy",
+        "circle",
+        "cir",
+        "terrace",
+        "ter",
+        "trail",
+        "trl",
+        "loop",
+        "square",
+        "sq",
+        "plaza",
+        "plz",
+        "expressway",
+        "expy",
+        "freeway",
+        "fwy",
+        "row",
+        "floor",
+        "fl",
+        "suite",
+        "ste",
+        "unit",
+        "apt",
+        "building",
+        "bldg",
+        "room",
+        "rm",
+        "lobby",
+        "tower",
+        "level",
+        "ne",
+        "nw",
+        "se",
+        "sw",
+    }
+)
 _PROFILE_LINK = re.compile(
     r"/(attorneys?|lawyers?|people|team|bio|profile|our-attorneys?)/[a-z0-9][a-z0-9\-]+/?$", re.I
 )
@@ -163,10 +237,18 @@ class SiteExtraction:
     staff_count: int | None = None
     office_count: int | None = None
     office_addresses: list[dict[str, str]] = field(default_factory=list)
+    # The firm's PRIMARY office location (where it is set up) — derived from the
+    # zip-anchored footer addresses, NOT from jurisdiction/"we serve" copy.
+    primary_city: str | None = None
+    primary_state: str | None = None
     years_in_operation: int | None = None
     years_is_min: bool = False
     phones: list[str] = field(default_factory=list)
     notable_signals: list[str] = field(default_factory=list)
+    # Legal specialties the firm advertises (canonical slugs + verbatim). Matched
+    # via the practice-area taxonomy, so office LOCATIONS can never leak in here.
+    practice_areas: list[str] = field(default_factory=list)
+    practice_areas_raw: list[str] = field(default_factory=list)
     scope: str | None = None
     description_blurb: str | None = None
     needs_render: bool = False
@@ -234,11 +316,27 @@ def _to_int(s: str) -> int:
     return int(s.replace(",", ""))
 
 
+def _host(url: str) -> str:
+    """Lowercased netloc of a URL, or '' — never raises (Python 3.14 urlparse
+    is strict; scraped hrefs are junk-prone)."""
+    p = safe_urlparse(url)
+    return (p.netloc if p else "").lower()
+
+
 # ---------------------------------------------------------------------------
 # Platform
 
 
 def detect_platform(html: str | bytes) -> str:
+    tree = _tree(html)
+    # directory_profile is decided by the page's OWN declared identity
+    # (canonical / og:url host), NOT a substring anywhere in the HTML — a firm's
+    # own site linking to its Avvo/Justia profile (e.g. JSON-LD `sameAs`) must
+    # not be mislabeled a directory (hastingsfirm.com regression).
+    for sel, attr in (('link[rel="canonical"]', "href"), ('meta[property="og:url"]', "content")):
+        node = tree.css_first(sel)
+        if node and is_aggregator_domain(_host(node.attributes.get(attr) or "")):
+            return "directory_profile"
     low = (html.decode("utf-8", "ignore") if isinstance(html, bytes) else html).lower()
     for name, markers in _PLATFORM_FINGERPRINTS:
         if any(m in low for m in markers):
@@ -291,6 +389,8 @@ _ANNOUNCE_TRAILING: tuple[str, ...] = (
     "lateral",
     "select",
     "awarded",
+    "per state",  # "Top 40 Under 40 ... only 40 attorneys per state" (award quota)
+    "per year",
 )
 _ANNOUNCE_LEADING: tuple[str, ...] = (
     "welcom",
@@ -300,12 +400,25 @@ _ANNOUNCE_LEADING: tuple[str, ...] = (
     "adds ",
     "adding ",
     "added ",
+    "top ",  # "...Top 100 Lawyers" (an award/ranking, not a firm headcount)
+    "there are ",  # "...there are ~4000 lawyers throughout the nation" (population stat)
 )
 
+# A stated attorney/lawyer count above this is almost never a single firm's own
+# headcount in our universe — it's a statewide/national bar population stat
+# ("More than 15,000 lawyers are practicing in Indiana", criminaldefenseteam.com)
+# or other comparative figure. The largest single US firms are ~4,000 attorneys;
+# rare global networks above this are SPAs we undercount anyway. Staff counts are
+# not capped this tightly (a company can have thousands of employees).
+_MAX_FIRM_ATTORNEYS = 5000
 
-def _stated_count(texts: list[str], pattern: re.Pattern[str]) -> tuple[int, bool, str] | None:
+
+def _stated_count(
+    texts: list[str], pattern: re.Pattern[str], *, max_n: int = 100000
+) -> tuple[int, bool, str] | None:
     """Highest plausible '<n> attorneys/lawyers' (or staff) across texts,
-    EXCLUDING press-release / announcement contexts that aren't a firm total."""
+    EXCLUDING press-release / announcement contexts that aren't a firm total.
+    `max_n` caps an implausibly large value (a population/comparative stat)."""
     best: tuple[int, bool, str] | None = None
     for text in texts:
         for m in pattern.finditer(text):
@@ -313,7 +426,7 @@ def _stated_count(texts: list[str], pattern: re.Pattern[str]) -> tuple[int, bool
             is_min = "+" in m.group(0)
             if _drop_year(n) and not is_min:
                 continue
-            if n <= 0 or n > 100000:
+            if n <= 0 or n > max_n:
                 continue
             tail = text[m.end() : m.end() + 30].lower()
             head = text[max(0, m.start() - 30) : m.start()].lower()
@@ -435,17 +548,23 @@ def extract_headcount(
     staff_stated = _stated_count(texts, _STAFF_COUNT)
     staff_count = staff_stated[0] if staff_stated else None
 
-    # 1. stated attorney count
-    stated = _stated_count(texts, _STATED_COUNT)
+    # 1. stated attorney count (capped: a value above _MAX_FIRM_ATTORNEYS is a
+    #    statewide/national bar-population stat, not this firm's headcount)
+    stated = _stated_count(texts, _STATED_COUNT, max_n=_MAX_FIRM_ATTORNEYS)
     if stated:
         n, is_min, ev = stated
         return HeadcountResult(n, is_min, "stated", "high", ev), staff_count
 
     # 2. profile-link count: UNION distinct attorney-profile slugs across ALL
-    #    team/attorney pages — handles multi-subpage rosters (e.g. Partners /
-    #    Associates / Of Counsel on separate pages, as with Martin & Bonnett).
+    #    crawled pages (not just team/attorney pages) — handles multi-subpage
+    #    rosters (Partners / Associates / Of Counsel on separate pages, as with
+    #    Martin & Bonnett) AND firms that link each /attorney/{slug} straight
+    #    from the home/about page with no separate roster index discovered
+    #    (peterferracuti.com: 3 attorney links on the home page -> previously
+    #    fell through to `unknown`). Heading-role classification below stays
+    #    team-only, since home-page headings are marketing copy, not people.
     slugs: set[str] = set()
-    for html in team_pages:
+    for _role, html in pages:
         slugs |= _profile_link_slugs(html)
     if len(slugs) >= 2:
         return HeadcountResult(len(slugs), True, "profile_links", "high", None), staff_count
@@ -484,10 +603,17 @@ def extract_offices(html: str | bytes) -> tuple[int | None, list[dict[str, str]]
     addrs: list[dict[str, str]] = []
     for m in _CITY_STATE_ZIP.finditer(text):
         # group(1) may carry a leading street/prose fragment from the flat
-        # text; keep only the trailing run of Title-cased words (the city).
+        # text; keep only the trailing run of Title-cased words (the city),
+        # stopping at a street-suffix / unit token ("...Drive East Englewood"
+        # -> "East Englewood"; "...2nd Floor Los Angeles" -> "Los Angeles";
+        # "...Suite 210-B Bakersfield" -> "Bakersfield").
         city_words: list[str] = []
         for w in reversed(m.group(1).split()):
             wc = w.strip(".,")
+            if not wc:
+                break
+            if wc.lower() in _STREET_STOP or (len(wc) == 1 and wc.isalpha()):
+                break  # reached the street / unit / suite-letter part
             if wc[:1].isupper() and wc.replace("-", "").isalpha():
                 city_words.insert(0, wc)
             else:
@@ -517,15 +643,26 @@ def extract_years(text: str, *, now_year: int | None = None) -> tuple[int | None
     fm = _FOUNDED.search(text)
     if fm:
         yr = int(fm.group(1))
-        if 1700 <= yr <= now_year:
+        # Floor at 1780: no US law firm predates ~1790 (Cadwalader, 1792, is the
+        # oldest), so an earlier "founded/since YYYY" is a city/historical
+        # reference, not the firm ("...North America. Founded in 1764 by French
+        # [settlers]" = St. Louis, on missourilawyers.com -> bogus 262 years).
+        if 1780 <= yr <= now_year:
             return now_year - yr, False
     best: tuple[int, bool] | None = None
     for m in _YEARS.finditer(text):
         n = int(m.group(1))
-        if 1 <= n <= 200:
-            is_min = "+" in m.group(0)
-            if best is None or n > best[0]:
-                best = (n, is_min)
+        if not (1 <= n <= 200):
+            continue
+        # "X years of combined/collective experience" is summed across the
+        # whole team, NOT the firm's age (thevirgalawfirm.com / sdtriallaw.com
+        # both say "100 years of combined/collective experience").
+        ctx = low[max(0, m.start() - 12) : m.end() + 30]
+        if "combined" in ctx or "collective" in ctx:
+            continue
+        is_min = "+" in m.group(0)
+        if best is None or n > best[0]:
+            best = (n, is_min)
     return best if best else (None, False)
 
 
@@ -547,6 +684,60 @@ def extract_phones(html: str | bytes) -> list[str]:
 def extract_notable_signals(text: str) -> list[str]:
     low = text.lower()
     return [label for needle, label in _NOTABLE if needle in low]
+
+
+# A link path that indicates a practice-area page (a sub-segment must follow).
+_PRACTICE_PATH = re.compile(
+    r"/(?:practice-areas?|areas?-of-practice|our-practices?|practice|services?|"
+    r"what-we-do|expertise)/",
+    re.I,
+)
+
+
+def extract_practice_areas(
+    pages: list[tuple[str, str | bytes]], *, base_url: str = ""
+) -> tuple[list[str], list[str]]:
+    """Legal specialties the firm advertises, matched to the canonical taxonomy.
+
+    Returns ``(matched_slugs, raw_phrases)``. Candidates are internal-link anchor
+    texts plus the trailing slug of any ``/practice(-areas)/{slug}`` path; each is
+    matched via ``get_taxonomy().match`` (exact-on-normalized). Only real legal
+    practice areas survive the match, so office LOCATIONS — city / "we serve X" /
+    jurisdiction links — can NEVER appear here (this field is the firm's
+    specialty, not where it sits or where its lawyers are licensed). ``raw`` keeps
+    the verbatim phrase that produced each matched slug, for audit.
+    """
+    tax = get_taxonomy()
+    host = _host(base_url)
+    slugs: list[str] = []
+    raw: list[str] = []
+    seen_raw: set[str] = set()
+    for _role, html in pages:
+        for a in _tree(html).css("a[href]"):
+            href = a.attributes.get("href") or ""
+            if href.startswith(("mailto:", "tel:", "javascript:", "#")):
+                continue
+            parsed = safe_urlparse(urljoin(base_url, href))
+            if parsed and host and parsed.netloc and parsed.netloc.lower() != host:
+                continue  # external link
+            candidates = [" ".join((a.text() or "").split())]
+            path = (parsed.path if parsed else "") or ""
+            if _PRACTICE_PATH.search(path):
+                seg = path.split("#")[0].split("?")[0].rstrip("/").split("/")[-1]
+                candidates.append(seg.replace("-", " ").replace("_", " "))
+            for cand in candidates:
+                cand = cand.strip()
+                if not cand or len(cand) > 60:
+                    continue
+                slug = tax.match(cand)
+                if not slug:
+                    continue
+                if cand.lower() not in seen_raw:
+                    seen_raw.add(cand.lower())
+                    raw.append(cand)
+                if slug not in slugs:
+                    slugs.append(slug)
+    return slugs, raw
 
 
 def extract_scope(text: str) -> str | None:
@@ -617,7 +808,7 @@ def discover_internal_pages(
     (Partners/Associates/...) are all captured.
     """
     tree = _tree(home_html)
-    host = (urlparse(base_url).netloc or "").lower()
+    host = _host(base_url)
     out: dict[str, list[str]] = {"about": [], "team": [], "attorneys": []}
     seen: set[str] = set()
 
@@ -633,8 +824,8 @@ def discover_internal_pages(
             continue
         text = " ".join((a.text() or "").split()).lower()
         full = urljoin(base_url, href)
-        parsed = urlparse(full)
-        if parsed.scheme not in ("http", "https"):
+        parsed = safe_urlparse(full)
+        if parsed is None or parsed.scheme not in ("http", "https"):
             continue
         if host and parsed.netloc and parsed.netloc.lower() != host:
             continue  # external link
@@ -683,6 +874,11 @@ def extract_site(
     headcount, staff = extract_headcount(pages, base_url)
     office_count, addresses = extract_offices(home_html)
     years, years_min = extract_years(all_text, now_year=now_year)
+    practice_areas, practice_areas_raw = extract_practice_areas(pages, base_url=base_url)
+    # Primary office = the first zip-anchored footer address (HQ, by document
+    # order) — a real location, never inferred from "we serve"/jurisdiction copy.
+    primary_city = addresses[0]["city"] if addresses else None
+    primary_state = addresses[0]["state"] if addresses else None
 
     out = SiteExtraction(
         platform=detect_platform(home_html),
@@ -696,19 +892,33 @@ def extract_site(
         staff_count=staff,
         office_count=office_count,
         office_addresses=addresses,
+        primary_city=primary_city,
+        primary_state=primary_state,
         years_in_operation=years,
         years_is_min=years_min,
         phones=extract_phones(home_html),
         notable_signals=extract_notable_signals(all_text),
+        practice_areas=practice_areas,
+        practice_areas_raw=practice_areas_raw,
         scope=extract_scope(all_text),
         description_blurb=extract_description_blurb(pages),
     )
     # thin page with nothing extracted -> headless candidate
     out.needs_render = len(all_text) < 400 and out.attorney_count is None
-    out.url_verification_status = "not_a_law_firm" if not is_law_related else "verified"
+    if is_law_related:
+        out.url_verification_status = "verified"
+    elif out.needs_render:
+        # Too little readable text to judge — do NOT assert "not a law firm" from
+        # a JS shell / near-empty page (beaverlawoffice.com = 0 chars,
+        # dankolawllc.com = 114). Leave it unverified and flag needs_render for
+        # the headless lever; not_a_law_firm is reserved for pages we actually
+        # read and found non-legal (swissbiologic, rlb.com).
+        out.url_verification_status = "unverified"
+    else:
+        out.url_verification_status = "not_a_law_firm"
     # .gov / .edu hosts are government offices / clinics, not private firms
     # (e.g. azag.gov = AZ Attorney General) — flag rather than count as a firm.
-    host = (urlparse(base_url).netloc or "").lower()
+    host = _host(base_url)
     if host.endswith((".gov", ".edu")):
         out.url_verification_status = "government_or_edu"
     return out
@@ -723,6 +933,7 @@ __all__ = [
     "extract_headcount",
     "extract_offices",
     "extract_phones",
+    "extract_practice_areas",
     "extract_site",
     "extract_years",
     "relevance_gate",

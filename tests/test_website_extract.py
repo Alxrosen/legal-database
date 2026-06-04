@@ -14,6 +14,7 @@ from legal_sourcing.enrichment.website_extract import (
     extract_headcount,
     extract_offices,
     extract_phones,
+    extract_practice_areas,
     extract_site,
     extract_years,
     relevance_gate,
@@ -71,7 +72,14 @@ SOLO_HOME = """
 SWISSBIOLOGIC = """
 <html><head><title>Swiss Biologic | Advanced Dental Products</title></head><body>
   <h1>Premium dental implants and biologic materials</h1>
-  <p>We manufacture high-quality dental products for clinics worldwide.</p>
+  <p>Swiss Biologic is a global manufacturer of premium dental implants,
+  abutments, and biologic regeneration membranes for clinics and dental
+  laboratories worldwide. Founded by materials scientists, we engineer titanium
+  and ceramic components to exacting ISO 13485 standards. Our regenerative
+  product line supports guided bone and tissue regeneration for implant
+  dentistry. Surgeons and prosthodontists in more than forty countries rely on
+  our biocompatible solutions, backed by a dedicated research and clinical
+  support team that partners with dental schools on continuing education.</p>
 </body></html>
 """
 
@@ -153,6 +161,19 @@ def test_headcount_drops_year_like_number():
     assert hc.count != 2023
 
 
+def test_headcount_ignores_phone_number_tail():
+    # Noland case: a phone number's last group abuts "Lawyers" in the flattened
+    # text ("...Call 478-621-4980 Lawyers in Macon") — must NOT yield 4980.
+    home = (
+        "<html><body><h1>Lawyers in Macon</h1>"
+        "<p>Free consultation today. Call 478-621-4980 Lawyers in Macon, GA. "
+        "Phone: 478-621-4980 Fax: 478-621-4982.</p></body></html>"
+    )
+    hc, _ = extract_headcount([("home", home)], base_url="https://x.com")
+    assert hc.count != 4980
+    assert hc.count is None  # nothing genuinely stated -> falls through to unknown
+
+
 # --- years ----------------------------------------------------------------
 
 
@@ -161,6 +182,25 @@ def test_years_variants():
     assert extract_years("Founded in 1850.", now_year=2026)[0] == 176
     assert extract_years("Serving for over a quarter century")[0] == 25
     assert extract_years("no temporal info here")[0] is None
+
+
+def test_years_skips_combined_experience():
+    # "X years of combined/collective experience" is summed across the team, not
+    # the firm's age (thevirgalawfirm.com / sdtriallaw.com).
+    assert extract_years("Over 100 years of combined experience")[0] != 100
+    assert extract_years("100 years + of collective legal mastery")[0] != 100
+    # a genuine firm-age statement still works
+    assert extract_years("Serving clients for 30 years")[0] == 30
+
+
+def test_years_rejects_prehistoric_founding():
+    # missourilawyers case: "Founded in 1764 by French settlers" is St. Louis
+    # city history, not the firm (no US firm predates ~1790).
+    assert (
+        extract_years("...in North America. Founded in 1764 by French.", now_year=2026)[0] is None
+    )
+    # a genuinely old firm (Cadwalader, 1792) is still accepted
+    assert extract_years("Established in 1850.", now_year=2026)[0] == 176
 
 
 # --- offices / phones / platform ------------------------------------------
@@ -179,6 +219,29 @@ def test_offices_stated_fallback_bipc():
     assert count == 16  # "16 offices" stated
 
 
+def test_offices_city_strips_street_tokens():
+    # moreno.law / burgsimpson.com / hastingsfirm.com: street-suffix, unit, and
+    # suite-letter tokens abut the city in the flattened footer text and must
+    # not be kept as part of the city name.
+    html = (
+        "<html><body><footer>"
+        "1901 Avenue of the Stars 2nd Floor Los Angeles, CA 90067 | "
+        "4900 California Avenue Suite 210-B Bakersfield, CA 93309 | "
+        "40 Inverness Drive East Englewood, CO 80112 | "
+        "26503 Oak Ridge Dr The Woodlands, TX 77380"
+        "</footer></body></html>"
+    )
+    count, addrs = extract_offices(html)
+    cities = {a["city"] for a in addrs}
+    assert "Los Angeles" in cities  # "2nd Floor" stripped
+    assert "Bakersfield" in cities  # suite letter "B" stripped
+    assert "The Woodlands" in cities  # "Dr" stripped, "The" kept
+    assert "Englewood" in cities or "East Englewood" in cities  # "Drive" stripped
+    # the exact pre-fix leaks must be gone
+    assert {"Floor Los Angeles", "B Bakersfield", "Dr The Woodlands"} & cities == set()
+    assert count == len(addrs)
+
+
 def test_phones_normalized_and_deduped():
     html = '<html><body><a href="tel:18007770000">call</a> or (800) 777-0000</body></html>'
     phones = extract_phones(html)
@@ -190,6 +253,25 @@ def test_detect_platform():
     assert detect_platform('<img src="https://static.wixstatic.com/a.png">') == "wix"
     assert detect_platform('<img src="https://static1.squarespace.com/x">') == "squarespace"
     assert detect_platform("<html><body>plain</body></html>") == "custom"
+
+
+def test_detect_platform_directory_profile_only_from_identity():
+    # hastingsfirm regression: a firm's OWN site that links to its Avvo/Justia/
+    # Martindale profiles (JSON-LD sameAs) is NOT a directory profile.
+    firm = (
+        '<html><head><link rel="canonical" href="https://hastingsfirm.com/">'
+        '<script type="application/ld+json">{"@type":"Attorney","sameAs":'
+        '["https://www.avvo.com/attorneys/x","https://lawyers.justia.com/lawyer/y",'
+        '"https://www.martindale.com/attorney/z"]}</script></head>'
+        '<body><link href="/wp-content/themes/x.css"></body></html>'
+    )
+    assert detect_platform(firm) == "wordpress"
+    # A page whose OWN canonical/og:url is a directory domain IS a directory profile.
+    prof = (
+        '<html><head><link rel="canonical" '
+        'href="https://lawyers.justia.com/lawyer/jane-roe"></head><body>x</body></html>'
+    )
+    assert detect_platform(prof) == "directory_profile"
 
 
 # --- compose --------------------------------------------------------------
@@ -218,6 +300,19 @@ def test_extract_site_empty_is_unreachable():
     site = extract_site([], base_url="")
     assert site.url_verification_status == "unreachable"
     assert site.needs_render
+
+
+def test_extract_site_thin_js_page_not_flagged_not_a_law_firm():
+    # beaverlawoffice.com (0 chars) / dankolawllc.com (114): a near-empty JS
+    # shell with no legal tokens must be unverified + needs_render, NOT the
+    # confident not_a_law_firm (we never actually read the page).
+    site = extract_site(
+        [("home", "<html><body><div></div></body></html>")],
+        base_url="https://beaverlawoffice.com",
+    )
+    assert site.needs_render
+    assert not site.is_law_related
+    assert site.url_verification_status == "unverified"
 
 
 # --- page discovery + multi-subpage aggregation ---------------------------
@@ -254,6 +349,22 @@ def test_headcount_aggregates_across_attorney_subpages():
     assert hc.count == 3  # dan, susan, jane (dup collapses)
 
 
+def test_headcount_profile_links_counted_on_home_page():
+    # peterferracuti case: attorney-profile links live on the HOME page and no
+    # separate /attorneys index was discovered -> must still be counted, not
+    # ignored as "not a team page" (previously fell through to unknown).
+    home = (
+        "<html><body><footer>"
+        '<a href="/attorney/dunn-travis">Travis Dunn</a>'
+        '<a href="/attorney/ferracuti-alexis-p">Alexis Ferracuti</a>'
+        '<a href="/attorney/ludwinski-matthew">Matthew Ludwinski</a>'
+        "</footer></body></html>"
+    )
+    hc, _ = extract_headcount([("home", home)], base_url="https://x.com")
+    assert hc.method == "profile_links"
+    assert hc.count == 3
+
+
 # --- announcement / press-release guard + gov flag (pilot findings) -------
 
 
@@ -267,6 +378,17 @@ def test_headcount_skips_announcement_headline():
     assert hc.count != 15
 
 
+def test_headcount_skips_ordinal_section_number():
+    # burnerlaw case: a zero-padded section/ordinal marker ("...02 Attorneys
+    # Mentorship...") must NOT be read as 2 attorneys (leading-zero guard).
+    html = (
+        "<html><body><p>01 AI for Legal Practice 02 Attorneys Mentorship "
+        "and Development 03 Community</p></body></html>"
+    )
+    hc, _ = extract_headcount([("home", html)], base_url="https://x.com")
+    assert hc.count is None
+
+
 def test_headcount_keeps_real_stated_total():
     ok = (
         "<html><body><p>About us. With 240 attorneys in Louisiana and Texas, "
@@ -275,6 +397,93 @@ def test_headcount_keeps_real_stated_total():
     hc, _ = extract_headcount([("home", ok)], base_url="https://x.com")
     assert hc.count == 240
     assert hc.method == "stated"
+
+
+def test_headcount_caps_statewide_population_stat():
+    # criminaldefenseteam case: "More than 15,000 lawyers are practicing in
+    # Indiana" is a bar-population stat, not this firm's headcount.
+    html = (
+        "<html><body><p>Criminal Trial Specialists. More than 15,000 lawyers "
+        "are practicing in Indiana, but few focus on criminal defense.</p></body></html>"
+    )
+    hc, _ = extract_headcount([("home", html)], base_url="https://x.com")
+    assert hc.count != 15000
+
+
+def test_headcount_skips_population_there_are():
+    # vansantlaw case: "there are approximately 4000 lawyers throughout the
+    # nation" is a population stat (firm has 5), not a headcount.
+    html = (
+        "<html><body><p>Since 1993, there are approximately 4000 lawyers "
+        "throughout the nation who handle these cases.</p></body></html>"
+    )
+    hc, _ = extract_headcount([("home", html)], base_url="https://x.com")
+    assert hc.count != 4000
+
+
+def test_headcount_skips_award_quota_per_state():
+    # vansantlaw case: "Top 40 Under 40 is restricted to only 40 attorneys per
+    # state" is an award quota, not the firm's headcount.
+    html = (
+        "<html><body><p>The Top 40 Under 40 is restricted to only 40 attorneys "
+        "per state.</p></body></html>"
+    )
+    hc, _ = extract_headcount([("home", html)], base_url="https://x.com")
+    assert hc.count != 40
+
+
+def test_headcount_skips_top_n_award():
+    # petrellilaw case: "The National Advocates Top 100 Lawyers" is an award,
+    # not a firm headcount.
+    html = (
+        "<html><body><p>Recognized for the National Advocates Top 100 Lawyers "
+        "list every year.</p></body></html>"
+    )
+    hc, _ = extract_headcount([("home", html)], base_url="https://x.com")
+    assert hc.count != 100
+
+
+PRACTICE_HOME = """
+<html><head><title>Smith Law | Personal Injury Lawyers</title></head><body>
+<nav>
+  <a href="/about">About Us</a>
+  <a href="/practice-areas/personal-injury">Personal Injury</a>
+  <a href="/practice-areas/family-law">Family Law</a>
+  <a href="/practice-areas/car-accidents">Car Accidents</a>
+  <a href="/locations/phoenix">Phoenix</a>
+  <a href="/contact">Contact</a>
+</nav>
+<footer>123 Main St Suite 200 Phoenix, AZ 85016</footer>
+</body></html>
+"""
+
+
+def test_extract_practice_areas_matches_taxonomy_not_location():
+    slugs, raw = extract_practice_areas([("home", PRACTICE_HOME)], base_url="https://smithlaw.com")
+    assert set(slugs) == {"personal-injury", "family-law", "auto-accidents"}
+    # location / nav links never become practice areas (taxonomy is the firewall)
+    assert "phoenix" not in slugs
+    assert "Personal Injury" in raw
+
+
+def test_extract_practice_areas_from_path_slug():
+    # icon-only link (no anchor text) -> slug comes from the /practice-areas/ path
+    home = (
+        '<html><body><a href="/practice-areas/wrongful-death"><img src="x.png"></a></body></html>'
+    )
+    slugs, _ = extract_practice_areas([("home", home)], base_url="https://x.com")
+    assert "wrongful-death" in slugs
+
+
+def test_extract_site_separates_office_location_from_practice_areas():
+    # The user's constraint: office LOCATION (where the firm sits) must not be
+    # confused with PRACTICE AREAS (what it does). Phoenix is the office city,
+    # never a practice area; personal-injury is a practice area, never a place.
+    site = extract_site([("home", PRACTICE_HOME)], base_url="https://smithlaw.com")
+    assert site.primary_city == "Phoenix"
+    assert site.primary_state == "AZ"
+    assert "personal-injury" in site.practice_areas
+    assert "phoenix" not in [s.lower() for s in site.practice_areas]
 
 
 def test_extract_site_flags_gov_host():

@@ -31,12 +31,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import create_engine, distinct, select
+from sqlalchemy import distinct, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from legal_sourcing.config import get_settings
+from legal_sourcing.db import make_engine
 from legal_sourcing.enrichment.website_extract import (
     SiteExtraction,
     discover_internal_pages,
@@ -68,10 +69,14 @@ _ROW_DEFAULTS: dict[str, Any] = {
     "staff_count_min": None,
     "office_count": None,
     "office_addresses": None,
+    "primary_city": None,
+    "primary_state": None,
     "years_in_operation_min": None,
     "years_is_min": False,
     "scope": None,
     "notable_signals": None,
+    "practice_areas": None,
+    "practice_areas_raw": None,
     "phones": None,
     "description_blurb": None,
     "description_generated": None,
@@ -137,10 +142,14 @@ def _row_from_site(
         "staff_count_min": site.staff_count,
         "office_count": site.office_count,
         "office_addresses": site.office_addresses,
+        "primary_city": site.primary_city,
+        "primary_state": site.primary_state,
         "years_in_operation_min": site.years_in_operation,
         "years_is_min": site.years_is_min,
         "scope": site.scope,
         "notable_signals": site.notable_signals,
+        "practice_areas": site.practice_areas,
+        "practice_areas_raw": site.practice_areas_raw,
         "phones": site.phones,
         "description_blurb": site.description_blurb,
         "url_verification_status": site.url_verification_status,
@@ -246,7 +255,12 @@ def websites_to_enrich(engine, *, limit: int | None = None) -> list[str]:
         ).all()
     out: list[str] = []
     for (w,) in rows:
-        if not w or w in done or is_aggregator_domain(w):
+        # Skip already-done, aggregator domains, and email-as-website junk
+        # (~154 `FirmURL` values are emails like "x@gmail.com"; crawling them
+        # just hits the mail host and writes a bogus row). The upstream
+        # normalize_url @-guard is in Mastermind's lane; this is a producer
+        # backstop so the enrichment run never wastes a fetch on one.
+        if not w or w in done or "@" in w or is_aggregator_domain(w):
             continue
         out.append(w)
         if limit and len(out) >= limit:
@@ -279,8 +293,7 @@ def _flush(engine, rows: list[dict[str, Any]]) -> int:
 def _crawl_all(
     websites: list[str], *, workers: int, flush_every: int, print_each: bool = False
 ) -> list[dict[str, Any]]:
-    settings = get_settings()
-    engine = create_engine(settings.db_url)
+    engine = make_engine()
     buffer: list[dict[str, Any]] = []
     collected: list[dict[str, Any]] = []
     done = 0
@@ -325,9 +338,8 @@ def _print_row(row: dict[str, Any]) -> None:
 
 def run_pilot(*, websites: list[str] | None, limit: int, workers: int) -> None:
     configure_logging()
-    settings = get_settings()
     if not websites:
-        engine = create_engine(settings.db_url)
+        engine = make_engine()
         websites = websites_to_enrich(engine, limit=limit)
     print(f"== website-enrichment pilot: {len(websites)} firms, {workers} workers ==")
     print(
@@ -339,8 +351,7 @@ def run_pilot(*, websites: list[str] | None, limit: int, workers: int) -> None:
 
 def run(*, limit: int | None, workers: int, flush_every: int) -> None:
     configure_logging()
-    settings = get_settings()
-    engine = create_engine(settings.db_url)
+    engine = make_engine()
     websites = websites_to_enrich(engine, limit=limit)
     log.info("enrich.run_start", to_enrich=len(websites), workers=workers)
     _crawl_all(websites, workers=workers, flush_every=flush_every)
@@ -385,7 +396,7 @@ def run_load() -> None:
                 pages_meta=[{"role": "home", "url": url}],
             )
         )
-    engine = create_engine(settings.db_url)
+    engine = make_engine()
     n = _flush(engine, rows)
     print(f"load: re-extracted + upserted {n} websites from disk.")
 

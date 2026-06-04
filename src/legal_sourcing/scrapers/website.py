@@ -39,10 +39,12 @@ class FirmWebsiteScraper(BaseScraper):
     # Placeholder; robots + storage use the per-URL host, not this.
     BASE_URL = "https://firm-websites.invalid"
 
-    # Many distinct hosts, one request at a time per worker -> a modest global
-    # cap keeps total load polite. Workers come from the pipeline's pool.
-    RATE_LIMIT_RPS = 8.0
-    BURST_CAPACITY = 2.0
+    # The crawl spreads across ~27k DISTINCT hosts, ~3 requests each, one host at
+    # a time per worker, so the GLOBAL cap can be raised for bulk-run throughput
+    # without ever loading any single host (per-host rate stays trivial). Tuned
+    # up from 8 for the full ~27k sweep; back off if outbound errors climb.
+    RATE_LIMIT_RPS = 20.0
+    BURST_CAPACITY = 4.0
     WORKERS = 1
 
     # Fail fast on dead/slow domains so a worker never hangs the crawl.
