@@ -153,6 +153,19 @@ def test_headcount_drops_year_like_number():
     assert hc.count != 2023
 
 
+def test_headcount_ignores_phone_number_tail():
+    # Noland case: a phone number's last group abuts "Lawyers" in the flattened
+    # text ("...Call 478-621-4980 Lawyers in Macon") — must NOT yield 4980.
+    home = (
+        "<html><body><h1>Lawyers in Macon</h1>"
+        "<p>Free consultation today. Call 478-621-4980 Lawyers in Macon, GA. "
+        "Phone: 478-621-4980 Fax: 478-621-4982.</p></body></html>"
+    )
+    hc, _ = extract_headcount([("home", home)], base_url="https://x.com")
+    assert hc.count != 4980
+    assert hc.count is None  # nothing genuinely stated -> falls through to unknown
+
+
 # --- years ----------------------------------------------------------------
 
 
@@ -179,6 +192,29 @@ def test_offices_stated_fallback_bipc():
     assert count == 16  # "16 offices" stated
 
 
+def test_offices_city_strips_street_tokens():
+    # moreno.law / burgsimpson.com / hastingsfirm.com: street-suffix, unit, and
+    # suite-letter tokens abut the city in the flattened footer text and must
+    # not be kept as part of the city name.
+    html = (
+        "<html><body><footer>"
+        "1901 Avenue of the Stars 2nd Floor Los Angeles, CA 90067 | "
+        "4900 California Avenue Suite 210-B Bakersfield, CA 93309 | "
+        "40 Inverness Drive East Englewood, CO 80112 | "
+        "26503 Oak Ridge Dr The Woodlands, TX 77380"
+        "</footer></body></html>"
+    )
+    count, addrs = extract_offices(html)
+    cities = {a["city"] for a in addrs}
+    assert "Los Angeles" in cities  # "2nd Floor" stripped
+    assert "Bakersfield" in cities  # suite letter "B" stripped
+    assert "The Woodlands" in cities  # "Dr" stripped, "The" kept
+    assert "Englewood" in cities or "East Englewood" in cities  # "Drive" stripped
+    # the exact pre-fix leaks must be gone
+    assert {"Floor Los Angeles", "B Bakersfield", "Dr The Woodlands"} & cities == set()
+    assert count == len(addrs)
+
+
 def test_phones_normalized_and_deduped():
     html = '<html><body><a href="tel:18007770000">call</a> or (800) 777-0000</body></html>'
     phones = extract_phones(html)
@@ -190,6 +226,25 @@ def test_detect_platform():
     assert detect_platform('<img src="https://static.wixstatic.com/a.png">') == "wix"
     assert detect_platform('<img src="https://static1.squarespace.com/x">') == "squarespace"
     assert detect_platform("<html><body>plain</body></html>") == "custom"
+
+
+def test_detect_platform_directory_profile_only_from_identity():
+    # hastingsfirm regression: a firm's OWN site that links to its Avvo/Justia/
+    # Martindale profiles (JSON-LD sameAs) is NOT a directory profile.
+    firm = (
+        '<html><head><link rel="canonical" href="https://hastingsfirm.com/">'
+        '<script type="application/ld+json">{"@type":"Attorney","sameAs":'
+        '["https://www.avvo.com/attorneys/x","https://lawyers.justia.com/lawyer/y",'
+        '"https://www.martindale.com/attorney/z"]}</script></head>'
+        '<body><link href="/wp-content/themes/x.css"></body></html>'
+    )
+    assert detect_platform(firm) == "wordpress"
+    # A page whose OWN canonical/og:url is a directory domain IS a directory profile.
+    prof = (
+        '<html><head><link rel="canonical" '
+        'href="https://lawyers.justia.com/lawyer/jane-roe"></head><body>x</body></html>'
+    )
+    assert detect_platform(prof) == "directory_profile"
 
 
 # --- compose --------------------------------------------------------------

@@ -28,12 +28,13 @@ import json
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 
 from selectolax.parser import HTMLParser
 
 from legal_sourcing.normalize.name import looks_like_firm
 from legal_sourcing.normalize.phone import normalize_phone
+from legal_sourcing.normalize.url import is_aggregator_domain, safe_urlparse
 
 # ---------------------------------------------------------------------------
 # Vocabulary
@@ -92,8 +93,11 @@ _STAFF_ROLE = (
 )
 
 _PLATFORM_FINGERPRINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    # order matters: directory-profile first (it's NOT the firm's own site)
-    ("directory_profile", ("findlaw.com/lawfirm", "martindale.com", "justia.com", "avvo.com")),
+    # NB: directory_profile is NOT a substring fingerprint — firms publish
+    # outbound links to their own Avvo/Justia/Martindale profiles (often in a
+    # JSON-LD `sameAs`), so a bare "justia.com" in the HTML is no signal the
+    # page IS a directory. It's detected from the page's declared identity
+    # (canonical / og:url) in detect_platform() instead.
     ("wix", ("wix.com", "wixstatic.com", "wixsite.com")),
     ("squarespace", ("squarespace.com", "static1.squarespace")),
     ("webflow", ("website-files.com", "webflow.io")),
@@ -123,15 +127,82 @@ _NOTABLE = (
     ("board certified", "board certified"),
 )
 
-_STATED_COUNT = re.compile(r"(\d[\d,]{0,6})\s*\+?\s*(attorneys?|lawyers?)\b", re.I)
-_STAFF_COUNT = re.compile(
-    r"(\d[\d,]{0,6})\s*\+?\s*(staff|employees|professionals|team members)\b", re.I
-)
-_OFFICE_COUNT = re.compile(r"(\d{1,3})\s*\+?\s*(offices?|locations?)\b", re.I)
+# Leading number for "<n> attorneys/staff/offices". The (?<![\d.\-]) lookbehind
+# stops a phone-number tail / longer digit run from being read as a count:
+# "...Call 478-621-4980 Lawyers" must NOT yield 4980 attorneys (the 4980 is the
+# phone's last group, preceded by '-'). Real counts ("40+ Lawyers", "Our 450
+# attorneys") are preceded by whitespace/start, so they still match.
+_N = r"(?<![\d.\-])(\d[\d,]{0,6})"
+_STATED_COUNT = re.compile(rf"{_N}\s*\+?\s*(attorneys?|lawyers?)\b", re.I)
+_STAFF_COUNT = re.compile(rf"{_N}\s*\+?\s*(staff|employees|professionals|team members)\b", re.I)
+_OFFICE_COUNT = re.compile(r"(?<![\d.\-])(\d{1,3})\s*\+?\s*(offices?|locations?)\b", re.I)
 _YEARS = re.compile(r"(\d{1,3})\s*\+?\s*(?:years?|yrs?)\b", re.I)
 _FOUNDED = re.compile(r"(?:founded|established|since|serving\D{0,20}since)\D{0,12}(\d{4})", re.I)
 _PHONE = re.compile(r"\(?\b\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}\b")
 _CITY_STATE_ZIP = re.compile(r"([A-Za-z][A-Za-z.\s]{1,38}?),\s*([A-Z]{2})\s+(\d{5})(?:-\d{4})?")
+# Street-suffix / unit / compound-directional tokens that must NOT be read as
+# part of a city when walking back through flat footer text ("...Inverness
+# Drive East Englewood, CO" -> "Englewood", not "Drive East Englewood"). Excludes
+# "st"/"saint" on purpose: Saint-cities (St Petersburg, St Louis) are common and
+# outweigh the rare "<Street> St <City>" leak; a single cardinal "N/S/E/W" is
+# caught by the single-letter rule, while the word forms (north/south/east/west)
+# are KEPT so directional-prefixed cities (West Palm Beach) survive.
+_STREET_STOP: frozenset[str] = frozenset(
+    {
+        "drive",
+        "dr",
+        "avenue",
+        "ave",
+        "boulevard",
+        "blvd",
+        "road",
+        "rd",
+        "lane",
+        "ln",
+        "court",
+        "ct",
+        "way",
+        "place",
+        "pl",
+        "parkway",
+        "pkwy",
+        "highway",
+        "hwy",
+        "circle",
+        "cir",
+        "terrace",
+        "ter",
+        "trail",
+        "trl",
+        "loop",
+        "square",
+        "sq",
+        "plaza",
+        "plz",
+        "expressway",
+        "expy",
+        "freeway",
+        "fwy",
+        "row",
+        "floor",
+        "fl",
+        "suite",
+        "ste",
+        "unit",
+        "apt",
+        "building",
+        "bldg",
+        "room",
+        "rm",
+        "lobby",
+        "tower",
+        "level",
+        "ne",
+        "nw",
+        "se",
+        "sw",
+    }
+)
 _PROFILE_LINK = re.compile(
     r"/(attorneys?|lawyers?|people|team|bio|profile|our-attorneys?)/[a-z0-9][a-z0-9\-]+/?$", re.I
 )
@@ -234,11 +305,27 @@ def _to_int(s: str) -> int:
     return int(s.replace(",", ""))
 
 
+def _host(url: str) -> str:
+    """Lowercased netloc of a URL, or '' — never raises (Python 3.14 urlparse
+    is strict; scraped hrefs are junk-prone)."""
+    p = safe_urlparse(url)
+    return (p.netloc if p else "").lower()
+
+
 # ---------------------------------------------------------------------------
 # Platform
 
 
 def detect_platform(html: str | bytes) -> str:
+    tree = _tree(html)
+    # directory_profile is decided by the page's OWN declared identity
+    # (canonical / og:url host), NOT a substring anywhere in the HTML — a firm's
+    # own site linking to its Avvo/Justia profile (e.g. JSON-LD `sameAs`) must
+    # not be mislabeled a directory (hastingsfirm.com regression).
+    for sel, attr in (('link[rel="canonical"]', "href"), ('meta[property="og:url"]', "content")):
+        node = tree.css_first(sel)
+        if node and is_aggregator_domain(_host(node.attributes.get(attr) or "")):
+            return "directory_profile"
     low = (html.decode("utf-8", "ignore") if isinstance(html, bytes) else html).lower()
     for name, markers in _PLATFORM_FINGERPRINTS:
         if any(m in low for m in markers):
@@ -484,10 +571,17 @@ def extract_offices(html: str | bytes) -> tuple[int | None, list[dict[str, str]]
     addrs: list[dict[str, str]] = []
     for m in _CITY_STATE_ZIP.finditer(text):
         # group(1) may carry a leading street/prose fragment from the flat
-        # text; keep only the trailing run of Title-cased words (the city).
+        # text; keep only the trailing run of Title-cased words (the city),
+        # stopping at a street-suffix / unit token ("...Drive East Englewood"
+        # -> "East Englewood"; "...2nd Floor Los Angeles" -> "Los Angeles";
+        # "...Suite 210-B Bakersfield" -> "Bakersfield").
         city_words: list[str] = []
         for w in reversed(m.group(1).split()):
             wc = w.strip(".,")
+            if not wc:
+                break
+            if wc.lower() in _STREET_STOP or (len(wc) == 1 and wc.isalpha()):
+                break  # reached the street / unit / suite-letter part
             if wc[:1].isupper() and wc.replace("-", "").isalpha():
                 city_words.insert(0, wc)
             else:
@@ -617,7 +711,7 @@ def discover_internal_pages(
     (Partners/Associates/...) are all captured.
     """
     tree = _tree(home_html)
-    host = (urlparse(base_url).netloc or "").lower()
+    host = _host(base_url)
     out: dict[str, list[str]] = {"about": [], "team": [], "attorneys": []}
     seen: set[str] = set()
 
@@ -633,8 +727,8 @@ def discover_internal_pages(
             continue
         text = " ".join((a.text() or "").split()).lower()
         full = urljoin(base_url, href)
-        parsed = urlparse(full)
-        if parsed.scheme not in ("http", "https"):
+        parsed = safe_urlparse(full)
+        if parsed is None or parsed.scheme not in ("http", "https"):
             continue
         if host and parsed.netloc and parsed.netloc.lower() != host:
             continue  # external link
@@ -708,7 +802,7 @@ def extract_site(
     out.url_verification_status = "not_a_law_firm" if not is_law_related else "verified"
     # .gov / .edu hosts are government offices / clinics, not private firms
     # (e.g. azag.gov = AZ Attorney General) — flag rather than count as a firm.
-    host = (urlparse(base_url).netloc or "").lower()
+    host = _host(base_url)
     if host.endswith((".gov", ".edu")):
         out.url_verification_status = "government_or_edu"
     return out
