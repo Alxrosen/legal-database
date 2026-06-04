@@ -402,6 +402,7 @@ def run_full(
     states: list[str] | None = None,
     max_pages_per_city: int | None = None,
     resume: bool = True,
+    rps: float | None = None,
 ) -> None:
     """National city sweep, committed one city at a time.
 
@@ -429,10 +430,11 @@ def run_full(
         max_pages_per_city=max_pages_per_city,
         resume=resume,
         already_done=cp.completed_count,
+        rps=rps,
     )
 
     engine = create_engine(settings.db_url, connect_args={"timeout": 30})
-    with MartindaleScraper() as scraper:
+    with MartindaleScraper(rps=rps) as scraper:
         for state_slug in states:
             try:
                 cities = discover_state_cities(scraper, state_slug)
@@ -834,6 +836,13 @@ def main() -> int:
         default=None,
         help="(enrich only) Cap the number of rows enriched in this run.",
     )
+    parser.add_argument(
+        "--rps",
+        type=float,
+        default=None,
+        help="(full only) Override the sustained requests/sec (default 0.5). "
+        "Raise to scrape faster; back off if Cloudflare returns 403/429.",
+    )
     args = parser.parse_args()
     if args.mode == "pilot":
         cap = args.max_pages_per_city if args.max_pages_per_city > 0 else None
@@ -844,6 +853,7 @@ def main() -> int:
             states=parse_states_arg(args.states),
             max_pages_per_city=cap,
             resume=not args.no_resume,
+            rps=args.rps,
         )
     elif args.mode == "load":
         run_load(date_str=args.date)

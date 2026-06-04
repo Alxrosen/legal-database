@@ -82,6 +82,19 @@ class MartindaleScraper(BaseScraper):
         "Mozilla/5.0 (compatible; legal-sourcing-research/0.1; +contact: amrosen@bowstreetllc.com)"
     )
 
+    def __init__(self, *, rps: float | None = None) -> None:
+        """Optional per-run RPS override (operator knob for throughput tuning).
+
+        Raising the sustained rate is done HERE, not by editing the class
+        default, so a `full` run can be relaunched at a higher `--rps` and
+        backed off if Cloudflare starts returning 403/429. The polite startup
+        ramp is preserved: we never *start* above the target rate.
+        """
+        if rps is not None:
+            self.RATE_LIMIT_RPS = rps
+            self.INITIAL_RATE_LIMIT_RPS = min(self.INITIAL_RATE_LIMIT_RPS, rps)
+        super().__init__()
+
     def _default_headers(self) -> dict[str, str]:
         # Polite, browser-shaped header set. No API key needed.
         return {
