@@ -31,12 +31,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import create_engine, distinct, select
+from sqlalchemy import distinct, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from legal_sourcing.config import get_settings
+from legal_sourcing.db import make_engine
 from legal_sourcing.enrichment.website_extract import (
     SiteExtraction,
     discover_internal_pages,
@@ -279,8 +280,7 @@ def _flush(engine, rows: list[dict[str, Any]]) -> int:
 def _crawl_all(
     websites: list[str], *, workers: int, flush_every: int, print_each: bool = False
 ) -> list[dict[str, Any]]:
-    settings = get_settings()
-    engine = create_engine(settings.db_url)
+    engine = make_engine()
     buffer: list[dict[str, Any]] = []
     collected: list[dict[str, Any]] = []
     done = 0
@@ -325,9 +325,8 @@ def _print_row(row: dict[str, Any]) -> None:
 
 def run_pilot(*, websites: list[str] | None, limit: int, workers: int) -> None:
     configure_logging()
-    settings = get_settings()
     if not websites:
-        engine = create_engine(settings.db_url)
+        engine = make_engine()
         websites = websites_to_enrich(engine, limit=limit)
     print(f"== website-enrichment pilot: {len(websites)} firms, {workers} workers ==")
     print(
@@ -339,8 +338,7 @@ def run_pilot(*, websites: list[str] | None, limit: int, workers: int) -> None:
 
 def run(*, limit: int | None, workers: int, flush_every: int) -> None:
     configure_logging()
-    settings = get_settings()
-    engine = create_engine(settings.db_url)
+    engine = make_engine()
     websites = websites_to_enrich(engine, limit=limit)
     log.info("enrich.run_start", to_enrich=len(websites), workers=workers)
     _crawl_all(websites, workers=workers, flush_every=flush_every)
@@ -385,7 +383,7 @@ def run_load() -> None:
                 pages_meta=[{"role": "home", "url": url}],
             )
         )
-    engine = create_engine(settings.db_url)
+    engine = make_engine()
     n = _flush(engine, rows)
     print(f"load: re-extracted + upserted {n} websites from disk.")
 
