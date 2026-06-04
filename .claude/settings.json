@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "PowerShell(Get-CimInstance *)"
+      "PowerShell(Get-CimInstance *)",
+      "Bash(~/.local/bin/uv run pytest *)",
+      "Bash(~/.local/bin/uv run ruff check *)"
     ]
   }
 }
