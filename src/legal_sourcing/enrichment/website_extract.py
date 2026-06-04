@@ -389,12 +389,24 @@ _ANNOUNCE_LEADING: tuple[str, ...] = (
     "adds ",
     "adding ",
     "added ",
+    "top ",  # "...Top 100 Lawyers" (an award/ranking, not a firm headcount)
 )
 
+# A stated attorney/lawyer count above this is almost never a single firm's own
+# headcount in our universe — it's a statewide/national bar population stat
+# ("More than 15,000 lawyers are practicing in Indiana", criminaldefenseteam.com)
+# or other comparative figure. The largest single US firms are ~4,000 attorneys;
+# rare global networks above this are SPAs we undercount anyway. Staff counts are
+# not capped this tightly (a company can have thousands of employees).
+_MAX_FIRM_ATTORNEYS = 5000
 
-def _stated_count(texts: list[str], pattern: re.Pattern[str]) -> tuple[int, bool, str] | None:
+
+def _stated_count(
+    texts: list[str], pattern: re.Pattern[str], *, max_n: int = 100000
+) -> tuple[int, bool, str] | None:
     """Highest plausible '<n> attorneys/lawyers' (or staff) across texts,
-    EXCLUDING press-release / announcement contexts that aren't a firm total."""
+    EXCLUDING press-release / announcement contexts that aren't a firm total.
+    `max_n` caps an implausibly large value (a population/comparative stat)."""
     best: tuple[int, bool, str] | None = None
     for text in texts:
         for m in pattern.finditer(text):
@@ -402,7 +414,7 @@ def _stated_count(texts: list[str], pattern: re.Pattern[str]) -> tuple[int, bool
             is_min = "+" in m.group(0)
             if _drop_year(n) and not is_min:
                 continue
-            if n <= 0 or n > 100000:
+            if n <= 0 or n > max_n:
                 continue
             tail = text[m.end() : m.end() + 30].lower()
             head = text[max(0, m.start() - 30) : m.start()].lower()
@@ -524,8 +536,9 @@ def extract_headcount(
     staff_stated = _stated_count(texts, _STAFF_COUNT)
     staff_count = staff_stated[0] if staff_stated else None
 
-    # 1. stated attorney count
-    stated = _stated_count(texts, _STATED_COUNT)
+    # 1. stated attorney count (capped: a value above _MAX_FIRM_ATTORNEYS is a
+    #    statewide/national bar-population stat, not this firm's headcount)
+    stated = _stated_count(texts, _STATED_COUNT, max_n=_MAX_FIRM_ATTORNEYS)
     if stated:
         n, is_min, ev = stated
         return HeadcountResult(n, is_min, "stated", "high", ev), staff_count

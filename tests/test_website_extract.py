@@ -379,6 +379,28 @@ def test_headcount_keeps_real_stated_total():
     assert hc.method == "stated"
 
 
+def test_headcount_caps_statewide_population_stat():
+    # criminaldefenseteam case: "More than 15,000 lawyers are practicing in
+    # Indiana" is a bar-population stat, not this firm's headcount.
+    html = (
+        "<html><body><p>Criminal Trial Specialists. More than 15,000 lawyers "
+        "are practicing in Indiana, but few focus on criminal defense.</p></body></html>"
+    )
+    hc, _ = extract_headcount([("home", html)], base_url="https://x.com")
+    assert hc.count != 15000
+
+
+def test_headcount_skips_top_n_award():
+    # petrellilaw case: "The National Advocates Top 100 Lawyers" is an award,
+    # not a firm headcount.
+    html = (
+        "<html><body><p>Recognized for the National Advocates Top 100 Lawyers "
+        "list every year.</p></body></html>"
+    )
+    hc, _ = extract_headcount([("home", html)], base_url="https://x.com")
+    assert hc.count != 100
+
+
 def test_extract_site_flags_gov_host():
     html = (
         "<html><head><title>Attorney General</title></head><body>"
