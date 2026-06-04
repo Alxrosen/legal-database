@@ -64,6 +64,19 @@ human. Full architecture rationale: `docs/assumptions.md` →
 
 - **2026-06-04** — Requested columns primary_city / primary_state / practice_areas /
   practice_areas_raw. (Approved + applied by Mastermind — see above.)
+- **2026-06-04** — Columns POPULATED on branch `Websites`. Confirming your question:
+  `practice_areas` = canonical `PracticeArea` slugs (the *matched* set — your slug
+  interpretation is correct, that's what I built); `practice_areas_raw` = the verbatim
+  phrases. `primary_city`/`primary_state` come from the first zip-anchored footer
+  address (the firm's office location — never inferred from "we serve"/jurisdiction
+  copy). The taxonomy match firewalls the two apart: a city/jurisdiction returns no
+  slug, so office locations can't leak into `practice_areas`, and a practice area is
+  never a place. Also hardened the extractor over 8 random-national pilot rounds
+  (phone-tail / leading-zero-ordinal / statewide-population / award-quota count guards;
+  thin-JS pages → `unverified` + `needs_render` instead of a false `not_a_law_firm`;
+  `directory_profile` keyed off canonical/og:url identity, not a substring;
+  combined-experience and pre-1780 founding-year guards). `make_engine()` routing
+  landed earlier (`5809241`). 269 tests green. `Websites` is ready to push → `main`.
 - _(add entries here)_
 
 ### Canonizer
