@@ -71,7 +71,14 @@ SOLO_HOME = """
 SWISSBIOLOGIC = """
 <html><head><title>Swiss Biologic | Advanced Dental Products</title></head><body>
   <h1>Premium dental implants and biologic materials</h1>
-  <p>We manufacture high-quality dental products for clinics worldwide.</p>
+  <p>Swiss Biologic is a global manufacturer of premium dental implants,
+  abutments, and biologic regeneration membranes for clinics and dental
+  laboratories worldwide. Founded by materials scientists, we engineer titanium
+  and ceramic components to exacting ISO 13485 standards. Our regenerative
+  product line supports guided bone and tissue regeneration for implant
+  dentistry. Surgeons and prosthodontists in more than forty countries rely on
+  our biocompatible solutions, backed by a dedicated research and clinical
+  support team that partners with dental schools on continuing education.</p>
 </body></html>
 """
 
@@ -275,6 +282,19 @@ def test_extract_site_empty_is_unreachable():
     assert site.needs_render
 
 
+def test_extract_site_thin_js_page_not_flagged_not_a_law_firm():
+    # beaverlawoffice.com (0 chars) / dankolawllc.com (114): a near-empty JS
+    # shell with no legal tokens must be unverified + needs_render, NOT the
+    # confident not_a_law_firm (we never actually read the page).
+    site = extract_site(
+        [("home", "<html><body><div></div></body></html>")],
+        base_url="https://beaverlawoffice.com",
+    )
+    assert site.needs_render
+    assert not site.is_law_related
+    assert site.url_verification_status == "unverified"
+
+
 # --- page discovery + multi-subpage aggregation ---------------------------
 
 
@@ -336,6 +356,17 @@ def test_headcount_skips_announcement_headline():
     )
     hc, _ = extract_headcount([("home", news)], base_url="https://x.com")
     assert hc.count != 15
+
+
+def test_headcount_skips_ordinal_section_number():
+    # burnerlaw case: a zero-padded section/ordinal marker ("...02 Attorneys
+    # Mentorship...") must NOT be read as 2 attorneys (leading-zero guard).
+    html = (
+        "<html><body><p>01 AI for Legal Practice 02 Attorneys Mentorship "
+        "and Development 03 Community</p></body></html>"
+    )
+    hc, _ = extract_headcount([("home", html)], base_url="https://x.com")
+    assert hc.count is None
 
 
 def test_headcount_keeps_real_stated_total():

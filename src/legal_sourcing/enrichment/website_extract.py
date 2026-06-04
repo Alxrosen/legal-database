@@ -127,15 +127,17 @@ _NOTABLE = (
     ("board certified", "board certified"),
 )
 
-# Leading number for "<n> attorneys/staff/offices". The (?<![\d.\-]) lookbehind
-# stops a phone-number tail / longer digit run from being read as a count:
-# "...Call 478-621-4980 Lawyers" must NOT yield 4980 attorneys (the 4980 is the
-# phone's last group, preceded by '-'). Real counts ("40+ Lawyers", "Our 450
-# attorneys") are preceded by whitespace/start, so they still match.
-_N = r"(?<![\d.\-])(\d[\d,]{0,6})"
+# Leading number for "<n> attorneys/staff/offices". Two guards on the first
+# digit: (?<![\d.\-]) stops a phone-number tail / longer digit run from being
+# read as a count ("...Call 478-621-4980 Lawyers" must NOT yield 4980); and the
+# leading digit is [1-9], so a zero-padded section/ordinal marker is rejected
+# ("...AI for Legal Practice 02 Attorneys Mentorship..." on burnerlaw.com must
+# NOT yield 2). Real counts ("40+ Lawyers", "Our 450 attorneys", "1,100+") still
+# match — none are written with a leading zero.
+_N = r"(?<![\d.\-])([1-9][\d,]{0,6})"
 _STATED_COUNT = re.compile(rf"{_N}\s*\+?\s*(attorneys?|lawyers?)\b", re.I)
 _STAFF_COUNT = re.compile(rf"{_N}\s*\+?\s*(staff|employees|professionals|team members)\b", re.I)
-_OFFICE_COUNT = re.compile(r"(?<![\d.\-])(\d{1,3})\s*\+?\s*(offices?|locations?)\b", re.I)
+_OFFICE_COUNT = re.compile(r"(?<![\d.\-])([1-9]\d{0,2})\s*\+?\s*(offices?|locations?)\b", re.I)
 _YEARS = re.compile(r"(\d{1,3})\s*\+?\s*(?:years?|yrs?)\b", re.I)
 _FOUNDED = re.compile(r"(?:founded|established|since|serving\D{0,20}since)\D{0,12}(\d{4})", re.I)
 _PHONE = re.compile(r"\(?\b\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}\b")
@@ -804,7 +806,17 @@ def extract_site(
     )
     # thin page with nothing extracted -> headless candidate
     out.needs_render = len(all_text) < 400 and out.attorney_count is None
-    out.url_verification_status = "not_a_law_firm" if not is_law_related else "verified"
+    if is_law_related:
+        out.url_verification_status = "verified"
+    elif out.needs_render:
+        # Too little readable text to judge — do NOT assert "not a law firm" from
+        # a JS shell / near-empty page (beaverlawoffice.com = 0 chars,
+        # dankolawllc.com = 114). Leave it unverified and flag needs_render for
+        # the headless lever; not_a_law_firm is reserved for pages we actually
+        # read and found non-legal (swissbiologic, rlb.com).
+        out.url_verification_status = "unverified"
+    else:
+        out.url_verification_status = "not_a_law_firm"
     # .gov / .edu hosts are government offices / clinics, not private firms
     # (e.g. azag.gov = AZ Attorney General) — flag rather than count as a firm.
     host = _host(base_url)
