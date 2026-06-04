@@ -31,10 +31,10 @@ from __future__ import annotations
 import argparse
 import sys
 
-from sqlalchemy import create_engine, delete, select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from legal_sourcing.config import get_settings
+from legal_sourcing.db import make_engine
 from legal_sourcing.models import FirmSourceRecord, MatchReviewQueue
 from legal_sourcing.resolution.blocking import (
     bucket_stats,
@@ -59,12 +59,11 @@ def resolve_all(
     weights: dict[str, float] | None = None,
     clear_queue: bool = True,
 ) -> dict[str, int]:
-    settings = get_settings()
     configure_logging()
     th = thresholds or DEFAULT_THRESHOLDS
     w = weights or DEFAULT_WEIGHTS
 
-    engine = create_engine(settings.db_url)
+    engine = make_engine()
     counts = {
         "candidate_pairs": 0,
         "auto_approved": 0,

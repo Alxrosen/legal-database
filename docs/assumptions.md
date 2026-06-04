@@ -1073,3 +1073,60 @@ multiple writer threads (then a queue + one committer thread, same idea).
 **Enforced where.** `pipelines/enrich_websites.py` (buffer + bulk
 `on_conflict_do_update`); `scrapers/base.py` (raw-to-disk per fetch);
 `pipelines/scrape_az_bar.upsert_firm_source_records` (WAL + retry).
+
+---
+
+## 2026-06-04 — Multi-agent shared database: worktree isolation + one WAL DB + central engine factory
+
+**Assumption.** Several Claude sessions work the repo in parallel, each in its
+own **git worktree on its own branch** (`Mastermind` = coordinator/integration,
+`Websites` = enrichment hardening, `Canonizer` = canonical resolution). They do
+NOT share a working tree (a tree has one checked-out branch). They DO share one
+database: every worktree points `DB_PATH` (+ `RAW_DATA_DIR`/`PROCESSED_DATA_DIR`)
+at the single live `data/legal_sourcing.sqlite` in the main checkout, via an
+absolute path in its own (gitignored) `.env`.
+
+Multiple processes reading/writing that one DB is safe given three rules:
+
+1. **WAL + uniform 30s busy_timeout on every connection.** WAL allows many
+   concurrent readers + one writer; writers serialize but do not corrupt. The
+   `busy_timeout` is the single most important setting — without it a connection
+   that loses the writer race fails *instantly* with "database is locked"
+   instead of waiting. It was previously set only in martindale/justia/findlaw;
+   resolution/*, enrich_websites, az_bar and scrape_state_bar fell back to
+   sqlite's ~5 s default. A central engine factory now applies it everywhere.
+2. **Agents write DISJOINT tables.** Martindale → `firm_source_records`;
+   Websites → `website_enrichment`; Canonizer → `firms` /
+   `firm_source_record_links` / `match_review_queue`. No two writers touch the
+   same table, so serialization is just a short queue, never a logical conflict.
+   (Builds on the 2026-06-03 single-writer-per-process + bulk-upsert entry.)
+3. **Migrations are Mastermind-only and run only when scrapes are quiesced.**
+   Alembic DDL takes heavy locks / rewrites tables — the one operation genuinely
+   unsafe against a live writer. The coordinator owns the schema.
+
+**Why this over alternatives.** Per-agent DB snapshots (copy, work isolated,
+merge back) give maximum isolation but go stale against the live Martindale
+scrape and need manual merge-back; rejected as the default (kept as an option
+for the Canonizer if it wants a reproducible read, since `firms`/links/queue are
+empty so its output is a clean insert). Postgres is the textbook multi-writer
+answer but is a heavy migration we don't need while writers are table-disjoint.
+The relative default `db_path` (`./data/...`, resolved against CWD) is a footgun
+across worktrees — each would silently open its own empty DB — so the
+absolute-`DB_PATH`-per-worktree rule is mandatory. Verified end-to-end: a
+`make_engine()` connection from the `Mastermind` worktree reports the absolute
+main-tree `db_url`, `busy_timeout=30000`, `journal_mode=wal`, and sees the live
+row counts (236k+ source records, the Websites session's `website_enrichment`
+rows).
+
+**Trigger to revisit.** (a) Two agents genuinely need to write the *same* table
+concurrently → move to Postgres (MVCC, row locks). (b) Migration coordination
+becomes a bottleneck (frequent schema churn during long scrapes). (c) A worktree
+needs to run a scrape's `load` against raw it didn't fetch → its
+`RAW_DATA_DIR`/`PROCESSED_DATA_DIR` already point at the shared dirs.
+
+**Enforced where.** `src/legal_sourcing/db.py` (`make_engine` + connect-time
+PRAGMA listener); `resolution/{run,apply}.py` and
+`pipelines/{scrape_az_bar,scrape_state_bar,scrape_martindale,scrape_justia,scrape_findlaw}.py`
+(routed through `make_engine`); each worktree's `.env` (absolute shared paths);
+`config.py` (`db_path` is env-overridable). `enrich_websites.py` to be routed by
+the Websites session.

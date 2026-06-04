@@ -40,11 +40,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from legal_sourcing.config import get_settings
+from legal_sourcing.db import make_engine
 from legal_sourcing.models import FirmSourceRecord
 from legal_sourcing.normalize import (
     get_taxonomy,
@@ -407,7 +408,6 @@ def run_pilot(
     `num_pages` and/or `page_size` to sweep a larger slice of the
     directory.
     """
-    settings = get_settings()
     configure_logging()
 
     with AZBarScraper() as scraper:
@@ -458,7 +458,7 @@ def run_pilot(
     )
 
     # Upsert.
-    engine = create_engine(settings.db_url)
+    engine = make_engine()
     with Session(engine) as session:
         counts = upsert_firm_source_records(session, firm_records)
     log.info("pipeline.upsert_done", **counts)
@@ -471,7 +471,6 @@ def run_pilot(
 
 def run_full() -> None:
     """Full scrape — paginate the entire directory."""
-    settings = get_settings()
     configure_logging()
     PAGE_SIZE = 200
 
@@ -512,7 +511,7 @@ def run_full() -> None:
         firms=len(firm_records),
     )
 
-    engine = create_engine(settings.db_url)
+    engine = make_engine()
     with Session(engine) as session:
         counts = upsert_firm_source_records(session, firm_records)
     log.info("pipeline.upsert_done", **counts)
@@ -531,7 +530,6 @@ def _process_and_upsert(detail_paths: list[Path], *, mode: str) -> None:
     it in one place means a future crash here is recoverable by just
     re-running `load` against the already-fetched raw files.
     """
-    settings = get_settings()
     raw_records = parse_detail_payloads(detail_paths)
     for r in raw_records:
         normalize_record(r)
@@ -542,7 +540,7 @@ def _process_and_upsert(detail_paths: list[Path], *, mode: str) -> None:
         attorneys=len(raw_records),
         firms=len(firm_records),
     )
-    engine = create_engine(settings.db_url)
+    engine = make_engine()
     with Session(engine) as session:
         counts = upsert_firm_source_records(session, firm_records)
     log.info("pipeline.upsert_done", **counts)

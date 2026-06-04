@@ -32,10 +32,11 @@ from pathlib import Path
 from typing import Any
 
 from selectolax.parser import HTMLParser
-from sqlalchemy import create_engine, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from legal_sourcing.config import get_settings
+from legal_sourcing.db import make_engine
 from legal_sourcing.geo import STATE_SLUG_TO_ABBR, parse_states_arg
 from legal_sourcing.models import FirmSourceRecord
 from legal_sourcing.parsers.martindale import (
@@ -419,7 +420,6 @@ def run_full(
     of requests. `full` gets the firm roster + card-level fields; run
     `enrich` afterwards to fill the rich fields.
     """
-    settings = get_settings()
     configure_logging()
     states = states if states is not None else parse_states_arg("all")
     cp = Checkpoint("martindale_full")
@@ -433,7 +433,7 @@ def run_full(
         rps=rps,
     )
 
-    engine = create_engine(settings.db_url, connect_args={"timeout": 30})
+    engine = make_engine()
     with MartindaleScraper(rps=rps) as scraper:
         for state_slug in states:
             try:
@@ -522,7 +522,7 @@ def run_load(*, date_str: str | None = None, resume: bool = False) -> None:
         resume=resume,
     )
     cp = Checkpoint("martindale_load") if resume else None
-    engine = create_engine(settings.db_url, connect_args={"timeout": 30})
+    engine = make_engine()
     total = {"inserted": 0, "updated": 0, "cities": 0}
     for (state_slug, city_slug), paths in sorted(groups.items()):
         key = f"{state_slug}/{city_slug}"
@@ -546,7 +546,6 @@ def run_pilot(
     cities: list[tuple[str, str]] | None = None,
     max_pages_per_city: int | None = 3,
 ) -> None:
-    settings = get_settings()
     configure_logging()
     cities = cities or PILOT_CITIES
 
@@ -614,7 +613,7 @@ def run_pilot(
         r.setdefault("source_url", "")
 
     # Phase 5: upsert
-    engine = create_engine(settings.db_url, connect_args={"timeout": 30})
+    engine = make_engine()
     with Session(engine) as session:
         counts = upsert_firm_source_records(session, firm_records)
     log.info("martindale.upsert_done", **counts)
@@ -640,9 +639,8 @@ def run_enrich(
     """
     from sqlalchemy.orm.attributes import flag_modified
 
-    settings = get_settings()
     configure_logging()
-    engine = create_engine(settings.db_url, connect_args={"timeout": 30})
+    engine = make_engine()
     with Session(engine) as session:
         # 1) Mark non-subscriber rows (no firm_profile_url) so future
         # passes skip them deterministically.

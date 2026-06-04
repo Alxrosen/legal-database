@@ -30,10 +30,10 @@ from pathlib import Path
 from typing import Any
 
 from selectolax.parser import HTMLParser
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from legal_sourcing.config import get_settings
+from legal_sourcing.db import make_engine
 from legal_sourcing.geo import parse_states_arg
 from legal_sourcing.parsers.findlaw import (
     FindLawCityParser,
@@ -328,7 +328,6 @@ def run_full(
     already current, so re-running later picks up where we left off. We
     do NOT try to defeat the challenge.
     """
-    settings = get_settings()
     configure_logging()
     practice_areas = practice_areas or PILOT_PRACTICE_AREAS
     states = states if states is not None else parse_states_arg("all")
@@ -343,7 +342,7 @@ def run_full(
         already_done=cp.completed_count,
     )
 
-    engine = create_engine(settings.db_url, connect_args={"timeout": 30})
+    engine = make_engine()
     try:
         with FindLawScraper() as scraper:
             for state_slug in states:
@@ -431,7 +430,7 @@ def run_load(*, date_str: str | None = None, resume: bool = False) -> None:
         resume=resume,
     )
     cp = Checkpoint("findlaw_load") if resume else None
-    engine = create_engine(settings.db_url, connect_args={"timeout": 30})
+    engine = make_engine()
     total = {"inserted": 0, "updated": 0, "cities": 0}
     for (state_slug, city_slug), paths in sorted(groups.items()):
         key = f"{state_slug}/{city_slug}"
@@ -457,7 +456,6 @@ def run_pilot(
     cities: list[tuple[str, str]] | None = None,
     max_pages_per_combo: int | None = 5,
 ) -> None:
-    settings = get_settings()
     configure_logging()
     practice_areas = practice_areas or PILOT_PRACTICE_AREAS
     cities = cities or PILOT_CITIES
@@ -512,7 +510,7 @@ def run_pilot(
             r["source_url"] = fpu
         r.setdefault("source_url", "")
 
-    engine = create_engine(settings.db_url, connect_args={"timeout": 30})
+    engine = make_engine()
     with Session(engine) as session:
         counts = upsert_firm_source_records(session, firm_records)
     log.info("findlaw.upsert_done", **counts)

@@ -32,10 +32,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from legal_sourcing.config import get_settings
+from legal_sourcing.db import make_engine
 from legal_sourcing.parsers.state_bar import parse_detail, parse_list
 from legal_sourcing.pipelines._checkpoint import Checkpoint
 from legal_sourcing.pipelines.scrape_az_bar import (
@@ -214,7 +214,7 @@ def _build_and_upsert(cfg: StateBarConfig, pairs: list[tuple[dict[str, Any], Pat
         attorneys=len(records),
         firms=len(firm_records),
     )
-    engine = create_engine(get_settings().db_url)
+    engine = make_engine()
     with Session(engine) as session:
         counts = upsert_firm_source_records(session, firm_records)
     log.info("state_bar.upsert_done", source=cfg.source, **counts)

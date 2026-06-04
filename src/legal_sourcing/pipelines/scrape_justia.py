@@ -33,10 +33,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from legal_sourcing.config import get_settings
+from legal_sourcing.db import make_engine
 from legal_sourcing.geo import parse_states_arg
 from legal_sourcing.parsers.justia import JustiaDirectoryParser, extract_page_meta
 from legal_sourcing.pipelines._checkpoint import Checkpoint
@@ -224,7 +224,6 @@ def run_full(
     max_pages_per_state: int | None = None,
     resume: bool = True,
 ) -> None:
-    settings = get_settings()
     configure_logging()
     states = states if states is not None else parse_states_arg("all")
     cp = Checkpoint("justia_full")
@@ -235,7 +234,7 @@ def run_full(
         resume=resume,
         already_done=cp.completed_count,
     )
-    engine = create_engine(settings.db_url, connect_args={"timeout": 30})
+    engine = make_engine()
     try:
         with JustiaScraper() as scraper:
             for state_slug in states:
@@ -288,7 +287,7 @@ def run_load(*, date_str: str | None = None, resume: bool = False) -> None:
 
     log.info("justia.load_start", date=date_str, states=len(groups), resume=resume)
     cp = Checkpoint("justia_load") if resume else None
-    engine = create_engine(settings.db_url, connect_args={"timeout": 30})
+    engine = make_engine()
     total = {"inserted": 0, "updated": 0, "states": 0}
     for state_slug, paths in sorted(groups.items()):
         if cp is not None and cp.is_done(state_slug):

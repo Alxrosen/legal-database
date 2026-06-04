@@ -37,10 +37,10 @@ from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import create_engine, delete, select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from legal_sourcing.config import get_settings
+from legal_sourcing.db import make_engine
 from legal_sourcing.models import (
     Firm,
     FirmSourceRecord,
@@ -308,10 +308,9 @@ def apply_decisions(
     statuses: tuple[str, ...] = ("auto_approved", "approved"),
 ) -> dict[str, int]:
     """Build canonical Firm + Link rows from current resolution state."""
-    settings = get_settings()
     configure_logging()
 
-    engine = create_engine(settings.db_url)
+    engine = make_engine()
     counts = {
         "components": 0,
         "singletons": 0,
