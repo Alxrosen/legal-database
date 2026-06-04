@@ -8,15 +8,17 @@ this repo.
 ## What this project does
 
 Scrapes U.S. law-firm directories (AZ State Bar, Martindale-Hubbell,
-FindLaw, Justia — with ~49 more state bars and a firm-website content
-enrichment planned), normalizes the data, and resolves the same firm
-across sources into a canonical record. The output is a SQLite database
-(Postgres-portable) optimized for deal-sourcing research, not for
-republication. (For current state, see AGENTS.md "What's done so far".)
+FindLaw, Justia + a generic config-driven state-bar scraper),
+**enriches firms from their own websites**, normalizes the data, and
+resolves the same firm across sources into a canonical record. The
+output is a SQLite database (Postgres-portable) optimized for
+deal-sourcing research, not for republication. (For current build/run
+state, see AGENTS.md "What's done so far".)
 
-Arizona is the pilot region. The architecture is source-agnostic —
-adding a new source is one parser file, one scraper file, and one
-pipeline file.
+Arizona was the pilot region; scraping has gone national. The
+architecture is source-agnostic — adding a directory source is one
+parser + one scraper + one pipeline file; adding a state bar is just a
+`StateBarConfig` entry + a small extractor.
 
 ---
 
@@ -74,15 +76,21 @@ uv run python scripts/show_match_queue.py
 
 ### Running full sweeps
 
-The polite-rate scrapers take 30 min to multiple hours per source.
-Run them sequentially (NOT in parallel — they'd contend on the
-shared SQLite at upsert time). Recommended chain:
+National `full` sweeps are multi-day at polite rates; we run them
+**detached via WMI** so they survive the session (see AGENTS.md
+"Running full sweeps"). The DB is WAL + the upsert retries on lock, so
+sources **can run concurrently** (Martindale + website enrichment have
+run together fine) — just don't run two `full` passes for the SAME
+source at once (one checkpoint file). Recommended chain:
 
 ```bash
-uv run python -m legal_sourcing.pipelines.scrape_az_bar full
-uv run python -m legal_sourcing.pipelines.scrape_martindale pilot --max-pages-per-city 0
+uv run python -m legal_sourcing.pipelines.scrape_az_bar    full
+uv run python -m legal_sourcing.pipelines.scrape_martindale full --states all --max-pages-per-city 0 --rps 0.75
 uv run python -m legal_sourcing.pipelines.scrape_martindale enrich
-uv run python -m legal_sourcing.pipelines.scrape_findlaw pilot --max-pages-per-combo 20
+uv run python -m legal_sourcing.pipelines.scrape_findlaw   full --states all --max-pages-per-combo 0
+uv run python -m legal_sourcing.pipelines.scrape_justia    full --states all
+uv run python -m legal_sourcing.pipelines.enrich_websites  run    # firm-site enrichment (~27k sites)
+uv run python -m scripts.backfill_primary_address
 uv run python -m legal_sourcing.resolution.run resolve
 uv run python -m legal_sourcing.resolution.apply
 ```
@@ -175,6 +183,12 @@ deactivation_status
 | `firm_source_record_links` | M-to-M between `firms` and `firm_source_records`. Carries `link_method` (`auto` / `manual`) and a back-pointer to the resolution decision. |
 | `offices` | Canonical physical locations per firm. |
 | `persons` + `firm_persons` | Canonical attorneys + time-bounded firm affiliations. `FirmPerson.title_rank` drives the primary-contact selection. |
+
+### Enrichment table
+
+| Table | Purpose |
+|---|---|
+| `website_enrichment` | One row per UNIQUE firm website (normalized bare-domain key). Holds firm-site-extracted signals — `attorney_count_min` (+ `_method`/`_confidence`/`_raw`), `staff_count_min`, `office_count`/`office_addresses`, `years_in_operation_min`, `scope`, `notable_signals`, `phones`, `description_blurb`, `url_verification_status`, `needs_render`, `fetched_at`/`enriched_at`. Crawl each site once; re-runs = set-difference on `enriched_at`. Populated by `enrichment/website_extract.py` via `pipelines/enrich_websites.py`. Separate from Martindale *profile* enrichment (`FirmSourceRecord.enrichment_status`). |
 
 ### Resolution + taxonomy
 
@@ -377,28 +391,32 @@ pipelines:
 | `setup.ps1` | One-time dev-env install (Windows). |
 | `seed_practice_areas.py` | YAML -> DB upsert for the canonical taxonomy. |
 | `recon_azbar.py` / `recon_martindale.py` / `recon_findlaw.py` | Per-source reconnaissance dumpers. |
+| `recon_state_bars.py` / `recon_state_bars_forms.py` / `recon_imis.py` | State-bar recon: landing-page triage, form/`--platforms` fingerprinting, iMIS viewstate-postback probe. |
 | `recon_martindale_firm_profiles.py` | Sample firm-profile pages for selector validation. |
 | `reparse_martindale_recon.py` | Re-run extractors against saved gz pages (no re-fetch). |
 | `renormalize_addresses.py` | Re-run `normalize_record` on every existing row. |
 | `backfill_primary_address.py` | Derive `primary_city` / `primary_state` / `primary_postal_code` from the offices JSON. |
-| `show_*.py` | Read-only inspectors for each source / the match queue. |
-| `inspect_*.py` | Recon fixture inspectors. |
+| `show_*.py` / `inspect_*.py` | Read-only inspectors / recon fixture inspectors. |
 
 ---
 
 ## What's NOT here (future work)
 
-(DONE since this was written: canonical `Firm`+`Link` apply step;
-national `full` sweeps for Martindale/FindLaw/Justia; the Justia source.
-See AGENTS.md for current state.)
+(DONE since first written: canonical `Firm`+`Link` apply step; national
+`full` sweeps for Martindale/FindLaw/Justia; the Justia source; the
+generic state-bar scraper + WY; the firm-website enrichment cascade +
+`website_enrichment` table + pipeline. See AGENTS.md for current state.)
 
-- Firm-website content enrichment (designed + recon-validated in
-  `docs/data_sources/firm_websites.md` §12; not built — next task).
+- **Canonical truth-discovery fusion** — rewrite `resolution/apply.py`
+  per assumptions.md 2026-06-03 (confidence-weighted, union-first,
+  per-source-and-enrichment-level reliability). The next major task;
+  current `apply.py` is a simple-precedence placeholder.
+- **Website-enrichment full run** (built, on hold) + **LLM
+  `description_generated`** layer (needs `ANTHROPIC_API_KEY`).
+- Most **state bars** beyond WY — harness exists; most jurisdictions are
+  low-ROI (thin / gated / JS per `state_bars.md` §13).
 - Avvo (hard-blocked by Cloudflare; see `docs/data_sources/avvo.md`).
-- ~49 more state bar associations.
 - Practice-area review CLI (spec'd in `docs/assumptions.md`).
-- Canonical precedence redesign wiring (decided in assumptions
-  2026-06-02; bundles with website enrichment).
 - Geocoding, year-founded enrichment beyond Martindale subscribers.
 - Postgres migration (SQLite is the pilot; schema is portable).
 
