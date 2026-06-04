@@ -183,6 +183,15 @@ def test_years_variants():
     assert extract_years("no temporal info here")[0] is None
 
 
+def test_years_skips_combined_experience():
+    # "X years of combined/collective experience" is summed across the team, not
+    # the firm's age (thevirgalawfirm.com / sdtriallaw.com).
+    assert extract_years("Over 100 years of combined experience")[0] != 100
+    assert extract_years("100 years + of collective legal mastery")[0] != 100
+    # a genuine firm-age statement still works
+    assert extract_years("Serving clients for 30 years")[0] == 30
+
+
 # --- offices / phones / platform ------------------------------------------
 
 

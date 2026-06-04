@@ -636,10 +636,17 @@ def extract_years(text: str, *, now_year: int | None = None) -> tuple[int | None
     best: tuple[int, bool] | None = None
     for m in _YEARS.finditer(text):
         n = int(m.group(1))
-        if 1 <= n <= 200:
-            is_min = "+" in m.group(0)
-            if best is None or n > best[0]:
-                best = (n, is_min)
+        if not (1 <= n <= 200):
+            continue
+        # "X years of combined/collective experience" is summed across the
+        # whole team, NOT the firm's age (thevirgalawfirm.com / sdtriallaw.com
+        # both say "100 years of combined/collective experience").
+        ctx = low[max(0, m.start() - 12) : m.end() + 30]
+        if "combined" in ctx or "collective" in ctx:
+            continue
+        is_min = "+" in m.group(0)
+        if best is None or n > best[0]:
+            best = (n, is_min)
     return best if best else (None, False)
 
 
