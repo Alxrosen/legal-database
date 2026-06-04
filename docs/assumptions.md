@@ -986,11 +986,21 @@ attorney_count) are resolved by **iterative truth discovery / data fusion**
 (TruthFinder / EM-style), which JOINTLY estimates per-(firm, field) truth and
 per-**source reliability** `r_s` — rather than a hand-fixed tier order.
 
-1. Each cluster member contributes claims `(field, value, source, fetched_at)`.
-2. `r_s ∈ (0,1)` initialized from priors (website 0.90 · Martindale-enriched
-   0.75 · FindLaw / Martindale-card 0.50 · state bars 0.40 · Justia 0.35); the
+1. Each cluster member contributes claims `(field, value, source, fetched_at)`,
+   where **`source` is the fusion key = origin + ENRICHMENT LEVEL**, not the
+   bare origin (CONFIRMED 2026-06-03). Reliability is a property of the source,
+   and an *enriched* record is a different-quality source than its bare card:
+   - `website` — a firm's own site (`website_enrichment` rows); distinct source.
+   - `martindale_enriched` (FirmSourceRecord `enrichment_status='enriched'`) vs
+     `martindale_card` (card only) — split, NOT one "martindale".
+   - `findlaw`, `az_bar` / `{st}_bar`, `justia` as-is.
+   Derived at apply-time from `enrichment_status` + the `website_enrichment`
+   table — no schema change. (Mirrors the website case, where extraction method
+   already sub-weights the website source; same idea applied to Martindale.)
+2. `r_s ∈ (0,1)` initialized from priors (website 0.90 · martindale_enriched
+   0.75 · findlaw / martindale_card 0.50 · state bars 0.40 · justia 0.35); the
    website's per-method quality (stated > profile-links > solo > heading-roles)
-   scales its claim weight.
+   further scales its claim weight.
 3. **Iterate to convergence:** *truth step* — per (firm, field) truth = argmax
    over values of `Σ_{sources asserting it} r_s · recency(fetched_at)`;
    *reliability step* — re-estimate `r_s` from agreement with the current truths.
