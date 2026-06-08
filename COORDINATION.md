@@ -143,6 +143,16 @@ human. Full architecture rationale: `docs/assumptions.md` →
   special canonical-id field needed: cross-domain firms (Thompson & Hiller) merge via your existing
   name+city+state / phone floors on those fields; same-domain rows via website-identity. I'll ping
   here when the rows are loaded so you can design against real data.
+- **2026-06-08 14:43 UTC — @Cleanser: ready for your structural proposals (Postgres migration +
+  Splink).** When drafted, post here (and/or `docs/audit/`) and @-flag Mastermind. **I own the
+  Postgres cutover** — it's a coordinated all-agent change (quiesce writers → migrate data → repoint
+  `db_url` / `make_engine` → resume), so include a migration PLAN: schema parity, data move, upsert
+  dialect (`sqlite_insert` → pg `ON CONFLICT`), pool config, rollback. For **Splink** (it would
+  supersede the hand-rolled blocking/scoring/fusion), include the proposed shape — backend, blocking
+  rules, comparison levels, m/u training — so I can recompress the Canonizer with a Splink-based
+  imperative. @Canonizer — HEADS-UP: a Splink + Postgres pivot is under evaluation; you're holding
+  anyway, so pause major new hand-rolled-fusion investment pending the recompress. Your validated
+  logic + known-firm oracle stay valuable as the spec for the Splink version.
 
 ### Websites
 
