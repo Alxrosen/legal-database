@@ -15,6 +15,7 @@ CLI:
     uv run python -m legal_sourcing.pipelines.enrich_websites pilot --limit 30
     uv run python -m legal_sourcing.pipelines.enrich_websites run [--limit N] [--workers 6]
     uv run python -m legal_sourcing.pipelines.enrich_websites load   # re-extract from disk, no network
+    uv run python -m legal_sourcing.pipelines.enrich_websites load-fsr [--limit N]  # -> firm_source_records (source="website"); --limit 0 = full
 """
 
 from __future__ import annotations
@@ -45,6 +46,7 @@ from legal_sourcing.enrichment.website_extract import (
 )
 from legal_sourcing.models import FirmSourceRecord, WebsiteEnrichment
 from legal_sourcing.normalize.url import is_aggregator_domain
+from legal_sourcing.pipelines.scrape_az_bar import normalize_record
 from legal_sourcing.scrapers.base import ScrapeError
 from legal_sourcing.scrapers.website import FirmWebsiteScraper
 from legal_sourcing.utils.logging import configure_logging, get_logger
@@ -412,9 +414,257 @@ def run_load(*, flush_every: int = 400) -> None:
     print(f"load: re-extracted + upserted {total} websites from disk.")
 
 
+# ---------------------------------------------------------------------------
+# Website-as-a-source: firm_source_records (source="website")
+#
+# Per COORDINATION 2026-06-08 14:19 (Mastermind), the website is a first-class
+# MDM SOURCE row in firm_source_records — NOT a widened website_enrichment. We
+# re-extract the cached raw (no re-fetch) and upsert one FirmSourceRecord per
+# crawled domain so the website votes as a regular cluster member in canonical
+# resolution (naming the otherwise-nameless Justia-only firms via the
+# website-identity floor). website_enrichment stays the per-domain crawl cache.
+
+# Site verdicts that represent a real firm site worth emitting as a source row.
+# not_a_law_firm / unreachable / government_or_edu are NOT acquirable firms;
+# emitting them would fabricate junk records. The verdict is still recorded in
+# additional_data on the rows we DO emit.
+_FSR_EMIT_STATUSES = ("verified", "legal_but_mismatched")
+
+# FirmSourceRecord columns the website source writes (the FULL field set). The
+# generic martindale upsert (scrape_az_bar.upsert_firm_source_records) omits
+# primary_*/office_count/firm_short_description/firm_descriptions AND blindly
+# overwrites every column on update — so reusing it would NULL those on a
+# martindale re-run. The website load therefore uses its own upsert below, which
+# overwrites the full set on re-extract (correct for our own source).
+_FSR_COLUMNS = (
+    "source",
+    "source_firm_id",
+    "source_url",
+    "scraped_at",
+    "raw_payload_path",
+    "http_status",
+    "name_raw",
+    "name_normalized",
+    "website_raw",
+    "website_normalized",
+    "phone_raw",
+    "phone_normalized",
+    "year_founded",
+    "attorney_count",
+    "deactivation_status",
+    "primary_city",
+    "primary_state",
+    "primary_postal_code",
+    "office_count",
+    "firm_short_description",
+    "firm_descriptions",
+    "contacts",
+    "offices",
+    "practice_areas_raw",
+    "practice_areas_matched",
+    "practice_areas_unmatched",
+    "additional_data",
+)
+
+
+def fsr_record_from_site(
+    website: str,
+    site: SiteExtraction,
+    *,
+    source_url: str,
+    http_status: int | None,
+    raw_payload_path: str | None,
+    scraped_at: datetime,
+) -> dict[str, Any] | None:
+    """Map a SiteExtraction -> a FirmSourceRecord upsert dict (source="website").
+
+    Returns None for sites that aren't real firm pages (so we never fabricate a
+    firm). Raw fields are populated here; the shared `normalize_record` then derives
+    the *_normalized merge keys (name/website/phone, office normalization, practice-
+    area matched/unmatched) EXACTLY as the martindale loader does — so a website row
+    keys identically to a firm's other source rows and merges via the website /
+    name+city+state floors.
+    """
+    if site.url_verification_status not in _FSR_EMIT_STATUSES:
+        return None
+
+    offices: list[dict[str, Any]] = [
+        {
+            "city_raw": a.get("city"),
+            "state_raw": a.get("state"),
+            "postal_code_raw": a.get("postal_code"),
+            "is_primary": i == 0,
+        }
+        for i, a in enumerate(site.office_addresses)
+    ]
+
+    # All advertised practice-area phrases, verbatim (taxonomy-matched ones plus the
+    # URL-declared unmatched ones). normalize_record re-splits them into canonical
+    # matched slugs + normalized unmatched, identically to every other source.
+    practice_raw = list(site.practice_areas_raw) + list(site.practice_areas_unmatched)
+
+    additional: dict[str, Any] = {
+        "enrichment_source": "website",
+        "url_verification_status": site.url_verification_status,
+        "platform": site.platform,
+        "needs_render": site.needs_render,
+        "is_law_related": site.is_law_related,
+    }
+    if site.scope:
+        additional["scope"] = site.scope
+    if site.notable_signals:
+        additional["notable_signals"] = list(site.notable_signals)
+    if site.attorney_count is not None:
+        additional["attorney_count_method"] = site.attorney_count_method
+        additional["attorney_count_confidence"] = site.attorney_count_confidence
+        additional["attorney_count_is_min"] = site.attorney_count_is_min
+    if site.years_in_operation is not None:
+        additional["years_in_operation"] = site.years_in_operation
+
+    rec: dict[str, Any] = {
+        "source": "website",
+        "source_firm_id": website,
+        "source_url": source_url,
+        "scraped_at": scraped_at,
+        "raw_payload_path": raw_payload_path,
+        "http_status": http_status,
+        "name_raw": site.name_raw or "",
+        "website_raw": source_url,
+        "phone_raw": site.phones[0] if site.phones else None,
+        "year_founded": site.year_founded,
+        "attorney_count": site.attorney_count,
+        "deactivation_status": site.deactivation_status,
+        "primary_city": site.primary_city,
+        "primary_state": site.primary_state,
+        "primary_postal_code": site.primary_postal_code,
+        "office_count": site.office_count,
+        "firm_short_description": site.firm_short_description,
+        "firm_descriptions": site.firm_descriptions or None,
+        "contacts": [dict(c) for c in site.contacts],
+        "offices": offices,
+        "practice_areas_raw": practice_raw,
+        "additional_data": additional,
+    }
+    # Fill name_normalized / website_normalized / phone_normalized / office
+    # normalization / practice_areas_matched+unmatched (shared, source-uniform).
+    return normalize_record(rec)
+
+
+def _upsert_fsr(engine, records: list[dict[str, Any]]) -> dict[str, int]:
+    """Insert/update source="website" FirmSourceRecord rows (full field set).
+
+    One transaction per call (the caller chunks), wrapped in the same WAL
+    lock-retry as scrape_az_bar.upsert_firm_source_records: a transient "database
+    is locked" rolls back (fresh session) and RE-APPLIES the unchanged batch, so it
+    coexists with the live Martindale writer.
+    """
+    if not records:
+        return {"inserted": 0, "updated": 0}
+    for attempt in range(6):
+        try:
+            inserted = updated = 0
+            with Session(engine) as session:
+                for r in records:
+                    fields = {c: r.get(c) for c in _FSR_COLUMNS}
+                    fields["name_raw"] = fields.get("name_raw") or ""
+                    for jcol, default in (
+                        ("contacts", []),
+                        ("offices", []),
+                        ("practice_areas_raw", []),
+                        ("practice_areas_matched", []),
+                        ("practice_areas_unmatched", []),
+                        ("additional_data", {}),
+                    ):
+                        if fields.get(jcol) is None:
+                            fields[jcol] = default
+                    existing = session.scalar(
+                        select(FirmSourceRecord).where(
+                            FirmSourceRecord.source == r["source"],
+                            FirmSourceRecord.source_firm_id == r["source_firm_id"],
+                        )
+                    )
+                    if existing is None:
+                        session.add(FirmSourceRecord(**fields))
+                        inserted += 1
+                    else:
+                        for k, v in fields.items():
+                            setattr(existing, k, v)
+                        updated += 1
+                session.commit()
+            return {"inserted": inserted, "updated": updated}
+        except OperationalError:
+            if attempt == 5:
+                raise
+            time.sleep(0.5 * (2**attempt))
+    return {"inserted": 0, "updated": 0}
+
+
+def run_load_fsr(*, flush_every: int = 400, limit: int | None = None) -> None:
+    """Re-extract cached raw (NO network) and upsert each real firm site as a
+    source="website" FirmSourceRecord. Chunked single-committer (WAL + retry), safe
+    to run concurrently with the Martindale scrape (rows disjoint by `source`;
+    COORDINATION 2026-06-08 14:25). `limit` caps emitted rows for a pilot
+    (`--limit 0` = full corpus).
+    """
+    configure_logging()
+    settings = get_settings()
+    base = settings.raw_data_dir / "firm_websites"
+    if not base.exists():
+        print(f"No firm_websites raw data at {base}", file=sys.stderr)
+        return
+    buckets: dict[str, dict[str, Path]] = {}
+    for gz in sorted(base.glob("*/*/*.html.gz")):
+        buckets.setdefault(gz.parent.name, {})[gz.stem.replace(".html", "")] = gz
+    engine = make_engine()
+    buffer: list[dict[str, Any]] = []
+    emitted = skipped = seen = 0
+    for files in buckets.values():
+        home = files.get("home")
+        if home is None:
+            continue
+        seen += 1
+        sc = _sidecar(home)
+        cand = sc.get("url") or ""
+        final = sc.get("final_url") or cand
+        website = re.sub(r"^https?://(www\.)?", "", cand).split("/")[0].lower()
+        if not website:
+            continue
+        pages: list[tuple[str, bytes]] = []
+        for name, path in sorted(files.items()):
+            role = "home" if name == "home" else re.sub(r"\d+$", "", name)
+            pages.append((role, _read_gz(path)))
+        site = extract_site(pages, base_url=cand)
+        rec = fsr_record_from_site(
+            website,
+            site,
+            source_url=final or f"https://{website}",
+            http_status=sc.get("status"),
+            raw_payload_path=str(home),
+            scraped_at=datetime.fromtimestamp(home.stat().st_mtime, tz=UTC),
+        )
+        if rec is None:
+            skipped += 1
+            continue
+        buffer.append(rec)
+        if len(buffer) >= flush_every:
+            c = _upsert_fsr(engine, buffer)
+            emitted += c["inserted"] + c["updated"]
+            log.info("enrich.fsr_flush", emitted=emitted, skipped=skipped, seen=seen)
+            buffer.clear()
+        if limit and emitted + len(buffer) >= limit:
+            break
+    if buffer:
+        c = _upsert_fsr(engine, buffer)
+        emitted += c["inserted"] + c["updated"]
+    print(
+        f"fsr-load: upserted {emitted} website source rows "
+        f"({skipped} non-firm sites skipped) from {seen} cached homes."
+    )
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("mode", choices=("pilot", "run", "load"))
+    ap.add_argument("mode", choices=("pilot", "run", "load", "load-fsr"))
     ap.add_argument("--websites", type=str, default=None, help="(pilot) comma list of bare domains")
     ap.add_argument("--limit", type=int, default=30, help="cap number of firms")
     ap.add_argument("--workers", type=int, default=6)
@@ -425,6 +675,8 @@ def main() -> int:
         run_pilot(websites=sites, limit=args.limit, workers=args.workers)
     elif args.mode == "load":
         run_load()
+    elif args.mode == "load-fsr":
+        run_load_fsr(limit=args.limit if args.limit and args.limit > 0 else None)
     else:
         run(
             limit=args.limit if args.limit and args.limit > 0 else None,
