@@ -979,25 +979,50 @@ _PRACTICE_PATH = re.compile(
     re.I,
 )
 
+# Section-landing segments (the /practice-areas/ index itself, not a specific area).
+# A trailing path segment equal to one of these is the listing page, not a practice
+# area, so it must not be recorded as an unmatched specialty.
+_GENERIC_PRACTICE_SEG = frozenset(
+    {
+        "practice areas",
+        "practice area",
+        "areas of practice",
+        "area of practice",
+        "our practices",
+        "our practice",
+        "practice",
+        "services",
+        "service",
+        "what we do",
+        "expertise",
+    }
+)
+
 
 def extract_practice_areas(
     pages: list[tuple[str, str | bytes]], *, base_url: str = ""
-) -> tuple[list[str], list[str]]:
+) -> tuple[list[str], list[str], list[str]]:
     """Legal specialties the firm advertises, matched to the canonical taxonomy.
 
-    Returns ``(matched_slugs, raw_phrases)``. Candidates are internal-link anchor
-    texts plus the trailing slug of any ``/practice(-areas)/{slug}`` path; each is
-    matched via ``get_taxonomy().match`` (exact-on-normalized). Only real legal
+    Returns ``(matched_slugs, raw_phrases, unmatched)``. Candidates are internal-link
+    anchor texts plus the trailing slug of any ``/practice(-areas)/{slug}`` path; each
+    is matched via ``get_taxonomy().match`` (exact-on-normalized). Only real legal
     practice areas survive the match, so office LOCATIONS — city / "we serve X" /
-    jurisdiction links — can NEVER appear here (this field is the firm's
-    specialty, not where it sits or where its lawyers are licensed). ``raw`` keeps
-    the verbatim phrase that produced each matched slug, for audit.
+    jurisdiction links — can NEVER appear here (this field is the firm's specialty,
+    not where it sits or where its lawyers are licensed). ``raw`` keeps the verbatim
+    phrase that produced each matched slug, for audit. ``unmatched`` collects practice
+    areas the firm DECLARES via a ``/practice-areas/{slug}`` URL but the taxonomy does
+    not yet recognize — high precision (the URL structure asserts it is a practice
+    area), so anchor-text nav links never leak in; it surfaces taxonomy gaps without
+    polluting the matched set.
     """
     tax = get_taxonomy()
     host = _host(base_url)
     slugs: list[str] = []
     raw: list[str] = []
+    unmatched: list[str] = []
     seen_raw: set[str] = set()
+    seen_unmatched: set[str] = set()
     for _role, html in pages:
         for a in _tree(html).css("a[href]"):
             href = a.attributes.get("href") or ""
@@ -1006,24 +1031,31 @@ def extract_practice_areas(
             parsed = safe_urlparse(urljoin(base_url, href))
             if parsed and host and parsed.netloc and parsed.netloc.lower() != host:
                 continue  # external link
-            candidates = [" ".join((a.text() or "").split())]
+            # Anchor text is a weak candidate; a /practice-areas/{slug} URL segment is
+            # a strong one. Only the URL-declared segment may feed `unmatched` (anchor
+            # nav text is far too noisy to treat as a taxonomy gap).
+            text_cand = " ".join((a.text() or "").split()).strip()
             path = (parsed.path if parsed else "") or ""
+            path_seg: str | None = None
             if _PRACTICE_PATH.search(path):
                 seg = path.split("#")[0].split("?")[0].rstrip("/").split("/")[-1]
-                candidates.append(seg.replace("-", " ").replace("_", " "))
-            for cand in candidates:
-                cand = cand.strip()
+                seg = seg.replace("-", " ").replace("_", " ").strip()
+                if seg.lower() not in _GENERIC_PRACTICE_SEG:  # skip the listing page
+                    path_seg = seg
+            for cand, url_declared in ((text_cand, False), (path_seg, True)):
                 if not cand or len(cand) > 60:
                     continue
                 slug = tax.match(cand)
-                if not slug:
-                    continue
-                if cand.lower() not in seen_raw:
-                    seen_raw.add(cand.lower())
-                    raw.append(cand)
-                if slug not in slugs:
-                    slugs.append(slug)
-    return slugs, raw
+                if slug:
+                    if cand.lower() not in seen_raw:
+                        seen_raw.add(cand.lower())
+                        raw.append(cand)
+                    if slug not in slugs:
+                        slugs.append(slug)
+                elif url_declared and cand.lower() not in seen_unmatched:
+                    seen_unmatched.add(cand.lower())
+                    unmatched.append(cand)
+    return slugs, raw, unmatched
 
 
 def extract_scope(text: str) -> str | None:
@@ -1050,6 +1082,86 @@ def extract_description_blurb(pages: list[tuple[str, str | bytes]]) -> str | Non
         if len(blurb) >= 80:
             return blurb[:600]
     return None
+
+
+# Headings whose section is navigation / listing / boilerplate, not firm prose.
+# A heading containing any of these is dropped (with its body copy) from
+# firm_descriptions so we keep only genuine self-description.
+_DESC_HEADING_SKIP = (
+    "menu",
+    "navigation",
+    "search",
+    "contact",
+    "follow us",
+    "newsletter",
+    "subscribe",
+    "sign up",
+    "practice area",
+    "areas of practice",
+    "our practice",
+    "what we do",
+    "testimonial",
+    "review",
+    "blog",
+    "news",
+    "recent post",
+    "categories",
+    "office hours",
+    "directions",
+    "find us",
+    "social",
+    "copyright",
+)
+
+
+def extract_firm_descriptions(
+    pages: list[tuple[str, str | bytes]],
+) -> list[dict[str, str | None]]:
+    """Structured descriptive sections — ``[{heading, text}]`` — from the about
+    (else home) page. Each heading (h1-h3) pairs with the body copy that follows it
+    in document order, up to the next heading. Distinct from
+    ``firm_short_description`` (the single lead blurb): this is the firm's fuller
+    self-description, section by section, for downstream summarization. Nav /
+    listing / boilerplate headings are dropped and only substantive prose
+    (>= 60 chars) is kept; leading copy with no heading is recorded with
+    ``heading=None``. No network.
+    """
+    order = {"about": 0, "home": 1}
+    chosen: str | bytes | None = None
+    for role, html in sorted(pages, key=lambda p: order.get(p[0], 9)):
+        if role in order:
+            chosen = html
+            break
+    if chosen is None:
+        return []
+
+    sections: list[dict[str, str | None]] = []
+    heading: str | None = None
+    buf: list[str] = []
+
+    def _flush() -> None:
+        text = re.sub(r"\s+", " ", " ".join(buf)).strip()
+        skip = bool(heading) and any(s in heading.lower() for s in _DESC_HEADING_SKIP)
+        if len(text) >= 60 and not skip:
+            sections.append({"heading": heading, "text": text[:800]})
+
+    tree = _tree(chosen)
+    # selectolax css() groups matches by selector, NOT document order, so walk the
+    # tree in document (pre-order) order to keep each heading with the prose that
+    # follows it (same rationale as _heading_roles' sibling-walk).
+    for node in (tree.body or tree.root).traverse(include_text=False):
+        tag = node.tag
+        if tag not in ("h1", "h2", "h3", "p"):
+            continue
+        txt = " ".join((node.text() or "").split())
+        if tag in ("h1", "h2", "h3"):
+            _flush()
+            heading = txt or None
+            buf = []
+        elif txt:
+            buf.append(txt)
+    _flush()
+    return sections[:8]
 
 
 # Page-copy signals that a firm is defunct: 'closed' (shut down) / 'parked'
@@ -1227,7 +1339,9 @@ def extract_site(
     headcount, staff = extract_headcount(pages, base_url)
     office_count, addresses = extract_offices(home_html)
     years, years_min = extract_years(all_text, now_year=now_year)
-    practice_areas, practice_areas_raw = extract_practice_areas(pages, base_url=base_url)
+    practice_areas, practice_areas_raw, practice_areas_unmatched = extract_practice_areas(
+        pages, base_url=base_url
+    )
     name_raw, name_normalized = extract_firm_name(pages, base_url=base_url)
     blurb = extract_description_blurb(pages)
     # Primary office = the first zip-anchored footer address (HQ, by document
@@ -1261,9 +1375,11 @@ def extract_site(
         notable_signals=extract_notable_signals(all_text),
         practice_areas=practice_areas,
         practice_areas_raw=practice_areas_raw,
+        practice_areas_unmatched=practice_areas_unmatched,
         scope=extract_scope(all_text),
         description_blurb=blurb,
         firm_short_description=blurb,
+        firm_descriptions=extract_firm_descriptions(pages),
         deactivation_status=extract_deactivation_status(all_text),
     )
     # thin page with nothing extracted -> headless candidate

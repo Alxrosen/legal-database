@@ -13,6 +13,7 @@ from legal_sourcing.enrichment.website_extract import (
     discover_internal_pages,
     extract_contacts,
     extract_deactivation_status,
+    extract_firm_descriptions,
     extract_firm_name,
     extract_headcount,
     extract_offices,
@@ -581,8 +582,44 @@ def test_extract_site_populates_name_year_postal():
     assert site.primary_postal_code == "85016"
 
 
+def test_extract_firm_descriptions_sections():
+    # About page split into {heading, text} sections; nav/listing/boilerplate
+    # headings (Practice Areas, Newsletter) dropped with their body copy.
+    about = (
+        "<html><body>"
+        "<h1>About Our Firm</h1>"
+        "<p>Founded in 1985, Smith &amp; Jones has represented injured clients "
+        "across the state for nearly four decades with a focus on results.</p>"
+        "<h2>Our Approach</h2>"
+        "<p>We treat every client like family and prepare every case as if it "
+        "will go to trial, which is how we consistently earn top recoveries.</p>"
+        "<h2>Practice Areas</h2>"
+        "<p>Personal injury, car accidents, wrongful death, and so much more.</p>"
+        "<h2>Newsletter</h2>"
+        "<p>Subscribe to our newsletter for the latest firm updates each month.</p>"
+        "</body></html>"
+    )
+    secs = extract_firm_descriptions([("about", about), ("home", "<p>ignored</p>")])
+    assert [s["heading"] for s in secs] == ["About Our Firm", "Our Approach"]
+    assert all(len(s["text"]) >= 60 for s in secs)
+    assert "1985" in secs[0]["text"]
+
+
+def test_extract_firm_descriptions_leading_copy_no_heading():
+    home = (
+        "<html><body>"
+        "<p>Our boutique firm has counseled startups and founders on venture "
+        "financing, mergers, and intellectual property for over twenty years.</p>"
+        "</body></html>"
+    )
+    secs = extract_firm_descriptions([("home", home)])
+    assert len(secs) == 1
+    assert secs[0]["heading"] is None
+    assert "boutique firm" in secs[0]["text"]
+
+
 def test_extract_practice_areas_matches_taxonomy_not_location():
-    slugs, raw = extract_practice_areas([("home", PRACTICE_HOME)], base_url="https://smithlaw.com")
+    slugs, raw, _ = extract_practice_areas([("home", PRACTICE_HOME)], base_url="https://smithlaw.com")
     assert set(slugs) == {"personal-injury", "family-law", "auto-accidents"}
     # location / nav links never become practice areas (taxonomy is the firewall)
     assert "phoenix" not in slugs
@@ -594,8 +631,25 @@ def test_extract_practice_areas_from_path_slug():
     home = (
         '<html><body><a href="/practice-areas/wrongful-death"><img src="x.png"></a></body></html>'
     )
-    slugs, _ = extract_practice_areas([("home", home)], base_url="https://x.com")
+    slugs, _, _ = extract_practice_areas([("home", home)], base_url="https://x.com")
     assert "wrongful-death" in slugs
+
+
+def test_extract_practice_areas_unmatched_from_url():
+    # A practice area the firm DECLARES via a /practice-areas/{slug} URL but the
+    # taxonomy doesn't recognize is captured as `unmatched`; the section landing
+    # page and ordinary nav anchors are NOT (URL-declared only, never anchor text).
+    home = (
+        "<html><body>"
+        '<a href="/practice-areas/equine-law">Equine Law</a>'
+        '<a href="/practice-areas/">Practice Areas</a>'
+        '<a href="/about-us">About Us</a>'
+        '<a href="/practice-areas/personal-injury">Personal Injury</a>'
+        "</body></html>"
+    )
+    slugs, _, unmatched = extract_practice_areas([("home", home)], base_url="https://x.com")
+    assert "personal-injury" in slugs  # known area still matches
+    assert unmatched == ["equine law"]  # URL-declared unknown area, normalized
 
 
 def test_extract_site_separates_office_location_from_practice_areas():
