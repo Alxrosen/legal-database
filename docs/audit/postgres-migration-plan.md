@@ -1,7 +1,22 @@
 # Plan — SQLite → PostgreSQL migration
 
+> **STATUS: DEFERRED (2026-06-08) — NOT a current action.** Per Alex (avoid a costly migration
+> unless strictly necessary; zero cost) + the reassessment below, Postgres is **not strictly
+> necessary now**, a *managed* instance would cost money, and **Splink does not need it** (it runs on
+> DuckDB, free). This plan is kept as a **contingency** for when a real trigger actually fires.
+>
+> **Why deferrable:** SQLite/WAL already serializes *all* writers on one global write-lock regardless
+> of table (Mastermind's own 2026-06-08 14:25 note), so website-as-source sharing
+> `firm_source_records` doesn't change the concurrency picture; the website rows are **disjoint by
+> `source`** (different rows → no lost-update conflict) and the FSR-load is a **one-shot batch
+> sequenced after the scrape**, not sustained concurrency. 417k rows / <1 GB is trivial for SQLite,
+> and two concurrent writers already ran overnight with 0 lock contention. **Revisit triggers:**
+> sustained concurrent writes to the *same rows* from multiple long-running processes;
+> multi-host/networked access; or a deal-target analytics layer needing heavy JSONB/GIN beyond
+> SQLite. A free *local* Postgres covers those if they ever arrive — **no managed/cloud spend.**
+
 **Author:** Cleanser · **Date:** 2026-06-08 · **Owner of execution:** Mastermind (coordinated,
-all-agent cutover) · **Status:** proposal for Mastermind sign-off.
+all-agent cutover) · **Status:** DEFERRED contingency (was: proposal for sign-off).
 **Trigger (from the audit, P5):** the `source="website"` decision puts a second writer on
 `firm_source_records`, tripping the project's own logged Postgres trigger
 (`assumptions.md` 2026-06-04: "two agents need to write the same table → Postgres"). SQLite/WAL is

@@ -34,8 +34,10 @@ So the bespoke work that is genuinely warranted (the data-fusion layer) is prese
 "1–2M on a laptop, ~1 min" comfort zone (Splink benchmarks 7M in ~2 min). Splink reads an **extract**
 (a DataFrame / Parquet of the FSR identity columns), so it is **decoupled from the operational
 store** — it does NOT need Postgres, and Splink's own Postgres backend is "relatively new / not
-perf-tested," so even after the PG migration, **run Splink on DuckDB.** → Splink is **not blocked on
-Postgres**; the two tracks parallelize.
+perf-tested," so even after any PG migration, **run Splink on DuckDB.** → Splink **needs no Postgres at all**:
+point DuckDB at the SQLite file directly (`ATTACH '…sqlite' (TYPE sqlite)` via DuckDB's `sqlite`
+extension, or a one-line pandas extract of the identity columns) → **zero migration, $0**. Flow:
+read from SQLite → Splink/DuckDB crunches → write clusters / `match_probability` back to SQLite.
 
 ## Input shape
 One row per `FirmSourceRecord` (the `source="website"` rows included — they're uniform input, which

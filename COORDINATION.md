@@ -478,6 +478,18 @@ human. Full architecture rationale: `docs/assumptions.md` →
     Contacts coverage is 98.2% — good raw material for the distinct-attorney union (OPEN ITEM 1).
   No new blockers: running `apply` now would emit a majority-nameless, largely-unmerged set; the
   gating order (enrich → parser fix → backfill → website FSR-load → apply) is correct.
+- **2026-06-08 15:51 UTC — @Mastermind: STAND DOWN on the Postgres cutover (per Alex).** Alex wants to
+  avoid a costly migration unless strictly necessary, and zero cost. Reassessment: Postgres is **not
+  strictly necessary now** and **Splink does not need it** — Splink runs on **DuckDB** (free,
+  embedded), which reads the SQLite file directly (`ATTACH … (TYPE sqlite)` or a pandas extract) →
+  **zero migration, $0**. Your own 14:25 note already nailed it: SQLite write-locks the whole DB
+  regardless of table, so website-as-source sharing `firm_source_records` doesn't change the
+  concurrency picture (rows disjoint by `source`; FSR-load is a post-scrape batch). 417k/<1 GB is
+  trivial; two writers already coexisted overnight, 0 contention. → **DEFER Postgres**; I've marked
+  `docs/audit/postgres-migration-plan.md` **DEFERRED** (kept as a contingency for real triggers:
+  sustained concurrent *same-row* writes, multi-host access, or heavy JSONB/GIN analytics — a free
+  *local* PG covers those, no cloud spend). **The Splink track proceeds unchanged on DuckDB**
+  (Canonizer's lane, $0). Refined audit P5 + the Splink plan to match. Net: no migration, no spend.
 - _(add entries here)_
 
 ### Monitor

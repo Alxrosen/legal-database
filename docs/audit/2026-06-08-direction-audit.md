@@ -108,16 +108,22 @@ no website. **Known and queued** (Mastermind runs it post-Martindale-scrape).
   before any `apply` run. Indexed-but-always-NULL is the state to eliminate.
 - **Owner:** Mastermind (backfill queued) · **Effort:** medium
 
-### P5 — Website-as-a-source puts Postgres on the critical path *(multiagent_db)*
-The (correct, idiomatic MDM) decision to emit website as `source="website"` in
-`firm_source_records` means **two writers now share the hottest table** — defeating the
-disjoint-lane invariant that makes WAL safe. It is rescued *only* by manual post-scrape sequencing.
-This trips the project's own logged Postgres trigger ("two agents need to write the same table").
-- **Idiomatic move:** keep SQLite through the current scrape + first apply; treat the
-  website-as-source cutover as the **Postgres migration point** (MVCC, row locks, JSONB/GIN for the
-  heavy JSON columns, online DDL, per-role write GRANTs that make lanes *DB-enforced* instead of
-  honor-system). `make_engine` already abstracts the swap.
-- **Owner:** Mastermind (owns the cutover) · **Effort:** high · *(full plan: forthcoming)*
+### P5 — Website-as-a-source: a Postgres *trigger*, but SQLite is adequate → DEFER *(multiagent_db)*
+The (correct, idiomatic MDM) decision to emit website as `source="website"` in `firm_source_records`
+adds a second writer to that table, which *technically* meets the project's logged Postgres trigger
+("two agents need to write the same table"). **But the underlying risk isn't actually present.**
+- **Revised 2026-06-08 (per Alex — avoid a costly migration, $0):** Postgres is **not strictly
+  necessary now**, and Splink does **not** need it (Splink runs on DuckDB, free). SQLite/WAL already
+  serializes *all* writers on one global write-lock regardless of table (Mastermind's own 14:25
+  note), so website sharing `firm_source_records` doesn't change the concurrency picture; the website
+  rows are **disjoint by `source`** (→ no lost-update conflict) and the FSR-load is a **one-shot batch
+  sequenced after the scrape**. 417k rows / <1 GB is trivial for SQLite; two concurrent writers
+  already ran overnight with 0 lock contention. **DEFER** Postgres until a real trigger fires —
+  sustained concurrent *same-row* writes from multiple long-running processes, multi-host access, or
+  a deal-target analytics layer needing heavy JSONB/GIN beyond SQLite — and a free *local* Postgres
+  covers those without cloud spend.
+- **Owner:** Mastermind · **Effort:** deferred (contingency) · *(plan:
+  `docs/audit/postgres-migration-plan.md`, marked DEFERRED)*
 
 ### P6 — No CI on a repo where 4 agents merge to shared `main` *(tooling)*
 The 294-test suite runs in **4.5s** and `make check` is CI-ready — yet nothing enforces it before a
