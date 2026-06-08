@@ -1052,6 +1052,73 @@ def extract_description_blurb(pages: list[tuple[str, str | bytes]]) -> str | Non
     return None
 
 
+# Page-copy signals that a firm is defunct: 'closed' (shut down) / 'parked'
+# (domain for-sale / placeholder). Mirrors FirmSourceRecord.deactivation_status.
+_DEACTIVATION_SIGNALS: tuple[tuple[str, str], ...] = (
+    ("permanently closed", "closed"),
+    ("no longer in business", "closed"),
+    ("has closed its doors", "closed"),
+    ("the firm has closed", "closed"),
+    ("no longer accepting clients", "closed"),
+    ("this domain is for sale", "parked"),
+    ("buy this domain", "parked"),
+    ("domain is for sale", "parked"),
+    ("this site is parked", "parked"),
+    ("site is parked", "parked"),
+    ("getting things ready", "parked"),
+)
+
+
+def extract_deactivation_status(text: str) -> str | None:
+    """Defunct-firm signal from page copy: 'closed' / 'parked' / None."""
+    low = text.lower()
+    for needle, status in _DEACTIVATION_SIGNALS:
+        if needle in low:
+            return status
+    return None
+
+
+def extract_contacts(
+    pages: list[tuple[str, str | bytes]], *, base_url: str = ""
+) -> list[dict[str, str | None]]:
+    """Attorneys on the firm's team/attorney pages: ``[{name_raw,
+    name_normalized, title}]``, deduped by person (a subset of the FSR contact
+    shape). Same person-heading + attorney-role classification as the heading-
+    role headcount, so client testimonials / staff are excluded the same way.
+    """
+    out: list[dict[str, str | None]] = []
+    seen: set[str] = set()
+    for role, html in pages:
+        if role not in ("team", "attorneys", "people"):
+            continue
+        for h in _tree(html).css("h2, h3, h4"):
+            name = " ".join((h.text() or "").split())
+            if not name or len(name) > 60 or looks_like_firm(name) or not _looks_like_person(name):
+                continue
+            ctx = ""
+            sib = h.next
+            hops = 0
+            while sib is not None and hops < 3:
+                if hasattr(sib, "text"):
+                    ctx += " " + (sib.text() or "")
+                sib = sib.next
+                hops += 1
+            if not any(r in f"{name} {ctx}".lower() for r in _ATTORNEY_ROLE):
+                continue
+            key = _person_key(name)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            out.append(
+                {
+                    "name_raw": name,
+                    "name_normalized": key,
+                    "title": " ".join(ctx.split())[:80] or None,
+                }
+            )
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Page discovery (which internal pages to fetch beyond the home page)
 
@@ -1190,12 +1257,14 @@ def extract_site(
         years_is_min=years_min,
         year_founded=extract_year_founded(all_text, now_year=now_year),
         phones=extract_phones(home_html),
+        contacts=extract_contacts(pages, base_url=base_url),
         notable_signals=extract_notable_signals(all_text),
         practice_areas=practice_areas,
         practice_areas_raw=practice_areas_raw,
         scope=extract_scope(all_text),
         description_blurb=blurb,
         firm_short_description=blurb,
+        deactivation_status=extract_deactivation_status(all_text),
     )
     # thin page with nothing extracted -> headless candidate
     out.needs_render = len(all_text) < 400 and out.attorney_count is None
@@ -1224,6 +1293,8 @@ __all__ = [
     "SiteExtraction",
     "detect_platform",
     "discover_internal_pages",
+    "extract_contacts",
+    "extract_deactivation_status",
     "extract_firm_name",
     "extract_headcount",
     "extract_offices",

@@ -11,6 +11,8 @@ from __future__ import annotations
 from legal_sourcing.enrichment.website_extract import (
     detect_platform,
     discover_internal_pages,
+    extract_contacts,
+    extract_deactivation_status,
     extract_firm_name,
     extract_headcount,
     extract_offices,
@@ -523,6 +525,35 @@ def test_extract_firm_name():
     # a pure practice descriptor is NOT mistaken for a firm name.
     desc = "<html><head><title>Phoenix Personal Injury Lawyers</title></head><body></body></html>"
     assert extract_firm_name([("home", desc)]) == (None, None)
+
+
+def test_extract_contacts():
+    # TEPLG team page: the 3 attorneys become contacts with titles; staff
+    # (paralegal/assistant/coordinator) are excluded, same as the headcount.
+    contacts = extract_contacts([("team", TEPLG_TEAM)])
+    assert [c["name_raw"] for c in contacts] == ["Bill Deitch", "Kirsten Izatt", "Kathleen DiCola"]
+    assert contacts[0]["name_normalized"] == "bill deitch"
+    assert all("attorney" in (c["title"] or "").lower() for c in contacts)
+
+
+def test_extract_contacts_excludes_testimonial_authors():
+    # client-review headings "Firstname L." are not contacts (dmvinjurylaw).
+    html = (
+        "<html><body>"
+        "<div><h3>Maria A.</h3><p>My attorney was great.</p></div>"
+        "<div><h3>Jane Q. Whitfield</h3><p>Partner and Attorney</p></div>"
+        "</body></html>"
+    )
+    contacts = extract_contacts([("attorneys", html)])
+    assert [c["name_raw"] for c in contacts] == ["Jane Q. Whitfield"]
+
+
+def test_extract_deactivation_status():
+    assert (
+        extract_deactivation_status("We're getting things ready. This won't take long.") == "parked"
+    )
+    assert extract_deactivation_status("This firm has permanently closed its doors.") == "closed"
+    assert extract_deactivation_status("Our attorneys proudly serve clients in Phoenix.") is None
 
 
 def test_extract_year_founded():
