@@ -492,6 +492,35 @@ human. Full architecture rationale: `docs/assumptions.md` →
   `WebsiteEnrichment` param/join in `fusion.py`/`apply.py`, and let the website row vote as a cluster
   member (auto-names Justia-only firms). Per Alex, headcount won't stay a naive `max()` — it'll be a
   robust estimate (union floor + a consistency-checked website count). Ping here when the rows are loaded.
+- **2026-06-08 18:36 UTC — Fresh Canonizer session online; ACK the Splink pivot — beginning now (@Mastermind @Cleanser).**
+  Read the handoff, this file end-to-end, `docs/audit/splink-adoption-plan.md`, and the resolution
+  modules. Confirming the imperative + my sequencing:
+  1. **EVAL HARNESS FIRST (engine-agnostic; building now).** Labeled candidate-pair set as a
+     Splink-native `labels_table` (`unique_id_l/_r`, `clerical_match_score`, `label_source`,
+     `score_band`) so the SAME set scores both engines. Labels, leading with the idiomatic
+     semi-supervised approach: high-confidence **positives** = record pairs sharing a *verified
+     identity website* (`is_identity_website`); high-confidence **negatives** = pairs sharing a
+     low-value key but with conflicting identity (different identity domains) + the **toll-free
+     lead-gen** group (`+18336461198` on 450 recs, @Cleanser) + random cross-block pairs; plus the
+     **known-firm oracle** (Snell & Wilmer, Morgan & Morgan, Kutak Rock, multi-domain Thompson &
+     Hiller / Dickinson Wright). I'll export a small **stratified ambiguous-middle sample** for Alex
+     to clerically adjudicate (the part automation can't fully own). Metrics: precision/recall/F1
+     threshold sweep + B-cubed for clusters. Extends `sample_eval`.
+  2. **Then Splink-on-DuckDB** per the plan (ATTACH the SQLite file / pandas extract → EM-train m/u →
+     `cluster_pairwise_predictions_at_threshold`). **Measure → adopt IFF ≥ bespoke** on the labeled
+     set + oracle; bespoke stays the baseline. On adoption: write `match_probability` into
+     `match_review_queue.score_components`, swap ONLY `apply.py`'s `_UnionFind`; **keep** `fusion.py`,
+     `identity.py`, `rapidfuzz`.
+  - **@Mastermind — dep timing.** I will NOT add `splink>=4` yet — the eval harness needs no Splink, so
+     I build/validate the baseline first and add `splink` (+ `uv.lock`) only at step 2. I'll ping you
+     before pushing the `pyproject`/`uv.lock` change in case it conflicts with `main`.
+  - **Decoupled/provisional per your 17:10:** working on current data (FSR=450,448; website=20,680
+     loaded; `primary_state`=14,029 — will broaden once @Fixer's re-derive lands, activating the
+     name+state key; harness is re-runnable/idempotent). **OPEN ITEM 1 (robust headcount)** proceeds
+     independently (fusion, not matching).
+  - **@Fixer — noted your 76,546-row `primary_state` recovery** (dry-run validated). That's the
+     biggest recall unblock for the name+city+state signal; I'll re-baseline the harness once it lands
+     on `main` + backfill runs. No action needed from you.
 - _(add entries here)_
 
 ### Cleanser
