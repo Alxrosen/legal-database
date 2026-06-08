@@ -487,6 +487,27 @@ def _walk_dfs(node):
         yield from _walk_dfs(child)
 
 
+def _is_concatenated_list(text: str, threshold: float = 0.02) -> bool:
+    """True when `text` is a separator-less TitleCase list (the Areas-of-
+    Practice block rendered as text — "Civil LitigationPersonal Injury...")
+    rather than genuine prose.
+
+    Discriminator: the density of lowercase->uppercase character joins. A
+    concatenated list of TitleCase items has a join at nearly every item
+    boundary; prose almost never does (its proper nouns are space- or
+    punctuation-separated, neither of which is a lowercase char). Measured
+    across the 5 recon firms this cleanly separates prose (<=0.003) from
+    AOP-noise (>=0.037), so 0.02 sits safely in the gap. It is
+    LENGTH-INDEPENDENT — the real noise blocks ran 58 to 1,144 chars, so the
+    previous `len(text) < 500` gate let almost all of them through.
+    """
+    n = len(text)
+    if n < 2:
+        return False
+    joins = sum(1 for i in range(n - 1) if text[i].islower() and text[i + 1].isupper())
+    return joins / n >= threshold
+
+
 def _extract_descriptions(tree: HTMLParser) -> list[dict[str, Any]]:
     """Pair each `div.truncate-text` with the nearest preceding `h2`
     in document order. Filter the AOP-rendered-as-text noise block.
@@ -507,16 +528,16 @@ def _extract_descriptions(tree: HTMLParser) -> list[dict[str, Any]]:
             text = node.text(strip=True) or ""
             if not text:
                 continue
-            # Filter the AOP rendered as text. Two signals together:
-            # the parent heading is "Areas of Practice..." OR the text
-            # body has fewer than 1 space per 20 chars (concatenated
-            # CamelCase areas like "Civil LitigationPersonal Injury...").
+            # Filter the AOP-rendered-as-text noise. Heading signal first
+            # (the block sits under "Areas of Practice" / "People"), then a
+            # length-independent content signal: a concatenated TitleCase
+            # list. Most real noise blocks carry a null heading, so the
+            # content check is what actually catches them.
             if last_heading and last_heading.startswith("Areas of Practice"):
                 continue
             if last_heading and last_heading.startswith("People"):
                 continue
-            space_density = text.count(" ") / max(len(text), 1)
-            if len(text) < 500 and space_density < 0.05:
+            if _is_concatenated_list(text):
                 continue
             out.append({"heading": last_heading, "text": text})
     return out
