@@ -638,6 +638,48 @@ human. Full architecture rationale: `docs/assumptions.md` →
     `normalized.state`. Coordinate timing here.
   - Resolution is provisional + idempotent now (Canonizer re-runs as you land names), so land in
     batches and report counts here (e.g. nameless-row count before/after). Post only in THIS section.
+- **2026-06-08 17:40 UTC — Enricher online (Mastermind fork). Standing by per Alex + a SCOPE finding
+  that needs @Mastermind/@Alex.** Setup ✓ (worktree/branch `Enricher`, `.env`→shared DB, venv synced;
+  `make_engine()` connects, `db_url` absolute, martindale = 347,242 rows). Read AGENTS / assumptions /
+  this file / the handoff / my brief.
+  - **HOLDING the run — the binding constraint is the shared HTTP rate ceiling, not the DB.**
+    `run_enrich` fetches firm profiles from **martindale.com** — the same host @Monitor's live national
+    scrape is hammering. Two scrapers from one IP stack the per-IP rate → Cloudflare/429 risk. The DB
+    side is safe (WAL + busy_timeout; enrich commits per-row), so "only one martindale process at a
+    time" is about the *target host's rate ceiling*. I will NOT run concurrently. @Mastermind/@Monitor
+    — pick the window: **(a)** hold until the scrape completes (Monitor signals), **(b)** a coordinated
+    pause/resume, or (c) a shared sub-budget rate (I'd advise against — risks the scrape). I recommend
+    (a) or (b).
+  - **SCOPE FINDING (evidence) — firm-profile `enrich` recovers ~0 names; the "~58% nameless" premise
+    of my fork does NOT match the data:**
+    - Enrich-eligible universe (rows with `additional_data.firm_profile_url`) = **15,296** — and **ALL
+      15,296 are already named**; **0** nameless rows have a `firm_profile_url`. So enrich adds RICH
+      FIELDS (contacts roster / offices / year_founded / descriptions / practice areas) to ~15.3k
+      already-named subscriber firms and recovers **zero new names**.
+    - The **198,351 nameless** martindale rows (57.1%) are **individual ATTORNEY cards** from city
+      `all-lawyers` listings (e.g. "Jennifer Wilson"; judge "Charles Woodham") — each carries a
+      `source_attorney_url` (an *attorney* profile), **no `firm_profile_url`, no firm name**.
+      Firm-profile enrich cannot reach them.
+    - `enrichment_status` is `<null>` on all 347k rows — enrich has never run.
+  - **So my lane as written ("recover names for ~58% nameless via martindale enrich") isn't achievable
+    with the current firm-profile pass.** Options for @Mastermind/@Alex to choose:
+    1. **Run firm-profile enrich as-is** → ~15.3k rich-field updates, 0 new names. Still valuable
+       (enriches the named subscriber firms); small fetch (~15k pages).
+    2. **Add an ATTORNEY-profile enrich** (new capability): fetch each `source_attorney_url`, extract
+       the attorney's firm affiliation → names many of the 198k. But it's ~198k fetches, a new parser,
+       and far more rate/time — needs explicit scope sign-off.
+    3. **Treat the attorney cards as ghost singletons** (resolution already skips unidentified
+       singletons); names then come from website-as-source + the 15.3k firm rows, and my lane is really
+       option 1.
+    - @Cleanser — this reconciles against your data-quality audit ("enrich + website-as-source make the
+      majority nameable"): the *firm-profile* enrich does **not** name the attorney cards; only an
+      attorney-profile pass or website-as-source would. Flagging for your model of the corpus.
+  - **@Fixer dependency confirmed:** `_apply_enrichment` writes `offices`, so I'll pull your
+    office-parser CODE fix before any enrich run (so the offices I write carry correct
+    `normalized.state`).
+  - **Standing by** for @Mastermind's scope + window call. Meanwhile I can safely (no HTTP, no
+    contention) review/harden `parsers/martindale_profile.py` against the committed fixtures if useful —
+    say the word.
 - _(add entries here)_
 
 ### Fixer
