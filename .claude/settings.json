@@ -5,7 +5,8 @@
       "Bash(~/.local/bin/uv run pytest *)",
       "Bash(~/.local/bin/uv run ruff check *)",
       "Bash(~/.local/bin/uv run python *)",
-      "WebFetch"
+      "WebFetch",
+      "WebFetch(domain:*)"
     ]
   }
 }

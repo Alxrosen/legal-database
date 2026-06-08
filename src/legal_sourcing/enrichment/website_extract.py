@@ -400,9 +400,12 @@ _ANNOUNCE_LEADING: tuple[str, ...] = (
     "adds ",
     "adding ",
     "added ",
-    "top ",  # "...Top 100 Lawyers" (an award/ranking, not a firm headcount)
     "there are ",  # "...there are ~4000 lawyers throughout the nation" (population stat)
 )
+# Award/ranking words that immediately precede the number ("Top 100 Lawyers",
+# "Best 100 Lawyers") — checked as the word right before the count (head suffix),
+# NOT anywhere nearby, so "a top IP firm, our 100 attorneys" is NOT rejected.
+_AWARD_BEFORE: tuple[str, ...] = ("top", "best", "chapter")
 
 # A stated attorney/lawyer count above this is almost never a single firm's own
 # headcount in our universe — it's a statewide/national bar population stat
@@ -412,13 +415,87 @@ _ANNOUNCE_LEADING: tuple[str, ...] = (
 # not capped this tightly (a company can have thousands of employees).
 _MAX_FIRM_ATTORNEYS = 5000
 
+# Context tokens that mark a "<n> attorneys/lawyers" match as NOT this firm's own
+# headcount — a professional network/association, an elite-membership /
+# certification population, a statistic, or another firm. Validated against the
+# full-run false positives (Mackrell-network "4,500 lawyers worldwide", "Florida
+# Bar members ... board certified", "Lawyers Found/Trained", "limited to 250
+# attorneys", "DLA Piper has 4,827 attorneys"). Dollar amounts, "attorney fee"
+# phrases, and phone/number tails are handled separately below.
+_NOT_FIRM_COUNT_CTX: tuple[str, ...] = (
+    # shared network / association / org count, not one firm. NB "law firms with"
+    # / "firms with" / "firms and" (not bare "law firms") so a firm describing its
+    # category — "one of the top IP law firms, our 100 attorneys" (cantorcolburn) —
+    # is NOT rejected.
+    "network",
+    "mackrell",
+    "law firms with",
+    "firms with",
+    "firms and",
+    "access to",
+    "member firm",
+    "attorney members",
+    "lawyer members",
+    "organization of",
+    "organization with",
+    "organization made",
+    "association of",
+    "alliance",
+    "made up of",
+    "consortium",
+    "teams of",
+    # elite membership / certification / distinction population
+    "board certified",
+    "board-certified",
+    "certified by",
+    "distinction",
+    "limited to",
+    "fewer than",
+    "reserved",
+    "academy",
+    "designation",
+    "credential",
+    "diplomate",
+    "one of only",
+    "one of just",
+    "one of approximately",
+    "one of fewer",
+    "one of the few",
+    # client testimonial ("after interviewing 10+ attorneys ...") / negation
+    "interviewing",
+    "interviewed",
+    "spoke with",
+    "speaking with",
+    "worked with",
+    "n't have",
+    "not have",
+    # statistic / UI / marketing count (not a headcount)
+    "trained",
+    "readership",
+    "newsletter",
+    "surveys",
+    "peer review",
+    "endorsed by",
+    "received votes",
+    "client list",
+    "living the dream",
+    "enter the number",
+    "evidence code",
+    "making it the",
+    "not those",
+)
+# phone tail / number run before (incl. "24/7" and "10/10" via the slash)
+_NUM_RUN_BEFORE = re.compile(r"\d[\s.\-()/]{0,4}$")
+
 
 def _stated_count(
     texts: list[str], pattern: re.Pattern[str], *, max_n: int = 100000
 ) -> tuple[int, bool, str] | None:
     """Highest plausible '<n> attorneys/lawyers' (or staff) across texts,
-    EXCLUDING press-release / announcement contexts that aren't a firm total.
-    `max_n` caps an implausibly large value (a population/comparative stat)."""
+    EXCLUDING contexts that aren't this firm's own total: press-release /
+    announcement headlines, fees/phones, and professional-network / bar-
+    population / statistic mentions. `max_n` caps an implausible value.
+    """
     best: tuple[int, bool, str] | None = None
     for text in texts:
         for m in pattern.finditer(text):
@@ -428,12 +505,28 @@ def _stated_count(
                 continue
             if n <= 0 or n > max_n:
                 continue
-            tail = text[m.end() : m.end() + 30].lower()
-            head = text[max(0, m.start() - 30) : m.start()].lower()
+            tail = text[m.end() : m.end() + 45].lower()
+            head = text[max(0, m.start() - 45) : m.start()].lower()
+            # announcement headline ("N attorneys join/named/...", "Top 100 Lawyers")
             if any(w in tail for w in _ANNOUNCE_TRAILING) or any(
                 w in head for w in _ANNOUNCE_LEADING
             ):
-                continue  # a "N attorneys join/named/..." headline, not a total
+                continue
+            # word immediately before the number marks it as NOT a headcount: a
+            # fee ("$5,000 attorneys"), a bankruptcy chapter ("Chapter 7
+            # attorney"), or an award ("Top/Best 100 Lawyers"). Plus a fee phrase
+            # right after ("5,000 attorney flat fee").
+            if head.rstrip().endswith(("$", *_AWARD_BEFORE)) or any(
+                w in tail[:16] for w in ("fee", "retainer", "per hour", "hourly")
+            ):
+                continue
+            # phone tail or a longer number run immediately before ("288 - 3888
+            # attorney", "0 3253 lawyer") — a digit then optional phone separators
+            if _NUM_RUN_BEFORE.search(head) or "found" in tail[:10]:
+                continue
+            # professional-network / bar-population / statistic / other-firm context
+            if any(w in head or w in tail for w in _NOT_FIRM_COUNT_CTX):
+                continue
             if best is None or n > best[0]:
                 snippet = text[max(0, m.start() - 30) : m.end() + 30].strip()
                 best = (n, is_min, snippet)
@@ -487,6 +580,11 @@ _NOT_PERSON_HEADING: tuple[str, ...] = (
 )
 
 
+_NAME_SUFFIX: frozenset[str] = frozenset(
+    {"esq", "esquire", "jr", "sr", "ii", "iii", "iv", "phd", "llm", "md", "cpa", "jd", "mba"}
+)
+
+
 def _looks_like_person(name: str) -> bool:
     """Heading plausibly NAMES a person (2-4 capitalized tokens), not a page
     title / practice-area / section header."""
@@ -496,16 +594,36 @@ def _looks_like_person(name: str) -> bool:
     words = [w for w in name.replace(",", " ").split() if w]
     if not (2 <= len(words) <= 4):
         return False
+    # Reject testimonial-style "Firstname L." (single-initial last name): those
+    # are review authors, not attorney-roster names (dmvinjurylaw.com counted
+    # "Maria A.", "Tony I.", "Eddy Z." as attorneys).
+    if len(words[-1].strip(".")) <= 1:
+        return False
     alpha = [w for w in words if w[:1].isalpha()]
     return bool(alpha) and all(w[0].isupper() for w in alpha)
 
 
-def _heading_roles(team_html: str | bytes) -> tuple[int, int]:
-    """Count attorney vs staff person-cards: a person-NAME heading whose
-    adjacent text carries an attorney- or staff-role keyword."""
+def _person_key(name: str) -> str:
+    """Normalize a person heading to 'first last' for dedup across case, middle
+    initials, and suffixes — so the SAME attorney listed twice ('COLIN M. JONES,
+    ESQ.' and 'Colin Jones, Esq.') or repeated on multiple crawled pages is
+    counted once, not summed (llflegal.com / wilshirelawfirm.com over-counts)."""
+    toks = [
+        t
+        for t in re.sub(r"[^a-z\s]", " ", name.lower()).split()
+        if len(t) > 1 and t not in _NAME_SUFFIX
+    ]
+    return f"{toks[0]} {toks[-1]}" if len(toks) >= 2 else " ".join(toks)
+
+
+def _heading_roles(team_html: str | bytes) -> tuple[set[str], set[str]]:
+    """Distinct attorney vs staff person-cards: a person-NAME heading whose
+    adjacent text carries an attorney- or staff-role keyword. Returns SETS of
+    normalized person keys (deduped) so the same person listed twice on a page
+    (e.g. an uppercase header + a titlecase card) counts once."""
     tree = _tree(team_html)
-    attorneys = 0
-    staff = 0
+    attorneys: set[str] = set()
+    staff: set[str] = set()
     for h in tree.css("h2, h3, h4"):
         name = " ".join((h.text() or "").split())
         if not name or len(name) > 60 or looks_like_firm(name) or not _looks_like_person(name):
@@ -520,10 +638,13 @@ def _heading_roles(team_html: str | bytes) -> tuple[int, int]:
                 ctx += " " + (sib.text() or "").lower()
             sib = sib.next
             hops += 1
+        key = _person_key(name)
+        if not key:
+            continue
         if any(r in ctx for r in _ATTORNEY_ROLE):
-            attorneys += 1
+            attorneys.add(key)
         elif any(r in ctx for r in _STAFF_ROLE):
-            staff += 1
+            staff.add(key)
     return attorneys, staff
 
 
@@ -569,17 +690,21 @@ def extract_headcount(
     if len(slugs) >= 2:
         return HeadcountResult(len(slugs), True, "profile_links", "high", None), staff_count
 
-    # 3. heading-role classification, summed across all team pages
-    att_total = 0
-    stf_total = 0
+    # 3. heading-role classification — UNION distinct attorney NAMES across team
+    #    pages (dedup by first+last), NOT sum of per-page counts, so the same
+    #    person in two formats or repeated on multiple crawled roster pages is
+    #    counted once (llflegal.com 351->distinct, wilshirelawfirm.com).
+    att_names: set[str] = set()
+    stf_names: set[str] = set()
     for html in team_pages:
         att, stf = _heading_roles(html)
-        att_total += att
-        stf_total += stf
-    if att_total >= 1:
+        att_names |= att
+        stf_names |= stf
+    stf_names -= att_names  # a name seen as an attorney anywhere is not staff
+    if att_names:
         return (
-            HeadcountResult(att_total, False, "heading_roles", "medium", None),
-            staff_count if staff_count is not None else (stf_total or None),
+            HeadcountResult(len(att_names), False, "heading_roles", "medium", None),
+            staff_count if staff_count is not None else (len(stf_names) or None),
         )
 
     # 4. solo signal

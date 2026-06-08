@@ -359,8 +359,13 @@ def run(*, limit: int | None, workers: int, flush_every: int) -> None:
     print(f"Enriched {len(websites)} websites.")
 
 
-def run_load() -> None:
-    """Re-extract from already-fetched raw pages on disk (NO network)."""
+def run_load(*, flush_every: int = 400) -> None:
+    """Re-extract from already-fetched raw pages on disk (NO network).
+
+    Flushes in batches so the full corpus (tens of thousands of sites) stays well
+    under SQLite's bound-parameter limit — a single all-rows INSERT would exceed
+    it. Idempotent (upsert keyed by website); safe to re-run after a parser fix.
+    """
     configure_logging()
     settings = get_settings()
     base = settings.raw_data_dir / "firm_websites"
@@ -371,7 +376,9 @@ def run_load() -> None:
     buckets: dict[str, dict[str, Path]] = {}
     for gz in sorted(base.glob("*/*/*.html.gz")):
         buckets.setdefault(gz.parent.name, {})[gz.stem.replace(".html", "")] = gz
-    rows: list[dict[str, Any]] = []
+    engine = make_engine()
+    buffer: list[dict[str, Any]] = []
+    total = 0
     for files in buckets.values():
         home = files.get("home")
         if home is None:
@@ -386,7 +393,7 @@ def run_load() -> None:
             role = "home" if name == "home" else re.sub(r"\d+$", "", name)
             pages.append((role, _read_gz(path)))
         site = extract_site(pages, base_url=url)
-        rows.append(
+        buffer.append(
             _row_from_site(
                 website,
                 site,
@@ -396,9 +403,13 @@ def run_load() -> None:
                 pages_meta=[{"role": "home", "url": url}],
             )
         )
-    engine = make_engine()
-    n = _flush(engine, rows)
-    print(f"load: re-extracted + upserted {n} websites from disk.")
+        if len(buffer) >= flush_every:
+            total += _flush(engine, buffer)
+            log.info("enrich.load_flush", upserted=total)
+            buffer.clear()
+    if buffer:
+        total += _flush(engine, buffer)
+    print(f"load: re-extracted + upserted {total} websites from disk.")
 
 
 def main() -> int:
