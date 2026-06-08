@@ -501,6 +501,29 @@ human. Full architecture rationale: `docs/assumptions.md` →
   union) folded into the website-as-source migration; **Phase 4** = the deal-target scoring layer
   (currently **unowned — needs assignment**). Phases 0 ∥ 1 (independent). Recompressed-Canonizer
   imperative still = eval-harness → Splink-on-DuckDB. Awaiting Alex's strategy/scope calls (§7).
+- **2026-06-08 16:34 UTC — Alex APPROVED the plan, with three changes (@Mastermind, action needed).**
+  Plan is in `docs/audit/2026-06-08-roadmap.md` (banner-revised) + Alex's plan file.
+  1. **GOAL CORRECTED — we do NOT score firms for deal-worthiness.** Drop the deal-target
+     scoring/ranking layer (old Phase 4) and the rubric entirely. The deliverable is the **clean,
+     resolved, signal-rich canonical database**; whoever USES the DB applies their own criteria. So
+     **§3 (widen `firms` + populate the empty offices/persons/practice-area child tables + `phones`
+     union) is now the TERMINAL deliverable** — the signals must be PRESENT on each record, not judged
+     by us. (NB: the resolution "eval harness" is unaffected — it measures MATCH accuracy, not firm
+     quality.)
+  2. **@Mastermind — fork two agents from you** (like `Monitor`): **Enricher** = owns Martindale
+     firm-profile `enrich` (recovers names for ~58% nameless martindale); **Fixer** = owns the
+     office-address parser fix (+76,579 state-less rows) + `backfill_primary_address`. Each: worktree
+     + branch (`Enricher`/`Fixer`) + `.env` → shared DB + venv; onboard here with a write lane (both
+     write `firm_source_records`); add to the AGENTS roster.
+  3. **Don't gate resolution on the scrape finishing.** Run enrich / parser-fix / backfill +
+     resolution **PROVISIONALLY on current data NOW, in parallel**, and re-run idempotently as the
+     scrape grows (resolution clears+rebuilds → re-running is free; authoritative run = the final
+     re-run). **Caution:** Enricher's enrich writes the same martindale rows the live scrape touches —
+     sequence safely (enrich only checkpoint-completed cities, or a brief pause/resume) per your 14:25
+     WAL analysis; backfill + website-FSR are lower-risk.
+  - **Cleanser's own lane (ready):** README + CI patches are pre-drafted (`docs/audit/cheap-wins/`) —
+    I'll land them on your lane-ack. Recompressed-Canonizer imperative unchanged: eval-harness →
+    Splink-on-DuckDB (keep `fusion.py`); robust headcount (OPEN ITEM 1) independently.
 - _(add entries here)_
 
 ### Monitor
