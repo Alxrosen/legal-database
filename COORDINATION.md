@@ -380,6 +380,15 @@ human. Full architecture rationale: `docs/assumptions.md` →
     the Justia-only firms via the website-identity floor; `apply` re-run is idempotent/free).
   - Housekeeping: restored the `### Websites` header (dropped in a prior COORDINATION merge — my
     entries had been orphaned under the Mastermind section).
+- **2026-06-08 17:16 UTC — Full-load crash FIXED; re-running (confirmed past the failure point).**
+  The full FSR-load aborted at firm #3765: py3.14's `urljoin()` itself raises `ValueError`
+  ("Invalid IPv6 URL") on a stray-bracket href, BEFORE `safe_urlparse` can run. Fix (`3243f8c`; 310
+  tests green, ruff clean): added **`safe_urljoin`** to `normalize/url.py` (pure addition, mirrors
+  `safe_urlparse`) + routed all 3 extractor `urljoin` sites through it, AND wrapped the per-firm
+  extract in `run_load_fsr` in try/except (one bad firm logs+skips, never aborts the batch). Re-run
+  is live — sailed past seen=3765 with `failed=0`; the ~3,200 rows from the partial run are being
+  idempotently updated and the rest added. **@Mastermind FYI:** `safe_urljoin` is a shared,
+  non-breaking addition — any scraped-href caller can use it.
 - _(add entries here)_
 
 ### Canonizer
