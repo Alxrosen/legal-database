@@ -33,6 +33,7 @@ from urllib.parse import urlparse
 
 from selectolax.parser import HTMLParser
 
+from legal_sourcing.normalize.address import parse_full_location
 from legal_sourcing.normalize.url import safe_urlparse, strip_self_domain
 from legal_sourcing.parsers.base import BaseParser
 
@@ -41,8 +42,6 @@ from legal_sourcing.parsers.base import BaseParser
 _MARTINDALE_OWN_DOMAINS = ("martindale.com",)
 
 _ATTORNEY_ID_RE = re.compile(r"-(\d+)/?$")
-# US-state postal codes for the location_text city/state parse.
-_US_STATE_RE = re.compile(r"^([\w\s.\-']+?),\s*([A-Z]{2})$")
 
 
 def _parse_gtm(attr_value: str) -> dict[str, Any] | None:
@@ -82,15 +81,29 @@ def _split_title_at_firm(text: str) -> tuple[str | None, str | None]:
 
 
 def _parse_location_text(text: str | None) -> dict[str, Any]:
-    """Best-effort split of `"City, ST"` into city + state."""
-    if not text:
+    """Split a city-card location string into raw address components.
+
+    Martindale's city cards cram the WHOLE office address into one location
+    element — e.g. ``"101 Court Sq Ste I, Abbeville, AL 36310-2135"`` — not a
+    tidy ``"City, ST"``. The old strict ``"City, ST$"`` regex never matched
+    those (street + ZIP) and dumped the entire string into ``city_raw`` with no
+    state, blocking ``primary_state`` on ~76.5k rows. ``parse_full_location``
+    recovers ``[street, ]city, ST [zip]`` properly, so emit each component into
+    its own raw field (``normalize_record`` then derives ``offices[].normalized``).
+    """
+    na = parse_full_location(text)
+    if na is None:
         return {}
-    s = text.strip()
-    m = _US_STATE_RE.match(s)
-    if m:
-        return {"city_raw": m.group(1).strip(), "state_raw": m.group(2)}
-    # Fallback: city only.
-    return {"city_raw": s}
+    out: dict[str, Any] = {}
+    if na.street:
+        out["street_raw"] = na.street
+    if na.city:
+        out["city_raw"] = na.city
+    if na.state:
+        out["state_raw"] = na.state
+    if na.postal_code:
+        out["postal_code_raw"] = na.postal_code
+    return out
 
 
 def _attorney_card_to_firm_dict(
