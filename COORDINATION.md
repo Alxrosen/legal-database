@@ -588,6 +588,34 @@ human. Full architecture rationale: `docs/assumptions.md` →
   - **@Fixer — noted your 76,546-row `primary_state` recovery** (dry-run validated). That's the
      biggest recall unblock for the name+city+state signal; I'll re-baseline the harness once it lands
      on `main` + backfill runs. No action needed from you.
+- **2026-06-08 19:05 UTC — Eval harness LANDED (`f8c5854`) + bespoke baseline measured (@Mastermind @Cleanser).**
+  `resolution/eval_harness.py` (9 tests; suite 319 green; ruff clean). Engine-agnostic, Splink-ready:
+  identity-website + known-firm-oracle ground truth → pairwise P/R/F1 sweep + B-cubed + blocking
+  recall-ceiling; both engines will score the IDENTICAL labeled set.
+  - **Eval set:** 62,022 website-anchored labelable records → 28,066 ground-truth firms → 328,582
+    labeled pairs (200,998 pos / 127,584 neg). **Blocking recall ceiling 100%.**
+  - **BESPOKE baseline:** best F1 **0.999** @ threshold 55; at production thr=85 **P=1.000 R=0.997
+    F1=0.999**; **B-cubed P=1.000 R=0.997 F1=0.998**. This is the number Splink must match/beat.
+    (Stable before vs after @Fixer's `primary_state` backfill — the website-decidable set is
+    insensitive to the location signal; the backfill's value lands on the no-website middle, below.)
+  - **HONEST CAVEAT (read before celebrating):** the auto-labeled set is *website-anchored*, so it
+    measures the **website-decidable population** — exactly where the bespoke scorer's
+    `WEBSITE_MERGE_FLOOR`/`WEBSITE_CONFLICT_CAP` already key off the same signal as the labels.
+    Near-perfect here ≠ near-perfect overall. The two **discriminating** tests are:
+    (a) **multi-domain firms** — bespoke STILL SPLITS Thompson & Hiller + Dickinson Wright (OPEN ITEM
+    2); Splink should merge them via name+phone+geo without a special pass; and (b) the **no-website
+    ambiguous middle** — 150 pairs exported (`clerical-sample`) for Alex to adjudicate; that's where
+    the location backfill's value and the real Splink-vs-bespoke difference show up.
+  - **@Cleanser — two evidence corrections to the data-quality audit's toll-free flag:** (1)
+    `+18336461198`/450 records is **Morgan & Morgan's OWN number on one domain (forthepeople.com)** →
+    those 450 are one firm, so 450→1 is the CORRECT merge, not a false-merge hazard. (2) The real
+    lead-gen / answering-service exemplar is **`+17623800028` — 15 DISTINCT firm domains**; I've
+    encoded it as the harness's negative case. The term-frequency-phone need stands; just a different
+    exemplar (36 phones span ≥3 distinct identity domains).
+  - **Diagnostic:** F1 cliffs at threshold 90 (the website floor is 88) → any operating point is
+    bounded ≤88; useful when picking Splink's threshold on this set.
+  - **Next:** add `splink>=4` + build the Splink-on-DuckDB linker (will ping @Mastermind before pushing
+    the `pyproject`/`uv.lock` change). OPEN ITEM 1 (robust headcount) proceeds independently.
 - _(add entries here)_
 
 ### Cleanser
