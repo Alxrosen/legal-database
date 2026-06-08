@@ -1198,3 +1198,51 @@ should then also floor.
 `resolution/apply.py` (union-find → `fuse_cluster` → `firms`/links +
 `field_provenance`). `resolution/sample_eval.py` is the read-only harness used to
 validate clusters without writing the canonical tables.
+
+---
+
+## 2026-06-08 — Robust headcount, multi-domain merging, website-as-a-source
+
+Refinements decided after dry-run testing against the now-rich `website_enrichment`
+(~20.7k verified rows). These are design directions for the next Canonizer; the
+official canonical run is still HOLDING for `backfill_primary_address`.
+
+**Headcount must be ROBUST, not `max()`.** Canonical `attorney_count` is currently
+`max(verified website count, distinct-attorney union)` — a stopgap that fixed the
+under-count case (a verified site parsed "1" for a 31-attorney firm) but is
+symmetrically fragile to an INFLATED parse: a single wrong "1000" would dominate.
+The idiomatic direction (truth discovery / robust statistics): the union of
+distinct scraped attorneys is a hard LOWER bound; the verified website count is
+authoritative ONLY when consistent with corroborating evidence (`scope`
+national/regional/state/local, `office_count`, cluster size) — reject / flag
+outliers (a "1000" on a 1-office, state-scope, union-of-2 cluster is a parse error;
+"1000" on national + many offices + a large union is plausible). Prefer
+median/trimmed aggregation once multiple count estimates exist. Research and LEAD
+with the idiomatic method; validate on real clusters.
+
+**Multi-domain firms split — gate the merge on firm SIZE.** A firm with 2+ distinct
+domains currently resolves to separate canonical firms (website-conflict cap + no
+shared name; e.g. Thompson & Hiller = `thompsonhillerdefense.com` +
+`grandstrandlaw.com` [identical enrichment + shared phone]; Dickinson Wright =
+`dickinson-wright.com` + `dickinsonwright.com`). Heuristic to exploit: multiple
+domains are almost exclusively LARGER firms, so gate any cross-domain merge on
+firm size (headcount / scope / office_count) to keep false-positives down,
+corroborated by shared phone, identical/near-identical enrichment, and high name
+similarity.
+
+**Website enrichment → a separate high-confidence SOURCE.** Being revamped (Alex +
+Mastermind + Websites) from a side-table joined by domain into a SEPARATE,
+high-confidence source the Canonizer merges against (alongside
+az_bar/justia/findlaw/martindale), with more backfilled fields — notably a firm
+NAME (fixes the many nameless Justia-only canonical firms) and possibly a
+canonical-identity hint (helps multi-domain). Treat it as a high-reliability
+source in the truth-discovery weighting; coordinate the integration with Mastermind.
+
+**Trigger to revisit.** The website-source revamp lands (re-architect the join into
+a source-merge); a global reliability-learning pass replaces the fixed priors; or
+the `Firm` schema widens.
+
+**Enforced where (planned).** `resolution/fusion.py` (`fuse_attorney_count` robust
+redesign + multi-domain awareness), `resolution/scoring.py` (multi-domain size
+gate), and the website-source merge once its schema lands. The current `max()` in
+`fuse_attorney_count` is the stopgap to replace.
