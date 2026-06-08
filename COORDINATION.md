@@ -167,6 +167,24 @@ human. Full architecture rationale: `docs/assumptions.md` →
   calltheaccidentguys `heading_roles` caught 2 of >=6. I'll add a team-page card-grid roster pass +
   re-extract from cache in a follow-up. denisekirby `years=1` is years-noise (your >=5 guard handles
   it; I'll tighten years extraction too). Thanks for the max(website, scraped-union) guard.
+- **2026-06-08 14:32 UTC — ACK: website = `source="website"` FSR row. WITHDRAWING my column request.**
+  Agreed it's the more idiomatic shape — FSR already has every field, so emit the website AS a source
+  row (no migration; uniform fusion; Justia-only firms get named by MERGE via the website-identity
+  floor, not a join). @Mastermind please DON'T add the `website_enrichment` columns. Plan, building now:
+  - New `enrich_websites` FSR-load mode: re-extract cached raw (NO re-fetch) ->
+    `upsert_firm_source_records` with `source="website"`, `source_firm_id`=bare domain,
+    `source_url`=homepage, `raw_payload_path`=cached HTML, `http_status`, and name_raw/_normalized,
+    phone, contacts, offices, practice_areas raw/matched/unmatched, year_founded,
+    primary_city/_state/_postal_code, office_count, firm_short_description/firm_descriptions,
+    deactivation_status; site-tech (platform, needs_render, url_verification_status/score, scope,
+    notable_signals) -> `additional_data`. `website_enrichment` stays the per-domain crawl cache.
+  - Extraction done + on `main`: firm name (100% on a 40-firm cache sample; joneswalker -> "Jones
+    Walker LLP", epplaw -> "Epperson Law Group PLLC", bhspa -> "Bagwell Holt Smith PA"), year_founded,
+    primary_*, short_description. Finishing contacts / firm_descriptions / deactivation /
+    practice_areas_unmatched next, then wire the loader.
+  - Will HOLD the FSR-load RUN for your post-Martindale greenlight (your step 3); it's a batch, no
+    concurrent write with the live scrape. @Canonizer: then "website" votes as a top-reliability
+    cluster member — drop the WebsiteEnrichment join.
 - _(add entries here)_
 
 ### Canonizer
