@@ -128,6 +128,49 @@ def test_headcount_heading_roles_teplg():
     assert staff == 4  # Dawn, Kristen, Stephanie, Dianna
 
 
+def test_heading_roles_skips_testimonial_initials():
+    # dmvinjurylaw.com: client reviews are headed "Firstname L." with "attorney"
+    # in the review text — must NOT be counted as attorneys (only the real one).
+    html = (
+        "<html><body>"
+        "<div><h3>Maria A.</h3><p>My attorney was amazing and fought for me.</p></div>"
+        "<div><h3>Tony I.</h3><p>Best attorney I have ever met, highly recommend.</p></div>"
+        "<div><h3>Eddy Z.</h3><p>The attorney and his whole team were great.</p></div>"
+        "<div><h3>Jane Q. Whitfield</h3><p>Partner and Trial Attorney</p></div>"
+        "</body></html>"
+    )
+    hc, _ = extract_headcount([("attorneys", html)], base_url="https://x.com")
+    assert hc.method == "heading_roles"
+    assert hc.count == 1  # only Jane Q. Whitfield
+
+
+def test_heading_roles_dedups_same_attorney_across_formats():
+    # wilshirelawfirm.com: the same attorney appears uppercase AND titlecase.
+    html = (
+        "<html><body>"
+        "<div><h2>COLIN M. JONES, ESQ.</h2><p>Senior Attorney</p></div>"
+        "<div><h2>Colin Jones, Esq.</h2><p>Partner and Attorney</p></div>"
+        "<div><h2>RYAN CASEY, ESQ.</h2><p>Associate Attorney</p></div>"
+        "</body></html>"
+    )
+    hc, _ = extract_headcount([("attorneys", html)], base_url="https://x.com")
+    assert hc.count == 2  # Colin Jones (deduped) + Ryan Casey
+
+
+def test_heading_roles_dedups_roster_across_pages():
+    # llflegal.com: the same roster on multiple crawled pages must be counted by
+    # distinct person, not summed per page (351 -> distinct).
+    roster = (
+        "<html><body>"
+        "<div><h3>Donna M. Shaw</h3><p>Partner</p></div>"
+        "<div><h3>Jeff Altshul</h3><p>Attorney</p></div>"
+        "<div><h3>Bruce Craig</h3><p>Of Counsel</p></div>"
+        "</body></html>"
+    )
+    hc, _ = extract_headcount([("attorneys", roster), ("team", roster)], base_url="https://x.com")
+    assert hc.count == 3  # not 6
+
+
 def test_headcount_profile_links():
     team = (
         "<html><body>"

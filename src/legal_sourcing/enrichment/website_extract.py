@@ -580,6 +580,11 @@ _NOT_PERSON_HEADING: tuple[str, ...] = (
 )
 
 
+_NAME_SUFFIX: frozenset[str] = frozenset(
+    {"esq", "esquire", "jr", "sr", "ii", "iii", "iv", "phd", "llm", "md", "cpa", "jd", "mba"}
+)
+
+
 def _looks_like_person(name: str) -> bool:
     """Heading plausibly NAMES a person (2-4 capitalized tokens), not a page
     title / practice-area / section header."""
@@ -589,16 +594,36 @@ def _looks_like_person(name: str) -> bool:
     words = [w for w in name.replace(",", " ").split() if w]
     if not (2 <= len(words) <= 4):
         return False
+    # Reject testimonial-style "Firstname L." (single-initial last name): those
+    # are review authors, not attorney-roster names (dmvinjurylaw.com counted
+    # "Maria A.", "Tony I.", "Eddy Z." as attorneys).
+    if len(words[-1].strip(".")) <= 1:
+        return False
     alpha = [w for w in words if w[:1].isalpha()]
     return bool(alpha) and all(w[0].isupper() for w in alpha)
 
 
-def _heading_roles(team_html: str | bytes) -> tuple[int, int]:
-    """Count attorney vs staff person-cards: a person-NAME heading whose
-    adjacent text carries an attorney- or staff-role keyword."""
+def _person_key(name: str) -> str:
+    """Normalize a person heading to 'first last' for dedup across case, middle
+    initials, and suffixes — so the SAME attorney listed twice ('COLIN M. JONES,
+    ESQ.' and 'Colin Jones, Esq.') or repeated on multiple crawled pages is
+    counted once, not summed (llflegal.com / wilshirelawfirm.com over-counts)."""
+    toks = [
+        t
+        for t in re.sub(r"[^a-z\s]", " ", name.lower()).split()
+        if len(t) > 1 and t not in _NAME_SUFFIX
+    ]
+    return f"{toks[0]} {toks[-1]}" if len(toks) >= 2 else " ".join(toks)
+
+
+def _heading_roles(team_html: str | bytes) -> tuple[set[str], set[str]]:
+    """Distinct attorney vs staff person-cards: a person-NAME heading whose
+    adjacent text carries an attorney- or staff-role keyword. Returns SETS of
+    normalized person keys (deduped) so the same person listed twice on a page
+    (e.g. an uppercase header + a titlecase card) counts once."""
     tree = _tree(team_html)
-    attorneys = 0
-    staff = 0
+    attorneys: set[str] = set()
+    staff: set[str] = set()
     for h in tree.css("h2, h3, h4"):
         name = " ".join((h.text() or "").split())
         if not name or len(name) > 60 or looks_like_firm(name) or not _looks_like_person(name):
@@ -613,10 +638,13 @@ def _heading_roles(team_html: str | bytes) -> tuple[int, int]:
                 ctx += " " + (sib.text() or "").lower()
             sib = sib.next
             hops += 1
+        key = _person_key(name)
+        if not key:
+            continue
         if any(r in ctx for r in _ATTORNEY_ROLE):
-            attorneys += 1
+            attorneys.add(key)
         elif any(r in ctx for r in _STAFF_ROLE):
-            staff += 1
+            staff.add(key)
     return attorneys, staff
 
 
@@ -662,17 +690,21 @@ def extract_headcount(
     if len(slugs) >= 2:
         return HeadcountResult(len(slugs), True, "profile_links", "high", None), staff_count
 
-    # 3. heading-role classification, summed across all team pages
-    att_total = 0
-    stf_total = 0
+    # 3. heading-role classification — UNION distinct attorney NAMES across team
+    #    pages (dedup by first+last), NOT sum of per-page counts, so the same
+    #    person in two formats or repeated on multiple crawled roster pages is
+    #    counted once (llflegal.com 351->distinct, wilshirelawfirm.com).
+    att_names: set[str] = set()
+    stf_names: set[str] = set()
     for html in team_pages:
         att, stf = _heading_roles(html)
-        att_total += att
-        stf_total += stf
-    if att_total >= 1:
+        att_names |= att
+        stf_names |= stf
+    stf_names -= att_names  # a name seen as an attorney anywhere is not staff
+    if att_names:
         return (
-            HeadcountResult(att_total, False, "heading_roles", "medium", None),
-            staff_count if staff_count is not None else (stf_total or None),
+            HeadcountResult(len(att_names), False, "heading_roles", "medium", None),
+            staff_count if staff_count is not None else (len(stf_names) or None),
         )
 
     # 4. solo signal
