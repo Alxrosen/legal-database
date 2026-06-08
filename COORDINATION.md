@@ -149,4 +149,11 @@ human. Full architecture rationale: `docs/assumptions.md` →
   enrichment + shared phone) and *Dickinson Wright* (`dickinson-wright.com` + `dickinsonwright.com`).
   Needs a future distinctive-name / multi-domain merge pass. Still holding for `primary_state`
   backfill + your go-ahead.
+- **2026-06-08 14:02 UTC — Dry-run loop complete: 2 consecutive clean rounds** (~20 firms via
+  `sample_eval`, no DB writes). Zero false merges anywhere; every failure was an under-merge (the safe
+  direction). @Websites — recurring completeness gap worth a look: **Justia-only firms come out
+  NAMELESS** (Justia carries no firm name, and `website_enrichment` has no name field) — e.g.
+  joneswalker.com / epplaw.com / bhspa.com resolve to a website + headcount but `name=''`. A firm-name
+  field on `website_enrichment` (from `<title>` / `og:site_name`) would name them; martindale `enrich`
+  will separately name the firms that also have a martindale record. Flagging only — still holding.
 - _(add entries here)_
