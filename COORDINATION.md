@@ -36,7 +36,7 @@ human. Full architecture rationale: `docs/assumptions.md` →
 |-------|--------|---------------|
 | Mastermind | `Mastermind` → `main` | Coordinating; Martindale full scrape capped @25 pages/city, 0.8 rps (live); owns schema/migrations; will run enrich + `backfill_primary_address` post-scrape, then greenlight Canonizer. |
 | Websites | `Websites` → `main` | RUNNING the website FSR-load now on SQLite (Mastermind cleared 17:10) — ~20.7k `source="website"` rows, background, monitoring locks. Loader tested (309 green) + pilot-verified. |
-| Canonizer | `Canonizer` → `main` | Resolution built + dry-run-validated (2 clean rounds, zero false merges, 289 tests). HOLDING for `backfill_primary_address` + go-ahead. Fresh session continuing — see `docs/canonizer_handoff.md`. |
+| Canonizer | `Canonizer` → `main` | **PIVOTING to Splink** (greenlit 2026-06-08): eval harness FIRST → Splink-on-DuckDB per `docs/audit/splink-adoption-plan.md`; adopt iff it beats the hand-rolled matcher. Hand-rolled resolver (dry-run-validated, zero false merges, 289 tests) stays the baseline/oracle; `fusion.py`/`identity.py` kept. Provisional runs OK now (decoupled from scrape). |
 | Cleanser | `Cleanser` → `main` | Project auditor (READ-ONLY): audits code + data quality + resolution output; writes findings only. Just onboarded (worktree + venv ready). |
 | Monitor | `Monitor` → `main` | **Sole watcher of the Martindale scrape** (fork of Mastermind, read-only). Watches the log for throttle/error/completion + reports; stays in lane. |
 | Enricher | `Enricher` → `main` | **Martindale firm-profile `enrich`** (Mastermind fork). Writes `firm_source_records` `source="martindale"` — recovers names/contacts/descriptions/year/offices for the ~58% nameless rows. Onboarding 2026-06-08. |
@@ -233,6 +233,39 @@ human. Full architecture rationale: `docs/assumptions.md` →
     (`db.py` `synchronous=NORMAL` + `wal_checkpoint`)** + **C5 (drop `click`)** are mine — I'll apply
     them next (no longer folded into a PG-prep refactor, since PG is deferred; C6 upsert-convergence
     I'll do opportunistically on the shared upsert).
+- **2026-06-08 18:05 UTC — GREENLIT: recompress Canonizer → Splink. Pivot in motion (@Canonizer @Cleanser).**
+  Alex has called it: **begin the transition from the hand-rolled matcher to Splink**, following
+  Cleanser's `docs/audit/splink-adoption-plan.md`. @Canonizer — Alex will brief you directly; this is
+  the Mastermind imperative + the guardrails so the channel reflects the decision:
+  1. **EVAL HARNESS FIRST (the gate — build before any cutover).** A stratified-by-score,
+     clerically-labelled candidate-pair set seeded by the known-firm oracle (Snell & Wilmer, Morgan &
+     Morgan, the multi-domain Thompson & Hiller / Dickinson Wright, the toll-free lead-gen negatives —
+     e.g. the `+18336461198`-on-450-records case Cleanser flagged). Score with Splink-native
+     `evaluation.accuracy_analysis_from_labels_table` (precision/recall/F1/ROC across thresholds) +
+     B-cubed for clusters. Sample the **ambiguous middle**, not obvious 0/1 pairs. Extend `sample_eval`.
+     **This is engine-agnostic and can start NOW** (decoupled from the scrape, per the 17:10 pivot).
+  2. **Then Splink-on-DuckDB** per the plan: `ATTACH` the SQLite file (`TYPE sqlite`) → EM-train m/u
+     weights → cluster. **Splink runs on DuckDB regardless** (its PG backend is new/untested, and PG is
+     deferred anyway) — **$0, no migration.** Blocking rules / comparison levels / training sequence
+     are spelled out in `splink-adoption-plan.md` §"Proposed settings"/§"Training".
+  3. **Measure, then adopt.** The hand-rolled resolver STAYS as the baseline/oracle. **Adopt Splink IFF
+     it ≥ the bespoke matcher** on the eval set + known-firm oracle. If it underperforms on a corpus
+     quirk, keep the bespoke matcher — but now as a *measured* choice. Either way the matcher becomes
+     measured and the floors/caps stack stops growing.
+  4. **Scope — what Splink replaces vs what STAYS.** Splink replaces `blocking.py` + `scoring.py`
+     weights/floors/caps + `apply.py`'s `_UnionFind`. **KEEP** `fusion.py` (truth-discovery
+     survivorship), `rapidfuzz` name-grouping, and `identity.py` (`is_identity_website` / `is_firm_name`)
+     — Splink does match+cluster, NOT field fusion. Low-friction wiring: write Splink's pairwise
+     `match_probability` into `match_review_queue` (a new component), and swap ONLY `apply.py`'s
+     clustering for `cluster_pairwise_predictions_at_threshold`. The canonical write is untouched.
+  5. **Robust headcount (OPEN ITEM 1) proceeds INDEPENDENTLY** — it's fusion, not matching, so it's
+     untouched by Splink (union-floor + corroboration gate + trimmed-mean, replacing `max()`). Splink's
+     term-frequency phone adjustment subsumes the toll-free lead-gen guard for free.
+  - **Dependency / my lane:** adding `splink>=4` (DuckDB bundled) to `pyproject.toml` + the lockfile is
+    fine on your `Canonizer` branch — `pyproject`/`uv.lock` are shared, so @Canonizer ping me if the
+    merge to `main` conflicts and I'll integrate. No schema/migration needed (Splink reads an extract;
+    `match_probability` rides in the existing `match_review_queue.score_components`). Resolution stays
+    decoupled from the scrape — pilot on current data, re-run idempotently.
 
 ### Websites
 
