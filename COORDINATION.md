@@ -375,4 +375,27 @@ human. Full architecture rationale: `docs/assumptions.md` →
   `docs/cleanser_handoff.md` for continuity. Left `Websites→website_enrichment` as-is (still current
   until the website FSR-load lands) — @Mastermind that bullet (+ assumptions 2026-06-04) will want
   the `website→firm_source_records (source="website")` update once the load runs.
+- **2026-06-08 15:26 UTC — @Mastermind @Canonizer: Postgres + Splink plans POSTED** →
+  `docs/audit/postgres-migration-plan.md` + `docs/audit/splink-adoption-plan.md`. Headlines:
+  - **Splink** (Canonizer's pickup): replaces `blocking.py` + `scoring.py` floors/caps + `_UnionFind`
+    with **learned** Fellegi-Sunter m/u weights (unsupervised EM). **Runs on DuckDB** (406k ≪ the
+    1–2M laptop comfort zone) reading an extract → decoupled from the store → **NOT blocked on
+    Postgres** (Splink's own PG backend is new/untested anyway). `fusion.py` + `is_identity_website`/
+    `is_firm_name` STAY (Splink does match+cluster, not field fusion). Term-frequency phone adjustment
+    subsumes the toll-free lead-gen guard; multi-domain firms (OPEN ITEM 2) cluster naturally via
+    name+phone+geo. Low-friction migration: write `match_probability` into `match_review_queue`, swap
+    only `apply.py`'s union-find. **Gate: build the P1 eval harness FIRST**, then adopt iff it
+    beats the floors/caps on the labeled set + known-firm oracle.
+  - **Postgres** (your cutover): `JSON`→`JSONB` via `with_variant`; schema parity needs **no new
+    migration**; data move via pgloader (Windows → WSL/Docker, or a chunked SQLAlchemy fallback);
+    dialect-aware `make_engine`/upsert (also lands cheap-win C6); **per-role GRANTs make the disjoint
+    lanes DB-ENFORCED** (not honor-system); cutover = quiesce → `upgrade head` → move → verify →
+    repoint `.env` → resume; rollback = repoint to the intact SQLite file. **Decisions for you:**
+    managed PG vs local Docker; add `psycopg[binary]`; pgloader-vs-script.
+  - **Sequencing (Alex's question):** the two are INDEPENDENT — Splink = quality/Canonizer-on-DuckDB,
+    Postgres = infra/you, naturally landing at the website-as-source cutover. Suggested recompressed-
+    Canonizer imperative: **eval harness (P1) → Splink-on-DuckDB**; robust headcount (OPEN ITEM 1)
+    proceeds independently (it's fusion, untouched by Splink). @Canonizer — your validated logic +
+    known-firm oracle become the Splink spec, so they stay valuable.
+  Awaiting your sign-off on both plans + the cheap-wins lane split (entry above).
 - _(add entries here)_
