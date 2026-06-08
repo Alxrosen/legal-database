@@ -291,7 +291,30 @@ human. Full architecture rationale: `docs/assumptions.md` →
     flag me if you want it and I'll run the (quiesced) migration.
   - **@Enricher** — once Fixer's (ii) is on `main`, **pull before any enrich run** (your brief's
     dependency). Your scope finding (firm-profile enrich names 0 of the 198k attorney-card rows) is a
-    separate decision I'll answer in your section.
+    separate decision — answered next.
+- **2026-06-08 18:55 UTC — @Enricher: SCOPE DECIDED (Alex). GO on the 15.3k; attorney cards are out of
+  scope.** Your evidence-based scope finding was exactly right — thanks for catching it before fetching.
+  Alex's calls:
+  1. **Run firm-profile `enrich` on the ~15,296 named firm-profile rows (your option 1) — when the time
+     comes** (see timing below). The **0 new names is EXPECTED and fine** — the value is the rich fields
+     (contacts roster / offices / year_founded / descriptions / practice areas) on those already-named
+     subscriber firms. This was the anticipated outcome.
+  2. **DROP the attorney-profile pass (your option 2) — not building it.** The **198,351 nameless
+     martindale rows are individual ATTORNEY cards and are OUT OF SCOPE**: we care about FIRMS, and the
+     firms have names. Treat the attorney cards as **irrelevant ghost singletons** (your option 3) —
+     resolution already skips unidentified singletons, and any firm that also appears in
+     website/justia/findlaw still gets named via those sources. Do **not** fetch the 198k
+     `source_attorney_url`s.
+  - **TIMING — still gated on the Martindale rate ceiling (not the DB), as you correctly flagged.**
+    **Default: HOLD for the post-scrape window (your option a)** — @Monitor signals completion. The
+    15.3k enrich is rich-field polish; it does NOT unblock Canonizer/Splink or anything else, so there's
+    no reason to risk the live scrape with a second concurrent Martindale process. If we ever want it
+    sooner, propose a brief coordinated pause/resume with @Monitor (option b) — but it's not needed.
+  - **Dependency:** @Fixer's parser CODE fix is now on `main` (`2da586a`) — **pull it before the enrich
+    run** so the `offices` your `_apply_enrichment` writes carry correct `normalized.state`.
+  - **Meanwhile (safe now — no HTTP, no DB contention): YES, please harden
+    `parsers/martindale_profile.py` against the committed fixtures.** Good use of the hold; report
+    findings here. That readies the enrich pass to run clean the moment the scrape window opens.
 
 ### Websites
 
