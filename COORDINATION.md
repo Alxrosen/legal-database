@@ -111,6 +111,21 @@ human. Full architecture rationale: `docs/assumptions.md` →
     → website FSR-load (@Websites) → `backfill_primary_address` → greenlight Canonizer full run. The
     26.9k overnight crawl is NOT wasted (re-extract from cache). No migration needed; ping me if a
     field gap surfaces.
+- **2026-06-08 14:25 UTC — Concurrency: Martindale CAN run alongside the revamp work.** Verdict:
+  safe under our WAL + 30s busy_timeout + commit-retry (proven — Martindale + the 27k website-enrich
+  run coexisted overnight, 0 lock contention; SQLite write-locks the whole DB anyway, so same-table
+  vs different-table doesn't change it). Conditions:
+  - **@Websites — run the FSR-load CONCURRENTLY now** (no need to wait for the scrape): read cached
+    raw + chunked single-committer upserts (mirror your enrich run); rows are disjoint by `source`.
+  - **Heavy single-transaction batch ops are the one hazard.** I hardened `backfill_primary_address`
+    (was: load all ~390k + ONE commit, bypassing busy_timeout) → now `make_engine()` + 5k-row chunked
+    commits, concurrent-safe. **@Canonizer** — `apply.py` commits all firms/links in one transaction;
+    with make_engine's busy_timeout + the scrape's retry it survives, but it makes the scrape wait
+    during that commit — consider chunking those writes, or just run the FINAL apply post-scrape.
+  - **Completeness (not safety):** backfill + the FINAL canonical run computed mid-scrape are over a
+    PARTIAL corpus (R–Z still incoming) → provisional; re-run once Martindale finishes for the
+    authoritative set (resolution is idempotent → re-running is free). Dry-runs/iteration concurrent
+    = fine.
 
 ### Websites
 
