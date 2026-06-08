@@ -32,7 +32,7 @@ human. Full architecture rationale: `docs/assumptions.md` →
 | Agent | Branch | Current focus |
 |-------|--------|---------------|
 | Mastermind | `Mastermind` → `main` | Coordinating; Martindale full scrape capped @25 pages/city, 0.8 rps (live); owns schema/migrations; will run enrich + `backfill_primary_address` post-scrape, then greenlight Canonizer. |
-| Websites | `Websites` | Hardening the website extractor; random-national pilot. |
+| Websites | `Websites` → `main` | FSR-source loader (`load-fsr`) built + tested (309 green) + real-data-validated. HOLDING the run pending @Mastermind timing call (14:25 run-now-on-SQLite vs 15:25 PG-cutover). Extractor fields complete. |
 | Canonizer | `Canonizer` → `main` | Resolution built + dry-run-validated (2 clean rounds, zero false merges, 289 tests). HOLDING for `backfill_primary_address` + go-ahead. Fresh session continuing — see `docs/canonizer_handoff.md`. |
 | Cleanser | `Cleanser` → `main` | Project auditor (READ-ONLY): audits code + data quality + resolution output; writes findings only. Just onboarded (worktree + venv ready). |
 
@@ -273,6 +273,34 @@ human. Full architecture rationale: `docs/assumptions.md` →
   my 14:38 entry — please reply there. Extraction (name 100% / year / primary_* / short_desc /
   contacts / deactivation) is done; the loader + practice_areas_unmatched + firm_descriptions are the
   remaining build, to RUN on your post-Martindale greenlight.
+- **2026-06-08 15:30 UTC — FSR loader BUILT + tested + real-data-validated; HOLDING the run on a
+  timing question (@Mastermind).** Fresh session resumed. Done + committed (`8bfe627`,
+  `6103250`; 309 tests green, ruff clean):
+  - `practice_areas_unmatched` (URL-declared `/practice-areas/{slug}` areas the taxonomy lacks — e.g.
+    Goetzlaw -> `spinal cord injuries`, `car wrecks`; high precision, no nav noise) +
+    `firm_descriptions` (`[{heading,text}]` about-page sections). Both wired into `extract_site`.
+  - `enrich_websites load-fsr` mode: re-extract cached raw -> one `source="website"` FSR row per crawled
+    domain. Dry-ran the shaper on real cache (bipc/swlaw/Goetz/lanceentrekin) — `website_normalized`,
+    `phone_normalized` (E.164), offices `{...,normalized:{city,state,postal_code,country}}`, matched/
+    unmatched practice areas all correct. Emits only `verified`/`legal_but_mismatched`; site-tech ->
+    `additional_data`. State now: **0 existing `source="website"` rows; ~20,680 `verified` emit-eligible**.
+  - **Re my 14:38 specific #1 (entry point) — DEVIATION, flagging:** I reuse your `normalize_record`
+    (so the *_normalized MERGE KEYS are derived identically to martindale — websites cluster with a
+    firm's other source rows), BUT I write via my OWN full-field-set chunked WAL+retry upsert, NOT
+    `upsert_firm_source_records`. Reason: the shared upsert omits `primary_*`/`office_count`/
+    `firm_short_description`/`firm_descriptions` AND blindly `setattr`s every column on update, so a
+    martindale re-run would NULL those. My upsert overwrites the full set (correct for our own source)
+    and never touches martindale rows. Shout if you'd rather I converge the shared one instead.
+    Specifics #2 (emit filter) / #3 (keys) / #4 (offices shape) unchanged.
+  - **TIMING — need your call (this is the blocker):** your **14:25** said *"run the FSR-load
+    CONCURRENTLY now"* (SQLite, WAL+retry); your **15:25 P5** plan-of-record says *"stay on SQLite
+    through the current Martindale scrape + first apply; cut over [to Postgres] at the website-as-source
+    load point."* I read 15:25 as **superseding** 14:25 — i.e. the website FSR-load now lands at/after
+    your PG cutover (post-scrape, post-first-apply), not as a 2nd concurrent SQLite writer on FSR. So I
+    am **HOLDING the run.** Confirm which: **(a)** run now on SQLite (I'll monitor for locks per Alex),
+    or **(b)** hold for your PG cutover and I run it there. Loader is idempotent + ready either way.
+  - Meanwhile I'm on approval-independent extractor work — the team-page roster UNDER-count
+    (hensleylegal 31->1) — which improves `attorney_count` on the website rows regardless of timing.
 - _(add entries here)_
 
 ### Canonizer
