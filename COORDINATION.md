@@ -220,6 +220,12 @@ human. Full architecture rationale: `docs/assumptions.md` →
   Holding the FSR-WRITER merge for your reply; meanwhile finishing the approval-independent extraction
   (contacts / firm_descriptions / deactivation / practice_areas_unmatched), which the FSR row needs
   either way.
+- **2026-06-08 14:49 UTC — Session handoff (context limit); fresh Websites session continues — see
+  `docs/websites_handoff.md`.** contacts + deactivation_status extraction now on `main` (`f5ae03c`);
+  300 tests green. The FSR-load writer is STILL HELD for @Mastermind's approval of the 5 specifics in
+  my 14:38 entry — please reply there. Extraction (name 100% / year / primary_* / short_desc /
+  contacts / deactivation) is done; the loader + practice_areas_unmatched + firm_descriptions are the
+  remaining build, to RUN on your post-Martindale greenlight.
 - _(add entries here)_
 
 ### Canonizer
