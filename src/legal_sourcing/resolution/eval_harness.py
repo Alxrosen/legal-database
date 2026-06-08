@@ -58,12 +58,15 @@ from sqlalchemy.orm import Session
 from legal_sourcing.db import make_engine
 from legal_sourcing.models import FirmSourceRecord
 from legal_sourcing.resolution.apply import _UnionFind
-from legal_sourcing.resolution.blocking import generate_candidate_pairs
+from legal_sourcing.resolution.blocking import generate_candidate_pairs, make_blocking_keys
 from legal_sourcing.resolution.identity import is_identity_website
 from legal_sourcing.resolution.scoring import score_pair
 
 # Deterministic sampling so the labeled set is reproducible across runs/engines.
 _SEED = 20260608
+# Human-adjudicated labels for the ambiguous middle (committed ground truth, grown
+# via `clerical-sample` review). These OVERRIDE / augment the auto-labels.
+CLERICAL_LABELS_PATH = "data/eval/clerical_labels.csv"
 # Cap on truth-positive pairs synthesized per firm (big firms like Morgan &
 # Morgan have C(465,2)≈108k intra-firm pairs; we sample to keep the set balanced
 # and the metric from being dominated by one mega-firm).
@@ -222,11 +225,74 @@ def _labelable_records(session: Session) -> list[FirmSourceRecord]:
     return list(out.values())
 
 
+def _load_clerical_labels(path: str) -> list[tuple[int, int, int]]:
+    """Load human-adjudicated (a_id, b_id, label) rows; [] if the file is absent."""
+    import os
+
+    if not os.path.exists(path):
+        return []
+    out: list[tuple[int, int, int]] = []
+    with open(path, encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            try:
+                a, b, lab = int(row["a_id"]), int(row["b_id"]), int(row["label"])
+            except (KeyError, ValueError):
+                continue
+            out.append((*_ordered(a, b), lab))
+    return out
+
+
+def _apply_clerical_labels(
+    session: Session,
+    path: str,
+    records: dict[int, FirmSourceRecord],
+    truth_by_id: dict[int, str],
+    pairs: dict[tuple[int, int], LabeledPair],
+    candidate_keys: set[tuple[int, int]],
+) -> int:
+    """Overlay human labels: fetch their records, gate them through blocking,
+    label the pair (overriding auto-labels), and fold positives into the truth
+    clustering so they count in B-cubed too. Returns the number applied."""
+    rows = _load_clerical_labels(path)
+    if not rows:
+        return 0
+    need = {i for a, b, _ in rows for i in (a, b) if i not in records}
+    if need:
+        for r in session.scalars(
+            select(FirmSourceRecord).where(FirmSourceRecord.id.in_(need))
+        ).all():
+            records[r.id] = r
+    applied = 0
+    for a, b, lab in rows:
+        if a not in records or b not in records:
+            continue  # stale id (e.g. row deleted) — skip
+        # End-to-end honesty: only count as engine-proposed if blocking links them.
+        if make_blocking_keys(records[a]) & make_blocking_keys(records[b]):
+            candidate_keys.add((a, b))
+        pairs[(a, b)] = LabeledPair(a, b, lab, "clerical")
+        applied += 1
+        if lab == 1:
+            # Union into one truth firm so B-cubed sees the intended merge.
+            ta, tb = truth_by_id.get(a), truth_by_id.get(b)
+            gid = ta or tb or f"clerical:{a}"
+            if tb and tb != gid:
+                for rid, fid in list(truth_by_id.items()):
+                    if fid == tb:
+                        truth_by_id[rid] = gid
+            truth_by_id[a] = truth_by_id[b] = gid
+        else:
+            # Distinct truth ids so a negative is a true cross-firm pair.
+            truth_by_id.setdefault(a, f"clerical_neg:{a}")
+            truth_by_id.setdefault(b, f"clerical_neg:{b}")
+    return applied
+
+
 def build_eval_set(
     session: Session,
     *,
     positives_cap: int = POSITIVES_PER_FIRM_CAP,
     seed: int = _SEED,
+    clerical_path: str | None = CLERICAL_LABELS_PATH,
 ) -> EvalSet:
     """Construct the labeled candidate-pair set from current DB state.
 
@@ -285,6 +351,10 @@ def build_eval_set(
             if (a, b) not in pairs:
                 src = "oracle_pos" if fid.startswith("oracle:") else "identity_pos"
                 pairs[(a, b)] = LabeledPair(a, b, 1, src)
+
+    # 3) Overlay human-adjudicated labels for the ambiguous middle (highest trust).
+    if clerical_path:
+        _apply_clerical_labels(session, clerical_path, records, truth_by_id, pairs, candidate_keys)
 
     return EvalSet(
         pairs=list(pairs.values()),

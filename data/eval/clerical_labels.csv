@@ -1,0 +1,4 @@
+a_id,b_id,label,note
+49572,432144,1,"Bruno: an individual attorney's record merges into their firm (Alex 2026-06-08). NB Martindale/website attorney_count=100 on 432144 is bogus -> routed to Websites."
+285980,295351,1,"Kenneth S. Nugent P.C. Augusta + Savannah: branch offices of one firm -> ONE canonical firm, offices aggregated (Alex 2026-06-08)."
+2580,5263,1,"Maricopa County Attorney's Office + its Civil Services Division -> one canonical entity (Alex 2026-06-08)."

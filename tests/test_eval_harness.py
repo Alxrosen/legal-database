@@ -13,6 +13,7 @@ from legal_sourcing.resolution.eval_harness import (
     EvalSet,
     LabeledPair,
     _domain_to_oracle_firm,
+    _load_clerical_labels,
     _ordered,
     bcubed,
     bespoke_score_fn,
@@ -131,3 +132,22 @@ def test_bespoke_score_fn_zeros_unblocked_pairs():
     # a pair NOT in candidate_keys must score 0 (counts as a recall miss)
     es2 = EvalSet(pairs=[], truth_by_id={}, records={1: a, 2: b}, candidate_keys=set())
     assert bespoke_score_fn(es2)(1, 2) == 0.0
+
+
+# ---- clerical labels ---------------------------------------------------
+
+
+def test_load_clerical_labels_parses_and_orders(tmp_path):
+    p = tmp_path / "labels.csv"
+    p.write_text(
+        "a_id,b_id,label,note\n50,10,1,attorney->firm\n7,9,0,different\nbad,row,x,skip\n",
+        encoding="utf-8",
+    )
+    rows = _load_clerical_labels(str(p))
+    assert (10, 50, 1) in rows  # ids reordered a<b
+    assert (7, 9, 0) in rows
+    assert len(rows) == 2  # the malformed row is dropped
+
+
+def test_load_clerical_labels_missing_file():
+    assert _load_clerical_labels("does/not/exist.csv") == []
