@@ -634,6 +634,43 @@ human. Full architecture rationale: `docs/assumptions.md` →
     bounded ≤88; useful when picking Splink's threshold on this set.
   - **Next:** add `splink>=4` + build the Splink-on-DuckDB linker (will ping @Mastermind before pushing
     the `pyproject`/`uv.lock` change). OPEN ITEM 1 (robust headcount) proceeds independently.
+- **2026-06-08 20:10 UTC — Splink linker BUILT + first measured head-to-head; `splink>=4` landing on `main` (@Mastermind @Websites).**
+  `resolution/splink_linker.py` (`compare` CLI): extract FSR identity cols → SettingsCreator (blocking
+  + comparisons) → EM-train m/u → predict + `cluster_pairwise_predictions_at_threshold`, scored vs
+  bespoke on the IDENTICAL eval set. `fusion.py`/`identity.py` untouched (Splink does match+cluster only).
+  - **@Mastermind — `splink==4.0.16` + 16 transitive deps (duckdb 1.5.3 / pandas 3.0.3 / numpy 2.4.6)
+    resolve + install clean on Py3.14.** Pushing the `pyproject.toml`/`uv.lock` change to `main` now per
+    your 18:05 pre-auth (no merge conflict on pull). Flag me if it collides with another dep change.
+  - **First result (eval set = 62k website-anchored records; same set both engines):** Splink (after
+    dropping TF-on-website, which was shattering big firms) **pairwise F1 0.929 / B-cubed 0.935** vs
+    **bespoke 0.999 / 0.998**. Splink still SPLITS the oracle firms (Snell & Wilmer→7, Morgan & Morgan→5).
+    **Two honest reads:** (a) this eval is *website-anchored*, so bespoke's website-floor ≈ the labeling
+    rule → structurally favors bespoke; NOT yet a fair verdict. (b) Splink's additive model penalizes
+    secondary-field *disagreement* (a multi-office firm's differing `primary_city`/`state`) even when the
+    near-unique `website_identity` agrees → big firms fragment. Bespoke's floor overrides that. Fixable
+    via comparison-level tuning (neutralize city/state disagreement; strengthen website) — early tuning
+    already moved F1 0.806→0.929. **The decisive test needs the no-website CLERICAL labels.**
+  - **@Websites — data findings (your write lane; evidence attached, turnkey):**
+    1. **35 `source="website"` rows have `attorney_count=100`** (extractor magic-number false-positive),
+       and **1 mis-crawled row** (id 432144 "Jason Mario Bruno": `source="website"` but
+       `source_url=martindale.com/attorney/...`, count=100 — the crawl seed resolved to a Martindale
+       attorney page). Pure martindale `/organization/` counts are fine (max 98). Suggest: null/clamp the
+       `100` artifact + drop/repair website rows whose `source_url` host is a directory
+       (martindale/justia/findlaw/avvo — I see 1 martindale, 1 findlaw, 3 facebook).
+    2. **Coverage gap:** firms whose directory rows never captured a website URL get **no** `source="website"`
+       row (the crawl is seeded from directory `website` fields). Kenneth S. Nugent: martindale
+       `attorney_count=3` (under-count), **no website row**, though the real site lists ~36. Not a labeling
+       bug — a discovery gap. Worth a search-based website-discovery pass on nameless/websiteless firms
+       (roadmap, not blocking). FYI these under-counts are exactly why OPEN ITEM 1 (robust headcount) won't
+       let a single low/empty source count become canonical.
+  - **Resolution POLICY captured from Alex (drives fusion + the widen-`Firm` step):** (a) an individual
+    attorney's record merges INTO their firm; (b) **multi-office branches → ONE canonical firm with all
+    offices aggregated under `offices`** (needs the Phase-3 widen-`Firm`/offices-aggregation — `fuse_cluster`
+    must union member offices and `apply.py` must write them; today's `Firm` has no `offices`); (c) a
+    government office + its named sub-division → one entity. Encoded as eval ground truth.
+  - **Scrape COMPLETE (noted @Monitor):** I'll re-run the baseline + Splink on the full corpus next.
+  - **Review mechanism (Alex asked):** `clerical-sample` export + committed `data/eval/clerical_labels.csv`;
+    I prompt Alex in batches and fold answers into both pairwise + B-cubed. 3 labels in; growing.
 - _(add entries here)_
 
 ### Cleanser
