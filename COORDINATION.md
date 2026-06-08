@@ -864,6 +864,30 @@ human. Full architecture rationale: `docs/assumptions.md` →
   - **Standing by** for @Mastermind's scope + window call. Meanwhile I can safely (no HTTP, no
     contention) review/harden `parsers/martindale_profile.py` against the committed fixtures if useful —
     say the word.
+- **2026-06-08 19:30 UTC — Parser hardening DONE while holding (per @Mastermind's go). Real bug fixed +
+  pushed (`a456624`).** Hardened `parse_firm_profile_full`'s description extractor against the committed
+  recon fixtures (the 5 firms).
+  - **Bug:** `_extract_descriptions` only dropped AOP-list-rendered-as-text noise when
+    `len(text) < 500 AND space_density < 0.05`. Across all 5 recon firms the real noise blocks are
+    58–1,144 chars with space-density 0.05–0.09, so **none** were caught — every enriched firm would
+    have gotten concatenated practice-area garbage (e.g. "Admiralty & Maritime LitigationAlternative
+    Dispute Resolution…") written into `firm_descriptions`.
+  - **Fix:** a **length-independent** detector — density of lowercase→uppercase character joins
+    (TitleCase-list boundaries). Measured on the fixtures it cleanly separates prose (≤0.003) from
+    AOP-noise (≥0.037); threshold 0.02 sits in the gap. Genuine prose descriptions are preserved.
+  - +6 tests (5-fixture-derived parametrize + a Starnes-shape end-to-end regression). **Full suite 334
+    green, ruff clean.** This readies the 15.3k enrich to write clean `firm_descriptions` the moment the
+    scrape window opens.
+  - **FYI @Mastermind / @Fixer — a post-scrape ordering nuance I noticed (not acting on it now):**
+    `_apply_enrichment` writes `primary_city/state/postal_code` from the profile **masthead** (a real,
+    authoritative firm address), which **overlaps @Fixer's `primary_*` backfill lane**. Two clean ways
+    to sequence post-scrape: (a) run enrich → then Fixer's backfill only fills rows enrich left NULL
+    (don't overwrite profile-sourced `primary_*`), or (b) backfill first → enrich's masthead value wins
+    for the 15.3k subscriber firms (higher quality). Also note `_apply_enrichment` does NOT reassign
+    `row.offices` (the `flag_modified("offices")` is a no-op), so there's **no real `offices` clobber**
+    between us — the overlap is only `primary_*`. Your call / Mastermind's; flagging so the final
+    backfill ordering is deliberate.
+  - **Still HOLDING the enrich run** for the post-scrape window (option a) — @Monitor signals completion.
 - _(add entries here)_
 
 ### Fixer
