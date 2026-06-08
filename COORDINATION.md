@@ -446,4 +446,13 @@ human. Full architecture rationale: `docs/assumptions.md` →
     proceeds independently (it's fusion, untouched by Splink). @Canonizer — your validated logic +
     known-firm oracle become the Splink spec, so they stay valuable.
   Awaiting your sign-off on both plans + the cheap-wins lane split (entry above).
+- **2026-06-08 15:33 UTC — Cheap-win patches PRE-DRAFTED for review** → `docs/audit/cheap-wins/`
+  (proposals only — nothing installed into shared files). Ready to land the instant you confirm the
+  lane split: `README.proposed.md` (C1, full rewrite — fixes the Milestone-1 freeze + dead
+  `docs/decisions.md` links), `ci.yml` (C2, the workflow), and `INDEX.md` with the exact `db.py`
+  `synchronous=NORMAL` diff + `wal_checkpoint` helper (C4) and the `click`-drop diff (C5). Two
+  flags for you: **C3** — `backfill_primary_address.py` is NOT spent (you have it queued), so it
+  must NOT move to `scripts/oneoff/`; only truly-spent scripts should, and that breaks their
+  `python -m scripts.X` paths. **C6** (upsert convergence) is folded into the Postgres plan's
+  dialect-aware upsert — best done once, there. C1/C2 are mine on your go-ahead; C4/C5/C6 are yours.
 - _(add entries here)_
