@@ -35,7 +35,7 @@ human. Full architecture rationale: `docs/assumptions.md` →
 | Agent | Branch | Current focus |
 |-------|--------|---------------|
 | Mastermind | `Mastermind` → `main` | Coordinating; Martindale full scrape capped @25 pages/city, 0.8 rps (live); owns schema/migrations; will run enrich + `backfill_primary_address` post-scrape, then greenlight Canonizer. |
-| Websites | `Websites` → `main` | RUNNING the website FSR-load now on SQLite (Mastermind cleared 17:10) — ~20.7k `source="website"` rows, background, monitoring locks. Loader tested (309 green) + pilot-verified. |
+| Websites | `Websites` → `main` | DONE: website FSR-load COMPLETE — 20,680 `source="website"` rows on `main` (name 100%, website_normalized 99%, descriptions 95%; 0 lock contention). @Canonizer unblocked to fuse. Next: roster card-grid + big-firm offices (crawl-discovery gaps). |
 | Canonizer | `Canonizer` → `main` | **PIVOTING to Splink** (greenlit 2026-06-08): eval harness FIRST → Splink-on-DuckDB per `docs/audit/splink-adoption-plan.md`; adopt iff it beats the hand-rolled matcher. Hand-rolled resolver (dry-run-validated, zero false merges, 289 tests) stays the baseline/oracle; `fusion.py`/`identity.py` kept. Provisional runs OK now (decoupled from scrape). |
 | Cleanser | `Cleanser` → `main` | Project auditor (READ-ONLY): audits code + data quality + resolution output; writes findings only. Just onboarded (worktree + venv ready). |
 | Monitor | `Monitor` → `main` | **Sole watcher of the Martindale scrape** (fork of Mastermind, read-only). Watches the log for throttle/error/completion + reports; stays in lane. |
@@ -422,6 +422,24 @@ human. Full architecture rationale: `docs/assumptions.md` →
   is live — sailed past seen=3765 with `failed=0`; the ~3,200 rows from the partial run are being
   idempotently updated and the rest added. **@Mastermind FYI:** `safe_urljoin` is a shared,
   non-breaking addition — any scraped-href caller can use it.
+- **2026-06-08 18:12 UTC — DONE: website FSR-load COMPLETE — 20,680 `source="website"` rows landed.**
+  Full re-extract from cache finished clean: **20,680 upserted, 0 extract-failed, 3,709 non-firm
+  skipped** from 24,389 cached homes. **ZERO lock contention** with the live Martindale scrape (which
+  grew 338k->352k mid-run — WAL+retry held exactly as you predicted, @Mastermind). Coverage of the
+  20,680: name_raw 100%, `website_normalized` 99%, phone 91%, firm_short_description 97%,
+  firm_descriptions 95%, offices/primary_state 67%, office_count 68%, attorney_count 60%,
+  practice_areas_matched 56%, practice_areas_unmatched 16%, contacts 27%, year_founded 36%.
+  - **@Canonizer — UNBLOCKED on the website source.** `source="website"` is now a regular FSR source.
+    Add `"website"` to `SOURCE_RELIABILITY` (top precedence; optionally condition on
+    `additional_data.url_verification_status`) and DROP the `WebsiteEnrichment` param/join in
+    `fusion.py` (`fuse_attorney_count`/`fuse_year_founded`) + `apply.py` (`_enrichment_for`). The
+    website now votes as a cluster MEMBER and names the Justia-only firms via your website-identity
+    floor (`website_normalized` matches your key; redirects resolve, e.g. fclaw.com->fennemorelaw.com).
+    Re-run `apply` to fold them in (idempotent/free).
+  - Known limit (not blocking): big multi-office firms list addresses on `/locations` pages we didn't
+    crawl, so ~33% have null `primary_*` — but identity (name+website+phone) is intact, so they still
+    cluster. Roster under-count on a few firms (hensleylegal) is a crawl-discovery gap (roster page
+    not fetched), not fixable from cache; tracking separately.
 - _(add entries here)_
 
 ### Canonizer
