@@ -432,11 +432,15 @@ log a warning but the fetch proceeds. Per-source override to
 ## Parallel Claude sessions (multi-agent hygiene)
 
 Multiple Claude sessions work this repo at once: **Mastermind** (coordinator /
-integration), **Websites** (site enrichment), **Canonizer** (resolution), and
-**Cleanser** (project auditor — read-only). Each runs in a **dedicated `git
+integration), **Websites** (site enrichment → `source="website"`), **Canonizer**
+(resolution), **Cleanser** (project auditor — read-only), **Monitor** (Martindale
+scrape watcher — read-only, a Mastermind fork), **Enricher** (Martindale
+firm-profile `enrich` — recovers nameless-row names), and **Fixer** (office-address
+parser fix + `backfill_primary_address`). Each runs in a **dedicated `git
 worktree` on its own branch** (`Mastermind` / `Websites` / `Canonizer` /
-`Cleanser`) — a shared working tree collides (lost edits, staging races,
-duplicate Alembic heads). They share **one live WAL database**: each
+`Cleanser` / `Monitor` / `Enricher` / `Fixer`) — a shared working tree collides
+(lost edits, staging races, duplicate Alembic heads). They share **one live WAL
+database**: each
 worktree's `.env` points `DB_PATH` (+ `RAW_DATA_DIR`/`PROCESSED_DATA_DIR`) at the
 **absolute** path of the main checkout's DB (the relative default would make each
 worktree silently open its own empty DB).
@@ -446,9 +450,14 @@ Rules of engagement:
   your file lane; a parallel session may leave **uncommitted WIP in files you
   didn't write — do NOT commit or revert it**.
 - **All DB access via `legal_sourcing.db.make_engine()`** (busy_timeout=30s + WAL).
-- **Disjoint writes**: Martindale→`firm_source_records`, Websites→`website_enrichment`,
-  Canonizer→`firms`/`firm_source_record_links`/`match_review_queue`; **Cleanser→READ-ONLY**
-  (audit findings only — never writes data tables). Read anything.
+- **Disjoint writes** (read anything; write only your lane):
+  Martindale/Enricher/Fixer/Websites all write `firm_source_records` but **disjoint by
+  `source` and/or column-group** — Martindale (the live scrape) + Enricher (firm-profile
+  enrich: names/contacts/descriptions/year/offices) + Fixer (`offices[].normalized`
+  re-derive + `primary_city/state/postal_code`/`office_count`) on `source="martindale"`
+  rows; Websites on `source="website"` rows. Canonizer→`firms`/`firm_source_record_links`/
+  `match_review_queue`. **Cleanser + Monitor→READ-ONLY** (findings/log-watch only — never
+  write data tables).
 - **Migrations are Mastermind-only**, run only when scrapes are quiesced (DDL against
   a live writer is the one genuinely unsafe operation; a plain add-column is fine).
 - **Coordinate via `COORDINATION.md`** on `main` (pull to read; edit your own section

@@ -1246,3 +1246,46 @@ the `Firm` schema widens.
 redesign + multi-domain awareness), `resolution/scoring.py` (multi-domain size
 gate), and the website-source merge once its schema lands. The current `max()` in
 `fuse_attorney_count` is the stopgap to replace.
+
+## 2026-06-08 — Plan pivot: enrich+fix the DB (no Postgres, no deal-scoring); two forks; provisional resolution
+
+**Decided by Alex** (via the Cleanser-authored, Alex-approved roadmap,
+`docs/audit/2026-06-08-roadmap.md`, banner-revised). Supersedes the prior
+Postgres-cutover plan-of-record and the deal-target-scoring goal.
+
+**Four points.**
+1. **Postgres DEFERRED — not migrating.** SQLite (WAL) stays the operational store;
+   it comfortably holds ~420k rows / <1 GB and the whole-DB write lock + 30s
+   busy_timeout already serialize the multi-writer case safely (proven overnight).
+   Splink runs on **DuckDB**, reading the SQLite file directly via `ATTACH (TYPE
+   sqlite)` — no migration, $0. `docs/audit/postgres-migration-plan.md` is kept as a
+   contingency for a real trigger (sustained concurrent *same-row* writes, multi-host
+   access, or heavy JSONB/GIN analytics — a free *local* PG would cover those).
+2. **Deal-target scoring DROPPED.** We do NOT rank firms for deal-worthiness. The
+   terminal deliverable is the **clean, resolved, signal-rich canonical record** —
+   widen `Firm` with the observable signals + populate the empty `offices` /
+   `firm_persons` / `firm_practice_areas` child tables at survivorship + add the
+   `firms.phones` union — so DB *users* apply their own criteria. (The resolution
+   eval harness is unaffected: it measures MATCH accuracy, not firm quality.)
+3. **Resolution DECOUPLED from the scrape.** Run enrich / parser-fix / backfill +
+   resolution **provisionally on current data now, in parallel**; re-run idempotently
+   as the scrape grows (resolution clears+rebuilds → re-running is free). The
+   authoritative run is the final post-Martindale re-run.
+4. **Two new Mastermind-fork agents** (worktree + branch + `.env`→shared DB + venv):
+   **Enricher** (owns Martindale firm-profile `enrich` — recovers names for the ~58%
+   nameless martindale rows) and **Fixer** (owns the office-address parser fix —
+   +76,579 state-less rows — and `backfill_primary_address`). Both write
+   `firm_source_records` `source="martindale"`, **disjoint by column-group +
+   ordering** (Enricher = firm-profile fields incl. `offices`; Fixer = `offices[].
+   normalized` re-derive + `primary_*`/`office_count`). Ordering: Fixer's office-parser
+   CODE fix lands on `main` first → Enricher pulls it before enriching → Fixer's
+   backfill (disjoint columns) runs last / repeatedly. Enricher sequences its writes
+   against Monitor's live scrape (checkpoint-complete cities only, or pause/resume).
+
+**Trigger to revisit.** A real Postgres trigger fires (above); or Bow Street later
+wants an in-repo ranking layer (the dropped scoring goal) — at which point the
+signal-rich `Firm` record already feeds it.
+
+**Enforced where.** Agent roster + lanes in `AGENTS.md` + `COORDINATION.md` (status
+board, per-agent `###` briefs, the 2026-06-08 17:10 Mastermind entry); the Enricher /
+Fixer worktrees; `docs/audit/2026-06-08-roadmap.md` (the approved plan).
