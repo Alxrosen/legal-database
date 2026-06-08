@@ -83,6 +83,11 @@ RECENCY_HALF_LIFE_DAYS = 180.0
 # (token_set_ratio). Safe to be aggressive: the cluster is already one firm, so
 # this only chooses among variants of the same name.
 NAME_GROUP_THRESHOLD = 88.0
+# Don't derive a founding year from a website's "years in operation" below this:
+# small values are noisy / often mis-extracted, and with the "N+ years" (is_min)
+# semantics they'd yield a near-current, misleading founding year (seen on
+# denisekirbylaw.com: "1 year" -> "founded 2025").
+MIN_YEARS_FOR_FOUNDING_DERIVATION = 5
 
 
 def source_reliability(rec: FirmSourceRecord) -> float:
@@ -311,16 +316,25 @@ def fuse_attorney_count(
 ) -> FieldChoice | None:
     """Canonical headcount.
 
-    A VERIFIED website headcount is authoritative (the firm's own statement);
-    otherwise the distinct-attorney union across the cluster, flagged a minimum.
+    A VERIFIED website headcount is authoritative -- the firm's own statement --
+    UNLESS it is below the distinct attorneys we actually scraped, which means
+    the site extraction under-counted (seen on hensleylegal.com, which parsed
+    "1" for a 31-attorney cluster). The website count and the cluster union are
+    BOTH lower bounds, so take the larger. With no verified site count, fall
+    back to the union alone.
     """
+    union = _aggregate_attorney_count(members)
+    verified: int | None = None
     if (
         enrichment is not None
         and enrichment.url_verification_status == "verified"
         and enrichment.attorney_count_min is not None
     ):
+        verified = int(enrichment.attorney_count_min)
+
+    if verified is not None and (union is None or verified >= union):
         return FieldChoice(
-            value=enrichment.attorney_count_min,
+            value=verified,
             source_record_id=None,
             source="website_enrichment",
             method="website_verified",
@@ -333,19 +347,31 @@ def fuse_attorney_count(
                 "raw": enrichment.attorney_count_raw,
             },
         )
-    n = _aggregate_attorney_count(members)
-    if n is None:
-        return None
-    return FieldChoice(
-        value=n,
-        source_record_id=None,
-        source="cluster_union",
-        method="distinct_union",
-        support=float(n),
-        total_weight=float(n),
-        confidence=0.4,
-        extra={"is_min": True},
-    )
+    if union is not None and verified is not None:
+        # union > verified: the website headcount under-counted; the distinct
+        # attorneys we actually scraped are the tighter lower bound.
+        return FieldChoice(
+            value=union,
+            source_record_id=None,
+            source="cluster_union",
+            method="union_over_website",
+            support=float(union),
+            total_weight=float(union),
+            confidence=0.5,
+            extra={"is_min": True, "website_min": verified, "website": enrichment.website},
+        )
+    if union is not None:
+        return FieldChoice(
+            value=union,
+            source_record_id=None,
+            source="cluster_union",
+            method="distinct_union",
+            support=float(union),
+            total_weight=float(union),
+            confidence=0.4,
+            extra={"is_min": True},
+        )
+    return None
 
 
 def fuse_year_founded(
@@ -362,6 +388,7 @@ def fuse_year_founded(
         enrichment is not None
         and enrichment.url_verification_status == "verified"
         and enrichment.years_in_operation_min
+        and enrichment.years_in_operation_min >= MIN_YEARS_FOR_FOUNDING_DERIVATION
     ):
         derived = now.year - int(enrichment.years_in_operation_min)
         return FieldChoice(

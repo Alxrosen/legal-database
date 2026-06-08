@@ -11,6 +11,7 @@ from legal_sourcing.resolution.fusion import (
     fuse_cluster,
     fuse_name,
     fuse_website,
+    fuse_year_founded,
 )
 from legal_sourcing.resolution.identity import is_firm_name, is_identity_website
 
@@ -183,6 +184,37 @@ def test_attorney_count_union_dedups_cross_source_by_name():
     choice = fuse_attorney_count(members, None, NOW)
     assert choice is not None
     assert choice.value == 2
+
+
+def test_attorney_count_union_overrides_undercounting_website():
+    """A verified site count BELOW the scraped attorneys is an extraction
+    under-count (e.g. hensleylegal.com parsed 1 for 31); the union wins."""
+    members = [
+        _rec(id=1, contacts=[{"name_normalized": "a"}]),
+        _rec(id=2, contacts=[{"name_normalized": "b"}]),
+        _rec(id=3, contacts=[{"name_normalized": "c"}]),
+    ]  # union = 3
+    enr = _enr(attorney_count_min=1, url_verification_status="verified")
+    choice = fuse_attorney_count(members, enr, NOW)
+    assert choice.value == 3
+    assert choice.method == "union_over_website"
+    assert choice.extra["is_min"] is True
+    assert choice.extra["website_min"] == 1
+
+
+# ---- year-founded fusion ---------------------------------------------------
+
+
+def test_year_founded_skips_tiny_years_in_operation():
+    """A noisy small years-in-operation should NOT derive a founding year."""
+    members = [_rec(id=1)]
+    enr_small = _enr(years_in_operation_min=1, url_verification_status="verified")
+    assert fuse_year_founded(members, enr_small, NOW) is None
+    # A substantial, established age does derive a year.
+    enr_big = _enr(years_in_operation_min=40, url_verification_status="verified")
+    choice = fuse_year_founded(members, enr_big, NOW)
+    assert choice is not None
+    assert choice.value == NOW.year - 40
 
 
 # ---- website fusion --------------------------------------------------------

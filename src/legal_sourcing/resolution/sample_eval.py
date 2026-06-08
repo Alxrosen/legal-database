@@ -24,7 +24,7 @@ import argparse
 import sys
 from collections import Counter
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.orm import Session
 
 from legal_sourcing.db import make_engine
@@ -32,7 +32,8 @@ from legal_sourcing.models import FirmSourceRecord, WebsiteEnrichment
 from legal_sourcing.normalize.url import is_aggregator_domain
 from legal_sourcing.resolution.apply import _UnionFind
 from legal_sourcing.resolution.blocking import generate_candidate_pairs
-from legal_sourcing.resolution.fusion import fuse_cluster
+from legal_sourcing.resolution.fusion import _aggregate_attorney_count, fuse_cluster
+from legal_sourcing.resolution.identity import is_identity_website
 from legal_sourcing.resolution.scoring import score_pair
 
 
@@ -122,6 +123,10 @@ def _print_cluster(session: Session, members: list[FirmSourceRecord]) -> None:
     print(f"    name      : {res.name!r}  (norm={res.name_normalized!r})")
     print(f"    website   : {res.website_normalized}   phone: {res.phone_normalized}")
     print(f"    attorneys : {res.attorney_count}   year_founded: {res.year_founded}")
+    print(
+        f"    acount dbg: union={_aggregate_attorney_count(members)} "
+        f"enrichment_min={enr.attorney_count_min if enr else None}"
+    )
     print(f"    sources   : {dict(Counter(m.source for m in members))}")
     if enr is not None:
         print(
@@ -144,6 +149,55 @@ def _print_cluster(session: Session, members: list[FirmSourceRecord]) -> None:
         print(f"      {n:3d} {src:10s} {nm!r}")
 
 
+def _eval_and_print(
+    session: Session, seed: list[FirmSourceRecord], args: argparse.Namespace
+) -> None:
+    """Expand a seed to its full neighborhood, cluster, and print the firms."""
+    seed_ids = {r.id for r in seed}
+    print(f"seed records: {len(seed)}")
+    records = _expand(session, seed, max_records=args.max_records)
+    if args.derive_location:
+        for r in records:
+            _derive_location(r)
+    comps, edges = _cluster(records, args.merge_threshold)
+    multi = {root: ids for root, ids in comps.items() if len(ids) > 1}
+    print(
+        f"neighborhood: {len(records)} records | merge_threshold={args.merge_threshold} | "
+        f"merge_edges={edges}"
+    )
+    print(
+        f"components: {len(comps)} ({len(multi)} multi-member, "
+        f"{len(comps) - len(multi)} singletons)"
+    )
+    # How did the seed records scatter across components? (fragmentation)
+    seed_comp_sizes = Counter()
+    for root, ids in comps.items():
+        n_seed = sum(1 for i in ids if i in seed_ids)
+        if n_seed:
+            seed_comp_sizes[root] = n_seed
+    if len(seed_comp_sizes) > 1:
+        print(
+            f"  ! seed's {len(seed)} records landed in {len(seed_comp_sizes)} components "
+            f"(sizes: {sorted(seed_comp_sizes.values(), reverse=True)}) -- possible under-merge"
+        )
+    by_id = {r.id: r for r in records}
+    for _root, ids in sorted(comps.items(), key=lambda kv: -len(kv[1]))[: args.show]:
+        _print_cluster(session, [by_id[i] for i in ids])
+
+
+def _random_firm_websites(session: Session, n: int, min_records: int = 2) -> list[str]:
+    """N random identity-website domains that back >= min_records source records."""
+    rows = session.execute(
+        text(
+            "SELECT website_normalized FROM firm_source_records "
+            "WHERE website_normalized IS NOT NULL AND website_normalized != '' "
+            "GROUP BY website_normalized HAVING count(*) >= :m ORDER BY random() LIMIT :lim"
+        ),
+        {"m": min_records, "lim": n * 8},
+    ).all()
+    return [r[0] for r in rows if is_identity_website(r[0])][:n]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     g = ap.add_mutually_exclusive_group(required=True)
@@ -151,6 +205,9 @@ def main() -> int:
     g.add_argument("--phone")
     g.add_argument("--name")
     g.add_argument("--random", type=int)
+    g.add_argument(
+        "--random-firms", type=int, help="Evaluate N random identity-website firms in one run."
+    )
     ap.add_argument("--merge-threshold", type=float, default=85.0)
     ap.add_argument("--max-records", type=int, default=2500)
     ap.add_argument(
@@ -164,6 +221,17 @@ def main() -> int:
 
     engine = make_engine()
     with Session(engine) as session:
+        if args.random_firms:
+            websites = _random_firm_websites(session, args.random_firms)
+            print(f"=== RANDOM-FIRMS ROUND ({len(websites)}): {websites} ===")
+            for w in websites:
+                print(f"\n################ {w} ################")
+                seed = session.scalars(
+                    select(FirmSourceRecord).where(FirmSourceRecord.website_normalized == w)
+                ).all()
+                _eval_and_print(session, seed, args)
+            return 0
+
         if args.website:
             seed = session.scalars(
                 select(FirmSourceRecord).where(FirmSourceRecord.website_normalized == args.website)
@@ -182,38 +250,7 @@ def main() -> int:
             seed = session.scalars(
                 select(FirmSourceRecord).order_by(func.random()).limit(args.random)
             ).all()
-
-        seed_ids = {r.id for r in seed}
-        print(f"seed records: {len(seed)}")
-        records = _expand(session, seed, max_records=args.max_records)
-        if args.derive_location:
-            for r in records:
-                _derive_location(r)
-        comps, edges = _cluster(records, args.merge_threshold)
-        multi = {root: ids for root, ids in comps.items() if len(ids) > 1}
-        print(
-            f"neighborhood: {len(records)} records | merge_threshold={args.merge_threshold} | "
-            f"merge_edges={edges}"
-        )
-        print(
-            f"components: {len(comps)} ({len(multi)} multi-member, "
-            f"{len(comps) - len(multi)} singletons)"
-        )
-        # How did the seed records scatter across components? (fragmentation)
-        seed_comp_sizes = Counter()
-        for root, ids in comps.items():
-            n_seed = sum(1 for i in ids if i in seed_ids)
-            if n_seed:
-                seed_comp_sizes[root] = n_seed
-        if len(seed_comp_sizes) > 1:
-            print(
-                f"  ! seed's {len(seed)} records landed in {len(seed_comp_sizes)} components "
-                f"(sizes: {sorted(seed_comp_sizes.values(), reverse=True)}) -- possible under-merge"
-            )
-
-        by_id = {r.id: r for r in records}
-        for _root, ids in sorted(comps.items(), key=lambda kv: -len(kv[1]))[: args.show]:
-            _print_cluster(session, [by_id[i] for i in ids])
+        _eval_and_print(session, seed, args)
     return 0
 
 
