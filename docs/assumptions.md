@@ -1130,3 +1130,71 @@ PRAGMA listener); `resolution/{run,apply}.py` and
 (routed through `make_engine`); each worktree's `.env` (absolute shared paths);
 `config.py` (`db_path` is env-overridable). `enrich_websites.py` to be routed by
 the Websites session.
+
+---
+
+## 2026-06-04 — Canonical resolution: truth-discovery fusion + strong-identifier matching
+
+**Assumption.** A canonical `Firm` is built field-by-field from its cluster of
+source records by a **reliability- and recency-weighted vote** (data-fusion /
+truth-discovery survivorship), NOT by fixed source precedence. Per-field rules:
+
+* **name** — gate to firm-like names (`identity.is_firm_name`, excludes empty
+  Justia names and person names), fuzzy-group near-duplicate variants by
+  normalized form, weighted-vote the groups, emit the most-supported raw surface
+  form. A lone mis-attributed name ("Arizona Supreme Court" on swlaw.com) lands
+  in its own low-weight group and loses. Falls back to a person name only if the
+  cluster has no firm-like name (solo practitioners).
+* **phone / website** — weighted vote on the exact value; aggregator/social/
+  website-builder domains (`identity.is_identity_website`) are never a firm
+  website. Multi-office firms surface the most-claimed line.
+* **attorney_count** — a VERIFIED website headcount is authoritative (the firm's
+  own statement); otherwise the distinct-attorney union across the cluster,
+  flagged `is_min` (we only count attorneys we scraped — a lower bound).
+* **year_founded** — vote of source-supplied years; else derived (approximate)
+  from a verified website's years-in-operation.
+
+Each pick records provenance (source record, method, support, confidence,
+`is_min`/`approximate` flags) in `firms.field_provenance` (free-form JSON — no
+schema change). Source reliability uses per-origin priors
+(martindale > findlaw > az_bar > justia, +bonus for enriched) × a gentle recency
+decay; frequency + completeness usually dominate, priors break ties.
+
+**Matching (who clusters).** Pairwise scoring keeps the weighted-sum components
+but adds: (1) a **missing name is neutral** (None), not a 0 penalty — Justia has
+no firm name; (2) **website-identity match floors the score into the auto-merge
+band** (a shared non-aggregator domain is, in this corpus, a one-firm signal);
+(3) **phone-match + strong-name-match also floors** — the only strong signal for
+the ~83% of records with no website (the name requirement makes shared
+lead-gen / toll-free numbers safe); (4) **caps win over floors**: clearly-
+different firm names, or two different identity websites, cap the pair out of the
+auto band for human review.
+
+**Why (evidence).** Real clusters broke fixed precedence: Snell & Wilmer (38
+records) shattered into 38 singletons at threshold 85 because office phones
+differ, `primary_state` is empty, and missing names scored 0; the old `_pick`
+also kept only one arbitrary record per source. The weighted vote + website
+floor consolidates it to one firm (name beats 5 variants + an outlier, headcount
+500 from verified enrichment). The phone+name floor consolidates websiteless
+multi-office firms (Frank Azar's 11 offices) while a toll-free lead-gen line's
+distinct solos correctly stay separate. `looks_like_firm`'s `" pa"` marker
+substring-matched surnames ("Parker", "Patrick"); `identity.is_firm_name` fixes
+that for resolution.
+
+**Trigger to revisit.** (a) A non-aggregator domain turns out to be shared by
+genuinely different firms at scale (extend `PLATFORM_DOMAINS`/aggregator list, or
+add a "domain shared by N distinct firm names" guard). (b) We want a *global*
+TruthFinder pass that LEARNS source reliability from inter-source agreement
+(current priors are fixed). (c) The `Firm` schema gains columns (offices,
+practice areas, description, scope) — fusion already computes some and can
+populate them once a migration lands (Mastermind owns migrations).
+(d) `primary_state` backfill (Mastermind) enables the name+city+state path, which
+should then also floor.
+
+**Enforced where.** `resolution/fusion.py` (field-by-field vote + `fuse_cluster`),
+`resolution/identity.py` (`is_identity_website`, `is_firm_name`,
+`PLATFORM_DOMAINS`), `resolution/scoring.py` (floors/caps + neutral-missing-name
++ identity-website gate), `resolution/blocking.py` (identity-website keys only),
+`resolution/apply.py` (union-find → `fuse_cluster` → `firms`/links +
+`field_provenance`). `resolution/sample_eval.py` is the read-only harness used to
+validate clusters without writing the canonical tables.
