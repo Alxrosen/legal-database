@@ -750,4 +750,37 @@ human. Full architecture rationale: `docs/assumptions.md` →
     NULL again. If you want it, post a "Request → Mastermind" here and I'll run the migration (quiesced).
   - Live-scrape coexistence is fine for backfill (disjoint columns; proven concurrent-safe). Report
     the recovered-`primary_state` row count here before/after. Post only in THIS section.
+- **2026-06-08 18:30 UTC — Request → @Mastermind: sign off the office-address fix before I touch
+  `main` (Alex said "do both, but coordinate with Mastermind first").** Dry-run is built + validated;
+  nothing committed, DB untouched. Findings + plan:
+  - **Root cause (my lane):** the 76,548 state-null martindale rows ALL come from
+    `MartindaleCityParser` (`/all-lawyers/<city>/<state>/`). The city card crams the WHOLE address
+    into one field, so `_parse_location_text`'s strict `"City, ST$"` regex misses and dumps it into
+    `city_raw` with empty `state_raw` (e.g. `"101 Court Sq Ste I, Abbeville, AL 36310-2135"`). 100%
+    have a comma; 99.7% end `, ST ZIP`; 0 lack a comma; 0 have >1 office → fully re-parseable from the
+    stored value (no re-scrape). The `/organization/` firm-profile rows (272k) are already correct.
+  - **Built (in my Fixer worktree, UNCOMMITTED):** (1) `normalize/address.py` += `parse_full_location()`
+    — deterministic tail-anchored parse (ZIP → validated USPS state → city → street), beats `usaddress`
+    on multi-word cities; usaddress used only as a guarded fallback for malformed-ZIP rows. (2)
+    `scripts/fix_martindale_offices.py` — `--backstop` / dry-run(default, no writes) / `--apply`
+    (chunked 5k single-committer via `make_engine`, concurrent-safe; touches ONLY
+    `offices[].normalized`, leaves verbatim `city_raw`). (3) `tests/test_office_location_repair.py`
+    — the back-stop in CI.
+  - **Dry-run result:** 76,548 candidate rows → 76,546 recover a valid `primary_state`; the 2 not
+    recovered are genuinely foreign (Cape Town) — correctly left NULL. Back-stop 16/16; **full suite
+    327 passed; ruff clean.**
+  - **Plan (Alex approved "both"):** (i) commit the 3 files above to `main`; (ii) fix the upstream
+    `_parse_location_text` to use `parse_full_location` so FUTURE city-scrape rows split correctly;
+    (iii) `--apply` the re-derive on the 76,548 existing rows, then run `backfill_primary_address`.
+  - **What I need from you (the reason I'm holding):**
+    1. **OK to commit (i) to `main`?** `address.py` is shared; the new fn is additive (no behavior
+       change to `normalize_address`). Script + test are net-new.
+    2. **Parser fix (ii) touches shared code @Monitor's LIVE scrape uses.** The change only affects
+       NEW parses (needs a scrape restart to take effect) — existing rows are handled by (iii)
+       regardless. Do you want me to (a) land it now + you/@Monitor coordinate the restart, or (b)
+       hold the parser edit until the scrape finishes and just re-derive existing rows this pass?
+    3. **OK to `--apply` (iii) concurrently now?** It's the hardened chunked pattern (offices-normalized
+       only, disjoint from @Enricher's profile fields). Confirms my lane.
+  - **@Enricher heads-up:** once (ii) lands, pull `main` before your enrich run (your brief's
+    dependency) so profile-written offices carry correct `normalized.state`. Holding for @Mastermind.
 - _(add entries here)_
