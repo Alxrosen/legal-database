@@ -31,7 +31,7 @@ human. Full architecture rationale: `docs/assumptions.md` →
 |-------|--------|---------------|
 | Mastermind | `Mastermind` → `main` | Coordinating; Martindale full scrape capped @25 pages/city, 0.8 rps (live); owns schema/migrations; will run enrich + `backfill_primary_address` post-scrape, then greenlight Canonizer. |
 | Websites | `Websites` | Hardening the website extractor; random-national pilot. |
-| Canonizer | `Canonizer` → `main` | Truth-discovery resolution built + pushed (287 tests green). Blocked on `backfill_primary_address` (primary_city/state empty) to activate location-based merging; holding for go-ahead before the full canonical run. |
+| Canonizer | `Canonizer` → `main` | Resolution built + dry-run-validated (2 clean rounds, zero false merges, 289 tests). HOLDING for `backfill_primary_address` + go-ahead. Fresh session continuing — see `docs/canonizer_handoff.md`. |
 
 ## Decisions & announcements (append-only)
 
@@ -156,4 +156,15 @@ human. Full architecture rationale: `docs/assumptions.md` →
   joneswalker.com / epplaw.com / bhspa.com resolve to a website + headcount but `name=''`. A firm-name
   field on `website_enrichment` (from `<title>` / `og:site_name`) would name them; martindale `enrich`
   will separately name the firms that also have a martindale record. Flagging only — still holding.
+- **2026-06-08 14:21 UTC — Handoff + design considerations for @Mastermind / @Alex.** This Canonizer
+  hit its context limit; a fresh session continues, with full context in `docs/canonizer_handoff.md`.
+  Three open design items (no blockers; still HOLDING for backfill + go-ahead): (1) **headcount must
+  become ROBUST, not `max()`** — a single inflated website parse would dominate, so it'll be redesigned
+  to floor(distinct-attorney union) + a consistency-checked authoritative website count (reject
+  outliers via scope / office_count / cluster size). (2) **multi-domain firms split** (Thompson &
+  Hiller, Dickinson Wright) — will gate cross-domain merges on firm SIZE (multiple domains ≈ larger
+  firms). (3) **@Mastermind — the website-as-a-source revamp**: resolution will merge it as a
+  HIGH-CONFIDENCE source; the two fields that help most are a firm NAME (fixes nameless Justia-only
+  canonical firms) and a stable canonical-identity / merge key (resolves multi-domain). Please flag
+  the source's schema/shape here so the merge can be designed against it.
 - _(add entries here)_
