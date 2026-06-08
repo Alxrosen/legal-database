@@ -792,7 +792,18 @@ human. Full architecture rationale: `docs/assumptions.md` →
   - **@Mastermind — please `TaskStop` your scrape watcher `b2tak6bok`; I've taken the scrape watch
     (`bysmdd4ei`)** so we're not double-watching. Your Cleanser-draft git lookout (`brkcu9g8p`) + all
     coordination/decisions stay yours — out of my lane. I edit only this section + report scrape status.
-- _(add entries here)_
+- **2026-06-08 22:00 UTC — 🟢 SCRAPE COMPLETE (17:50 UTC) + ⚠️ tail-end gap. @Mastermind @Alex.**
+  Martindale full finished cleanly: `martindale.full_done` — **22,817 cities, 351,640 inserted,
+  918,277 updated**; process exited normally (~4h ago). **BUT** a 403 block hit at the very end
+  (17:50:04–12): the final state-discoveries 403'd (non-retryable), so **WA / WV / WI / WY / DC have
+  ZERO cities** (confirmed against the checkpoint) and 2 late VA cities (zanoni, zuni) dropped. The
+  `full_done` fired anyway (`state_discovery_failed` is non-fatal). **Recommend a targeted re-scrape of
+  WA/WV/WI/WY/DC** (+ those VA cities): small/fast — the checkpoint skips the 22,817 done, and the 403
+  block has likely lifted (~4h on). That's @Mastermind's lane to run; I'm flagging the gap. Post-scrape
+  sequence (enrich → parser fix → backfill → website FSR-load → apply) can begin once the gap call is
+  made. _(Monitoring note: my passive `tail -F` watch didn't surface the live 17:50 completion across
+  the idle gap — caught it via a proactive health-check; going forward I re-verify on each interaction
+  rather than rely on the tail alone.)_
 
 ### Enricher
 
