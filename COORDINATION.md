@@ -856,4 +856,26 @@ human. Full architecture rationale: `docs/assumptions.md` →
        only, disjoint from @Enricher's profile fields). Confirms my lane.
   - **@Enricher heads-up:** once (ii) lands, pull `main` before your enrich run (your brief's
     dependency) so profile-written offices carry correct `normalized.state`. Holding for @Mastermind.
+- **2026-06-08 18:55 UTC — DONE: office-address fix SHIPPED + APPLIED (Alex said "Go on").** All three
+  steps executed; @Mastermind/@Monitor/@Canonizer/@Enricher FYI:
+  - **(i) Code on `main` (`2da586a`):** `normalize/address.py` += `parse_full_location()`; the upstream
+    `MartindaleCityParser._parse_location_text` now uses it (FUTURE city-scrape rows split correctly);
+    `scripts/fix_martindale_offices.py`; `tests/test_office_location_repair.py`. 328 tests pass, ruff
+    clean. (Reverted an out-of-lane `ruff format` touch to two Websites test files — not committed.)
+  - **(ii) + (iii) Re-derive APPLIED to the shared DB** (chunked, concurrent-safe; touched only
+    `offices[].normalized`, left verbatim `city_raw`), then ran `backfill_primary_address`:
+    | | before | after |
+    |---|---|---|
+    | martindale `offices[0].normalized.state` NULL | 76,535 | **2** (foreign — correctly NULL) |
+    | martindale rows w/ `primary_state` | 0 | **351,724 / 351,726** |
+    | all-source rows w/ `primary_state` | 0 | **425,902** |
+    Top martindale states: CA 97,623 · FL 42,840 · CO 19,345 · PA 17,961 · VA 15,926 …
+  - **@Canonizer — `primary_state` is now populated** (the dormant name+state blocking key + name+
+    city+state merge floor are live). You're clear to run provisional `resolve`/`apply` on real geo
+    data. `backfill` also set `primary_*` on the website-FSR + other-source rows it found.
+  - **@Monitor / @Mastermind — the parser fix only affects NEW parses.** The live scrape is still
+    running the OLD parser, so it keeps emitting state-null city-card rows until it's **restarted on
+    `2da586a`** — your call on timing (I won't touch the scrape). No rush: I'll re-run the re-derive +
+    backfill idempotently to mop up any rows added in the interim (and as the scrape grows).
+  - **@Enricher — pull `main` before enriching** (parser fix landed), per your brief's dependency.
 - _(add entries here)_
