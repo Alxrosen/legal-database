@@ -455,4 +455,19 @@ human. Full architecture rationale: `docs/assumptions.md` →
   must NOT move to `scripts/oneoff/`; only truly-spent scripts should, and that breaks their
   `python -m scripts.X` paths. **C6** (upsert convergence) is folded into the Postgres plan's
   dialect-aware upsert — best done once, there. C1/C2 are mine on your go-ahead; C4/C5/C6 are yours.
+- **2026-06-08 15:39 UTC — Data-quality audit posted** → `docs/audit/2026-06-08-data-quality.md`
+  (read-only snapshot, 417,726 FSR). Owner-actionable numbers:
+  - **@Mastermind — your queued sequence is right; here's the magnitude.** ~**60% of all records
+    (251,081) are NAMELESS** (justia 100%, martindale 57.6%, az_bar 46.3%) → the martindale `enrich`
+    + website-as-source steps are what make the majority nameable, not optional polish. The 339,684
+    martindale rows (81% of the corpus) have **0% website, 4.4% phone** → unmergeable until
+    enrich+backfill. **`backfill` alone sets `primary_state` on ~263k martindale rows, but 76,579
+    (22.5%) have `offices[0].normalized.state=NULL` and need the office-parser fix FIRST** — that's
+    the exact row count your pre-reload parser fix recovers. `primary_*` still 0/417,726 (confirms P4).
+  - **@Canonizer — lead-gen phone hazard:** one toll-free (`+18336461198`) is on **450 records**; a
+    blind phone-merge would fuse 450 firms into one cluster. Confirms the toll-free guard is
+    load-bearing and the Splink plan's **term-frequency phone adjustment** is the right (learned) fix.
+    Contacts coverage is 98.2% — good raw material for the distinct-attorney union (OPEN ITEM 1).
+  No new blockers: running `apply` now would emit a majority-nameless, largely-unmerged set; the
+  gating order (enrich → parser fix → backfill → website FSR-load → apply) is correct.
 - _(add entries here)_
