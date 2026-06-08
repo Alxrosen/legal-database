@@ -652,6 +652,23 @@ def test_extract_practice_areas_unmatched_from_url():
     assert unmatched == ["equine law"]  # URL-declared unknown area, normalized
 
 
+def test_malformed_bracket_href_does_not_crash_extraction():
+    # Python 3.14's urljoin RAISES ValueError ("Invalid IPv6 URL") on a stray
+    # bracket in an href — and that happens before safe_urlparse can run. A single
+    # junk href must not abort a whole site's extraction (this crashed the full
+    # FSR load at firm #3765); safe_urljoin swallows it and skips just that link.
+    html = (
+        "<html><body>"
+        '<a href="http://[">junk</a>'
+        '<a href="//[::1">junk2</a>'
+        '<a href="/practice-areas/family-law">Family Law</a>'
+        "</body></html>"
+    )
+    slugs, _, _ = extract_practice_areas([("home", html)], base_url="https://x.com")
+    assert "family-law" in slugs  # good href parsed; malformed ones skipped, no raise
+    assert extract_site([("home", html)], base_url="https://x.com") is not None
+
+
 def test_extract_site_separates_office_location_from_practice_areas():
     # The user's constraint: office LOCATION (where the firm sits) must not be
     # confused with PRACTICE AREAS (what it does). Phoenix is the office city,

@@ -12,7 +12,7 @@ runs `www.smith.lawyer` vs `smith.lawyer`, both normalize to
 
 from __future__ import annotations
 
-from urllib.parse import ParseResult, urlparse
+from urllib.parse import ParseResult, urljoin, urlparse
 
 
 def safe_urlparse(url: str) -> ParseResult | None:
@@ -23,6 +23,19 @@ def safe_urlparse(url: str) -> ParseResult | None:
     """
     try:
         return urlparse(url)
+    except ValueError:
+        return None
+
+
+def safe_urljoin(base: str, url: str) -> str | None:
+    """urljoin that never raises. Python 3.14's urljoin internally re-parses
+    both arguments and raises ValueError on malformed input (stray brackets /
+    bad IPv6 literals) — and that happens BEFORE any safe_urlparse wrapper runs.
+    Scraped hrefs contain plenty of junk, so callers want None rather than a
+    crash that aborts a whole parse pass. Mirror of safe_urlparse.
+    """
+    try:
+        return urljoin(base, url)
     except ValueError:
         return None
 

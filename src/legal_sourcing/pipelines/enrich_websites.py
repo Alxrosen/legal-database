@@ -617,7 +617,7 @@ def run_load_fsr(*, flush_every: int = 400, limit: int | None = None) -> None:
         buckets.setdefault(gz.parent.name, {})[gz.stem.replace(".html", "")] = gz
     engine = make_engine()
     buffer: list[dict[str, Any]] = []
-    emitted = skipped = seen = 0
+    emitted = skipped = seen = failed = 0
     for files in buckets.values():
         home = files.get("home")
         if home is None:
@@ -629,19 +629,24 @@ def run_load_fsr(*, flush_every: int = 400, limit: int | None = None) -> None:
         website = re.sub(r"^https?://(www\.)?", "", cand).split("/")[0].lower()
         if not website:
             continue
-        pages: list[tuple[str, bytes]] = []
-        for name, path in sorted(files.items()):
-            role = "home" if name == "home" else re.sub(r"\d+$", "", name)
-            pages.append((role, _read_gz(path)))
-        site = extract_site(pages, base_url=cand)
-        rec = fsr_record_from_site(
-            website,
-            site,
-            source_url=final or f"https://{website}",
-            http_status=sc.get("status"),
-            raw_payload_path=str(home),
-            scraped_at=datetime.fromtimestamp(home.stat().st_mtime, tz=UTC),
-        )
+        try:
+            pages: list[tuple[str, bytes]] = []
+            for name, path in sorted(files.items()):
+                role = "home" if name == "home" else re.sub(r"\d+$", "", name)
+                pages.append((role, _read_gz(path)))
+            site = extract_site(pages, base_url=cand)
+            rec = fsr_record_from_site(
+                website,
+                site,
+                source_url=final or f"https://{website}",
+                http_status=sc.get("status"),
+                raw_payload_path=str(home),
+                scraped_at=datetime.fromtimestamp(home.stat().st_mtime, tz=UTC),
+            )
+        except Exception as exc:  # one bad firm must never abort the whole batch
+            log.warning("enrich.fsr_extract_failed", website=website, error=str(exc))
+            failed += 1
+            continue
         if rec is None:
             skipped += 1
             continue
@@ -649,7 +654,7 @@ def run_load_fsr(*, flush_every: int = 400, limit: int | None = None) -> None:
         if len(buffer) >= flush_every:
             c = _upsert_fsr(engine, buffer)
             emitted += c["inserted"] + c["updated"]
-            log.info("enrich.fsr_flush", emitted=emitted, skipped=skipped, seen=seen)
+            log.info("enrich.fsr_flush", emitted=emitted, skipped=skipped, failed=failed, seen=seen)
             buffer.clear()
         if limit and emitted + len(buffer) >= limit:
             break
@@ -658,7 +663,7 @@ def run_load_fsr(*, flush_every: int = 400, limit: int | None = None) -> None:
         emitted += c["inserted"] + c["updated"]
     print(
         f"fsr-load: upserted {emitted} website source rows "
-        f"({skipped} non-firm sites skipped) from {seen} cached homes."
+        f"({skipped} non-firm skipped, {failed} extract-failed) from {seen} cached homes."
     )
 
 

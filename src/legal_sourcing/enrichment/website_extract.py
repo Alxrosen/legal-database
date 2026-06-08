@@ -28,14 +28,13 @@ import json
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from urllib.parse import urljoin
 
 from selectolax.parser import HTMLParser
 
 from legal_sourcing.normalize.name import looks_like_firm, normalize_firm_name
 from legal_sourcing.normalize.phone import normalize_phone
 from legal_sourcing.normalize.practice_areas import get_taxonomy
-from legal_sourcing.normalize.url import is_aggregator_domain, safe_urlparse
+from legal_sourcing.normalize.url import is_aggregator_domain, safe_urljoin, safe_urlparse
 
 # ---------------------------------------------------------------------------
 # Vocabulary
@@ -1028,7 +1027,10 @@ def extract_practice_areas(
             href = a.attributes.get("href") or ""
             if href.startswith(("mailto:", "tel:", "javascript:", "#")):
                 continue
-            parsed = safe_urlparse(urljoin(base_url, href))
+            joined = safe_urljoin(base_url, href)
+            if joined is None:
+                continue
+            parsed = safe_urlparse(joined)
             if parsed and host and parsed.netloc and parsed.netloc.lower() != host:
                 continue  # external link
             # Anchor text is a weak candidate; a /practice-areas/{slug} URL segment is
@@ -1288,8 +1290,8 @@ def discover_internal_pages(
         if href.startswith(("mailto:", "tel:", "javascript:", "#")):
             continue
         text = " ".join((a.text() or "").split()).lower()
-        full = urljoin(base_url, href)
-        parsed = safe_urlparse(full)
+        full = safe_urljoin(base_url, href)
+        parsed = safe_urlparse(full) if full else None
         if parsed is None or parsed.scheme not in ("http", "https"):
             continue
         if host and parsed.netloc and parsed.netloc.lower() != host:
@@ -1306,7 +1308,9 @@ def discover_internal_pages(
     # Ordered known-path guesses as fallbacks (worker tries these if nav missed).
     for role, paths in _KNOWN_PATHS.items():
         for path in paths:
-            _add(role, urljoin(base_url, path))
+            joined = safe_urljoin(base_url, path)
+            if joined:
+                _add(role, joined)
     return out
 
 
