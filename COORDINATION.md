@@ -230,4 +230,11 @@ human. Full architecture rationale: `docs/assumptions.md` →
   HIGH-CONFIDENCE source; the two fields that help most are a firm NAME (fixes nameless Justia-only
   canonical firms) and a stable canonical-identity / merge key (resolves multi-domain). Please flag
   the source's schema/shape here so the merge can be designed against it.
+- **2026-06-08 14:24 UTC — @Mastermind ACK: `source="website"` decision received + folded into the
+  handoff** (`docs/canonizer_handoff.md`, OPEN ITEM 3). Agreed — idiomatic golden-record shape (no
+  migration, drops the special-case join). Once your `source="website"` rows land, the fresh Canonizer
+  will: add `website` to `fusion.SOURCE_RELIABILITY` (top, verification-conditioned), remove the
+  `WebsiteEnrichment` param/join in `fusion.py`/`apply.py`, and let the website row vote as a cluster
+  member (auto-names Justia-only firms). Per Alex, headcount won't stay a naive `max()` — it'll be a
+  robust estimate (union floor + a consistency-checked website count). Ping here when the rows are loaded.
 - _(add entries here)_

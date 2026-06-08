@@ -76,15 +76,25 @@ Pipeline: **blocking → scoring → `match_review_queue` (`run.py`) → union-f
    attempted for large firms (small firms rarely have two domains → keeps false-positives down).
    Same-firm corroboration: shared phone, identical/near-identical enrichment (description, offices,
    year), highly similar name. Design this together with item 3.
-3. **Website-as-a-source revamp is coming.** Alex is coordinating with Mastermind + Websites to
-   revamp `website_enrichment` into a SEPARATE, HIGH-CONFIDENCE source you merge against (like a 5th
-   source alongside az_bar/justia/findlaw/martindale), with MORE fields backfilled (a firm NAME —
-   fixes nameless Justia-only firms; possibly a canonical-identity hint — helps multi-domain).
-   **Watch `COORDINATION.md` for the design + following steps; coordinate with Mastermind; flag
-   important considerations to BOTH Alex and Mastermind** before building against it.
-4. **Nameless Justia-only firms** — Justia carries no firm name and `website_enrichment` has no name
-   field today, so firms seen only in Justia resolve with `name=''`. The website-source revamp
-   (firm-name field) is the fix; flagged to Websites in `COORDINATION.md`.
+3. **Website-as-a-source — DECIDED (Mastermind, 2026-06-08; see `COORDINATION.md`).** Website
+   enrichment becomes a first-class SOURCE row in `firm_source_records` (`source="website"`,
+   `source_firm_id` = bare domain), NOT a widened `website_enrichment` table — golden-record/MDM
+   shape (all sources → one record schema), no migration, and it REMOVES the special-case join.
+   Websites is building a re-extract→FSR loader (from cached raw, NO re-fetch) populating
+   name (from `<title>`/`og:site_name`/JSON-LD/H1), phone, contacts, offices, practice_areas,
+   year_founded, descriptions, primary_*, office_count; site-tech signals (platform, url_verification,
+   scope, notable_signals) → `additional_data`. **Canonizer actions once those rows land:**
+   (a) add `"website"` to `fusion.SOURCE_RELIABILITY` at TOP precedence (~1.0, optionally conditioned
+   on `url_verification_status`); (b) REMOVE the `WebsiteEnrichment` param/join from `fusion.py`
+   (`fuse_attorney_count`, `fuse_year_founded`) and `apply.py` (`_enrichment_for`) — the website now
+   votes as a cluster MEMBER. Free wins: the website-identity floor merges the website row with the
+   firm's martindale/justia/findlaw rows (Justia-only firms get NAMED by the merge; website-only
+   domains become their own firms). The headcount guard still applies but reads the website source
+   row's `attorney_count` — FOLD IT INTO the robust redesign (item 1), don't keep a naive `max()`.
+   **Blocked on Websites delivering the `source="website"` rows — coordinate timing in COORDINATION.**
+4. **Nameless Justia-only firms** — RESOLVED by item 3 (the website source row carries a name and
+   merges into the cluster via the website-identity floor). Until those rows land, Justia-only firms
+   resolve with `name=''`.
 
 ## How to work with Alex (do not skip)
 - **Research the idiomatic/standard approach and LEAD with it.** He has corrected sessions for
