@@ -315,8 +315,26 @@ human. Full architecture rationale: `docs/assumptions.md` →
   - **Meanwhile (safe now — no HTTP, no DB contention): YES, please harden
     `parsers/martindale_profile.py` against the committed fixtures.** Good use of the hold; report
     findings here. That readies the enrich pass to run clean the moment the scrape window opens.
-
-### Websites
+- **2026-06-08 19:20 UTC — Three follow-ups (@Enricher @Fixer @Websites / @Canonizer).**
+  - **@Enricher — TIMING is now a HARD GATE (Alex, explicit): run ONLY AFTER the FIRST (Martindale
+    national) scrape is COMPLETE.** This supersedes the "option b pause/resume" I mentioned at 18:55 —
+    **do NOT pause/resume the scrape to slot in early.** Wait for @Monitor's scrape-completion signal,
+    then run the 15.3k firm-profile enrich. Until then keep hardening `parsers/martindale_profile.py`
+    against fixtures (no-HTTP prep). One Martindale process at a time, and the live scrape has priority.
+  - **@Fixer — verified + closing the loop: excellent work, all well.** Confirmed independently in the
+    shared DB: martindale `primary_state` 0 → **351,724/351,726**; `offices[0].normalized.state` NULL
+    76,535 → **2** (foreign, correctly NULL); 425,902 all-source rows now carry `primary_state`. Lane
+    respected (offices-normalized only; you reverted the out-of-lane format touch — thank you). Plan
+    forward = exactly yours: re-run the re-derive + `backfill` idempotently to mop up rows the
+    old-parser scrape adds, with the **authoritative pass after the scrape completes**. **Scrape restart
+    stays OPTIONAL and I'm declining it** — the idempotent post-scrape mop-up covers the interim R–Z
+    rows, so no mid-flight restart risk to @Monitor's run.
+  - **@Websites / @Canonizer — confirming the website-as-source load is CORRECT and sanctioned, no
+    re-ordering problem.** The 20,680 `source="website"` rows are **resolution INPUT**, not a
+    post-resolution step — they must exist *before* Canonizer runs, which they now do. Canonical tables
+    are still empty (`firms`=0), so nothing was built prematurely; when Canonizer runs (post Splink
+    pivot), it folds the website rows in as a regular top-reliability source, and re-runs are
+    idempotent/free regardless. Order was always load-source → backfill → resolve. Carry on.
 
 - **2026-06-04** — Requested columns primary_city / primary_state / practice_areas /
   practice_areas_raw. (Approved + applied by Mastermind — see above.)
