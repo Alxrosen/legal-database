@@ -32,7 +32,7 @@ from urllib.parse import urljoin
 
 from selectolax.parser import HTMLParser
 
-from legal_sourcing.normalize.name import looks_like_firm
+from legal_sourcing.normalize.name import looks_like_firm, normalize_firm_name
 from legal_sourcing.normalize.phone import normalize_phone
 from legal_sourcing.normalize.practice_areas import get_taxonomy
 from legal_sourcing.normalize.url import is_aggregator_domain, safe_urlparse
@@ -229,6 +229,11 @@ class SiteExtraction:
     platform: str = "unknown"
     is_law_related: bool = False
     relevance_terms: list[str] = field(default_factory=list)
+    # Firm identity from the site (<title>/og:site_name/JSON-LD/H1). Raw +
+    # normalized (suffix-stripped) — mirrors FirmSourceRecord.name_*; names the
+    # otherwise-nameless Justia-only firms during canonical fusion.
+    name_raw: str | None = None
+    name_normalized: str | None = None
     attorney_count: int | None = None
     attorney_count_is_min: bool = False
     attorney_count_method: str = "unknown"
@@ -241,16 +246,27 @@ class SiteExtraction:
     # zip-anchored footer addresses, NOT from jurisdiction/"we serve" copy.
     primary_city: str | None = None
     primary_state: str | None = None
+    primary_postal_code: str | None = None
     years_in_operation: int | None = None
     years_is_min: bool = False
+    year_founded: int | None = None  # the founding YEAR (e.g. 1947), if stated
     phones: list[str] = field(default_factory=list)
+    # Attorneys/people found on the site: [{name_raw, name_normalized, title}].
+    contacts: list[dict[str, str | None]] = field(default_factory=list)
     notable_signals: list[str] = field(default_factory=list)
     # Legal specialties the firm advertises (canonical slugs + verbatim). Matched
     # via the practice-area taxonomy, so office LOCATIONS can never leak in here.
     practice_areas: list[str] = field(default_factory=list)
     practice_areas_raw: list[str] = field(default_factory=list)
+    practice_areas_unmatched: list[str] = field(default_factory=list)
     scope: str | None = None
     description_blurb: str | None = None
+    firm_short_description: str | None = None
+    firm_descriptions: list[dict[str, str]] = field(default_factory=list)
+    # Defunct-firm signal: 'closed' / 'parked' / None (mirrors FSR).
+    deactivation_status: str | None = None
+    # Escape hatch for signals without a dedicated column (mirrors FSR).
+    additional_data: dict[str, object] = field(default_factory=dict)
     needs_render: bool = False
     url_verification_status: str = (
         "unverified"  # verified|legal_but_mismatched|not_a_law_firm|unreachable
@@ -791,6 +807,151 @@ def extract_years(text: str, *, now_year: int | None = None) -> tuple[int | None
     return best if best else (None, False)
 
 
+def extract_year_founded(text: str, *, now_year: int | None = None) -> int | None:
+    """The firm's founding YEAR ('Established in 1947' -> 1947), floored at 1780
+    (no US firm predates ~1790; an earlier year is a city/historical reference)."""
+    now_year = now_year or datetime.now(UTC).year
+    fm = _FOUNDED.search(text)
+    if fm:
+        yr = int(fm.group(1))
+        if 1780 <= yr <= now_year:
+            return yr
+    return None
+
+
+# Title separators: pipe, en/em dash, middot, bullet, or " - ". e.g.
+# "Firm | Tagline" / "Firm - PI Lawyers".
+_TITLE_SEP = re.compile(r"\s*[|–—·•]\s*|\s+-\s+")  # noqa: RUF001 (intentional dash separators)
+# Strong firm-name markers — stricter than looks_like_firm (which matches bare
+# "Lawyers"), so a practice DESCRIPTOR in a <title>/<h1> ("Personal Injury
+# Lawyers") is NOT taken as a name. Trailing spaces on short suffixes avoid the
+# " pa"/"Parker" over-match. Tested against the padded, lower-cased candidate.
+_STRONG_FIRM: tuple[str, ...] = (
+    " llp",
+    " lllp",
+    " llc",
+    " pllc",
+    " p.c",
+    " pc ",
+    " p.a",
+    " pa ",
+    " apc ",
+    " plc ",
+    " ltd ",
+    " & ",
+    " and associates",
+    "& associates",
+    "law firm",
+    "law group",
+    "law offices",
+    "law office",
+    "law center",
+    "legal group",
+    "legal services",
+    # NB: NOT bare " law "/" legal " — those match practice descriptors
+    # ("Traffic Law", "Family Law"), which must not be taken as firm names.
+)
+_GENERIC_NAME: frozenset[str] = frozenset(
+    {
+        "home",
+        "homepage",
+        "home page",
+        "welcome",
+        "contact",
+        "contact us",
+        "about",
+        "about us",
+        "menu",
+        "untitled",
+        "index",
+        "blog",
+        "our team",
+        "attorneys",
+        "lawyers",
+        "our attorneys",
+        # site-builder placeholders (unconfigured Wix/Squarespace/etc.)
+        "mysite",
+        "my site",
+        "site",
+        "new site",
+        "new page",
+        "website",
+        "my website",
+    }
+)
+
+
+def _clean_name(s: str) -> str:
+    s = " ".join((s or "").split()).strip(" -|·•")
+    return re.sub(r"^(welcome to|home)\s+", "", s, flags=re.I).strip()
+
+
+def extract_firm_name(
+    pages: list[tuple[str, str | bytes]], *, base_url: str = ""
+) -> tuple[str | None, str | None]:
+    """Firm name from the site, preferring STRUCTURED identity (legal JSON-LD
+    `name`, og:site_name) over the <title>/<h1>; title/H1 candidates must carry a
+    strong firm marker so a practice descriptor isn't mistaken for a name.
+    Returns (raw, normalized) — names the nameless Justia-only firms in fusion.
+    """
+    if not pages:
+        return None, None
+    tree = _tree(next((h for r, h in pages if r == "home"), pages[0][1]))
+    trusted: list[str] = []  # legal JSON-LD name + og:site_name (accept as-is)
+    weak: list[str] = []  # <title> / <h1> (require a strong firm marker)
+    for node in tree.css('script[type="application/ld+json"]'):
+        try:
+            data = json.loads(node.text() or "")
+        except (json.JSONDecodeError, ValueError):
+            continue
+        for obj in data if isinstance(data, list) else [data]:
+            if not isinstance(obj, dict):
+                continue
+            t = obj.get("@type")
+            types = [
+                x.strip().lower() for x in (t if isinstance(t, list) else [t]) if isinstance(x, str)
+            ]
+            if isinstance(obj.get("name"), str) and any(ty in _LEGAL_JSONLD_TYPES for ty in types):
+                trusted.append(obj["name"])
+    og = tree.css_first('meta[property="og:site_name"]')
+    if og and og.attributes.get("content"):
+        trusted.append(og.attributes["content"])
+    ti = tree.css_first("title")
+    if ti and ti.text():
+        weak.append(ti.text())
+    h1 = tree.css_first("h1")
+    if h1 and h1.text():
+        weak.append(h1.text())
+
+    def _segments(strings: list[str]) -> list[str]:
+        # Split each candidate on title separators (a junk og:site_name like
+        # "Jones Walker LLP - Jones Walker LLP | Homepage" -> "Jones Walker LLP"),
+        # clean, and drop generic placeholders / out-of-range lengths.
+        out: list[str] = []
+        for s in strings:
+            for seg in _TITLE_SEP.split(s):
+                c = _clean_name(seg)
+                if c and 2 <= len(c) <= 80 and c.lower() not in _GENERIC_NAME and c not in out:
+                    out.append(c)
+        return out
+
+    def _has_marker(c: str) -> bool:
+        return any(mk in f" {c.lower()} " for mk in _STRONG_FIRM)
+
+    # Trusted (JSON-LD / og:site_name): firm-marker segment first, else any clean
+    # segment. Weak (<title>/<h1>): a strong firm marker is required so a practice
+    # descriptor ("Personal Injury Lawyers") is never mistaken for a name.
+    for segs, require_marker in ((_segments(trusted), False), (_segments(weak), True)):
+        ordered = [c for c in segs if _has_marker(c)]
+        if not require_marker:
+            ordered += [c for c in segs if not _has_marker(c)]
+        for c in ordered:
+            nn = normalize_firm_name(c)
+            if nn and nn.normalized:
+                return c, nn.normalized
+    return None, None
+
+
 def extract_phones(html: str | bytes) -> list[str]:
     tree = _tree(html)
     raw: list[str] = []
@@ -1000,15 +1161,20 @@ def extract_site(
     office_count, addresses = extract_offices(home_html)
     years, years_min = extract_years(all_text, now_year=now_year)
     practice_areas, practice_areas_raw = extract_practice_areas(pages, base_url=base_url)
+    name_raw, name_normalized = extract_firm_name(pages, base_url=base_url)
+    blurb = extract_description_blurb(pages)
     # Primary office = the first zip-anchored footer address (HQ, by document
     # order) — a real location, never inferred from "we serve"/jurisdiction copy.
     primary_city = addresses[0]["city"] if addresses else None
     primary_state = addresses[0]["state"] if addresses else None
+    primary_postal = addresses[0]["postal_code"] if addresses else None
 
     out = SiteExtraction(
         platform=detect_platform(home_html),
         is_law_related=is_law_related,
         relevance_terms=relevance_terms,
+        name_raw=name_raw,
+        name_normalized=name_normalized,
         attorney_count=headcount.count,
         attorney_count_is_min=headcount.is_min,
         attorney_count_method=headcount.method,
@@ -1019,14 +1185,17 @@ def extract_site(
         office_addresses=addresses,
         primary_city=primary_city,
         primary_state=primary_state,
+        primary_postal_code=primary_postal,
         years_in_operation=years,
         years_is_min=years_min,
+        year_founded=extract_year_founded(all_text, now_year=now_year),
         phones=extract_phones(home_html),
         notable_signals=extract_notable_signals(all_text),
         practice_areas=practice_areas,
         practice_areas_raw=practice_areas_raw,
         scope=extract_scope(all_text),
-        description_blurb=extract_description_blurb(pages),
+        description_blurb=blurb,
+        firm_short_description=blurb,
     )
     # thin page with nothing extracted -> headless candidate
     out.needs_render = len(all_text) < 400 and out.attorney_count is None
@@ -1055,11 +1224,13 @@ __all__ = [
     "SiteExtraction",
     "detect_platform",
     "discover_internal_pages",
+    "extract_firm_name",
     "extract_headcount",
     "extract_offices",
     "extract_phones",
     "extract_practice_areas",
     "extract_site",
+    "extract_year_founded",
     "extract_years",
     "relevance_gate",
 ]

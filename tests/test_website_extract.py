@@ -11,11 +11,13 @@ from __future__ import annotations
 from legal_sourcing.enrichment.website_extract import (
     detect_platform,
     discover_internal_pages,
+    extract_firm_name,
     extract_headcount,
     extract_offices,
     extract_phones,
     extract_practice_areas,
     extract_site,
+    extract_year_founded,
     extract_years,
     relevance_gate,
 )
@@ -499,6 +501,53 @@ PRACTICE_HOME = """
 <footer>123 Main St Suite 200 Phoenix, AZ 85016</footer>
 </body></html>
 """
+
+
+def test_extract_firm_name():
+    # legal JSON-LD `name` is trusted (preferred over the descriptor title).
+    jsonld = (
+        "<html><head><title>Personal Injury Lawyers | Smith &amp; Jones</title>"
+        '<script type="application/ld+json">'
+        '{"@type":"Attorney","name":"Smith & Jones LLP"}</script>'
+        "</head><body></body></html>"
+    )
+    raw, norm = extract_firm_name([("home", jsonld)])
+    assert raw == "Smith & Jones LLP"
+    assert norm == "smith jones"
+    # title-only: the firm segment (strong marker) beats the descriptor segment.
+    title_only = (
+        "<html><head><title>Personal Injury Lawyers | Hensley Legal Group</title>"
+        "</head><body></body></html>"
+    )
+    assert extract_firm_name([("home", title_only)])[0] == "Hensley Legal Group"
+    # a pure practice descriptor is NOT mistaken for a firm name.
+    desc = "<html><head><title>Phoenix Personal Injury Lawyers</title></head><body></body></html>"
+    assert extract_firm_name([("home", desc)]) == (None, None)
+
+
+def test_extract_year_founded():
+    assert extract_year_founded("Established in 1947, the firm grew.", now_year=2026) == 1947
+    assert extract_year_founded("Serving clients since 1850.", now_year=2026) == 1850
+    # pre-1780 (city/historical reference) is rejected; bare "N years" is not a year
+    assert (
+        extract_year_founded("...North America. Founded in 1764 by French.", now_year=2026) is None
+    )
+    assert extract_year_founded("Over 25 years of experience") is None
+
+
+def test_extract_site_populates_name_year_postal():
+    html = (
+        "<html><head><title>Smith &amp; Jones, LLP | Attorneys</title>"
+        '<meta property="og:site_name" content="Smith &amp; Jones, LLP"></head><body>'
+        "<p>Established in 1990, our firm serves clients statewide.</p>"
+        "<footer>123 Main St, Phoenix, AZ 85016</footer></body></html>"
+    )
+    site = extract_site([("home", html)], base_url="https://smithjones.com", now_year=2026)
+    assert site.name_raw == "Smith & Jones, LLP"
+    assert site.name_normalized == "smith jones"
+    assert site.year_founded == 1990
+    assert site.primary_city == "Phoenix"
+    assert site.primary_postal_code == "85016"
 
 
 def test_extract_practice_areas_matches_taxonomy_not_location():
