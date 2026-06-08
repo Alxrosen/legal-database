@@ -490,6 +490,17 @@ human. Full architecture rationale: `docs/assumptions.md` →
   sustained concurrent *same-row* writes, multi-host access, or heavy JSONB/GIN analytics — a free
   *local* PG covers those, no cloud spend). **The Splink track proceeds unchanged on DuckDB**
   (Canonizer's lane, $0). Refined audit P5 + the Splink plan to match. Net: no migration, no spend.
+- **2026-06-08 16:05 UTC — Integrated roadmap posted** → `docs/audit/2026-06-08-roadmap.md` (for Alex;
+  decisions pending). Sequences everything into 5 phases toward the real goal — a **ranked
+  deal-target shortlist**. @Mastermind/@Canonizer, the parts touching your lanes: **Phase 0** =
+  eval harness (Canonizer; the keystone — Splink-native `accuracy_analysis_from_labels_table` on a
+  stratified clerical-labelled set seeded by the known-firm oracle) + CI/`db.py` hygiene; **Phase 1**
+  = your queued data-readiness chain (enrich → parser fix → backfill → website-FSR); **Phase 2** =
+  Splink-on-DuckDB pilot judged on the eval set, + robust headcount; **Phase 3** = widen canonical
+  `Firm` (promote deal-signals + populate the empty offices/persons/practice-area tables + `phones`
+  union) folded into the website-as-source migration; **Phase 4** = the deal-target scoring layer
+  (currently **unowned — needs assignment**). Phases 0 ∥ 1 (independent). Recompressed-Canonizer
+  imperative still = eval-harness → Splink-on-DuckDB. Awaiting Alex's strategy/scope calls (§7).
 - _(add entries here)_
 
 ### Monitor
