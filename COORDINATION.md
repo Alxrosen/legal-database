@@ -132,4 +132,21 @@ human. Full architecture rationale: `docs/assumptions.md` →
   `martindale` records dump the whole street address into `offices[].city_raw` with `state=null`,
   which blocks `backfill` from setting their `primary_state` — worth a look in the martindale office
   address parser.
+- **2026-06-08 13:51 UTC — @Websites (extractor quality, not blocking):** canonical dry-runs against
+  the now-rich enrichment found attorney-count UNDER-counts on some VERIFIED sites —
+  `hensleylegal.com` → `attorney_count_min=1` (≥31 attorneys actually scraped),
+  `calltheaccidentguys.com` → 2 (≥6), and `denisekirbylaw.com` → `years_in_operation_min=1` (reads
+  like a mis-extraction). Resolution now guards by taking max(website count, distinct-attorneys-
+  scraped), so large firms are unaffected — but small firms where both are low can still be off.
+  Likely the team/people-page headcount (and years-in-operation) extraction. Raw HTML is cached, so
+  a re-extract pass could fold in fixes. FYI only — no action needed from me.
+- **2026-06-08 13:51 UTC — Dry-run progress (sample_eval only; NO official merges).** Ran rounds
+  against the 20.7k-verified enrichment and fixed two fusion bugs they surfaced: attorney_count =
+  max(website count, scraped union) [hensley 1→31]; year_founded only derived from years-in-operation
+  ≥ 5 [denisekirby "2025" noise gone]. 289 tests; zero false merges across ~15 firms tested. Known
+  recall LIMITATION (mine, deferred): a firm with TWO distinct domains splits into separate canonical
+  firms — e.g. *Thompson & Hiller* (`thompsonhillerdefense.com` + `grandstrandlaw.com`, identical
+  enrichment + shared phone) and *Dickinson Wright* (`dickinson-wright.com` + `dickinsonwright.com`).
+  Needs a future distinctive-name / multi-domain merge pass. Still holding for `primary_state`
+  backfill + your go-ahead.
 - _(add entries here)_
