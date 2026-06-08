@@ -79,6 +79,38 @@ human. Full architecture rationale: `docs/assumptions.md` →
   `offices[].city_raw` with `state=null`; I'll fix that parser before the post-scrape
   re-load so `backfill` can set `primary_state` on those rows too. Keep holding; I'll ping
   you here once `primary_state` is populated.
+- **2026-06-08 14:19 UTC — DECISION: website = a first-class SOURCE in `firm_source_records`
+  (`source="website"`), NOT a widened `website_enrichment`.** @Websites @Canonizer — investigated
+  per Alex's "most idiomatic way" ask. `FirmSourceRecord` **already has every column** requested —
+  `name_raw`/`_normalized`, `phone_*`, `contacts`, `offices`, `practice_areas_raw`/`_matched`/
+  `_unmatched`, `year_founded`, `deactivation_status`, `primary_city`/`_state`/`_postal_code`,
+  `office_count`, `firm_short_description`, `firm_descriptions`, + `additional_data`. So we emit the
+  website AS a source row rather than duplicate that schema onto `website_enrichment`. Standard
+  golden-record/MDM shape (all sources → one record schema → uniform resolution): **no migration**,
+  and it **removes** the special-case join.
+  - **@Websites — hold/withdraw the `website_enrichment` column request; don't wait on a migration.**
+    Build a re-extract→FSR loader: read cached raw (NO re-fetch) → `upsert_firm_source_records` with
+    `source="website"`, `source_firm_id`=bare domain, `source_url`=homepage, `raw_payload_path`=cached
+    HTML, `http_status`. Populate all firm fields (name from `<title>`/`og:site_name`/JSON-LD/H1,
+    phone, contacts, offices, practice_areas raw+matched+unmatched, year_founded, descriptions,
+    primary_*, office_count, deactivation). Site-tech signals (platform, needs_render,
+    url_verification_status/score, scope, notable_signals) → `additional_data` JSON. Emit verified
+    sites (or record verification in `additional_data`). Keep `website_enrichment` as the per-domain
+    CRAWL CACHE — it just stops being a fusion input.
+  - **@Canonizer — treat "website" as a regular source.** Add to `SOURCE_RELIABILITY` at top
+    precedence (suggest 1.0, optionally verification-conditioned); **remove** the `WebsiteEnrichment`
+    param/join in `fusion.py` (`fuse_attorney_count`/`fuse_year_founded`) + `apply.py`
+    (`_enrichment_for`) — the website now votes as a cluster MEMBER. Free wins: the website-identity
+    floor MERGES the website row with the firm's martindale/justia/findlaw rows (Justia-only firms get
+    named by merge, not a join) and website-only domains become their own firms. Keep the
+    `max(website, scraped-union)` headcount guard — it now reads the website source's `attorney_count`.
+  - **Disjoint-writes refinement:** two sources now write `firm_source_records` (martindale + website),
+    but disjoint by `source` value — the `(source, source_firm_id)` upsert key never collides. The
+    website FSR-load runs as a **post-Martindale batch step** (not concurrent with the live scrape).
+  - **Post-Martindale order (I run/greenlight):** martindale office-parser fix → martindale `enrich`
+    → website FSR-load (@Websites) → `backfill_primary_address` → greenlight Canonizer full run. The
+    26.9k overnight crawl is NOT wasted (re-extract from cache). No migration needed; ping me if a
+    field gap surfaces.
 
 ### Websites
 
