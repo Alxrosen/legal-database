@@ -12,6 +12,7 @@ import pytest
 
 from legal_sourcing.parsers.martindale import (
     MartindaleCityParser,
+    _is_concatenated_list,
     _split_title_at_firm,
     extract_page_meta,
     parse_firm_profile,
@@ -352,6 +353,63 @@ def test_parse_firm_profile_full_office_count_when_distinct_from_people():
     result = parse_firm_profile_full(html.encode("utf-8"))
     # 100 is wildly larger than 5 -> trust it as office_count.
     assert result["office_count"] == 100
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        # Genuine prose (recon: all 5 firms' real description blocks).
+        (
+            "Starnes Davis Florie LLP is a general civil practice law firm "
+            "exclusively committed to the trial and resolution of civil litigation.",
+            False,
+        ),
+        # AOP list rendered without separators (recon: Starnes 818/938-char
+        # blocks, McGhee 1,144, Sargon 123, Prim 58 — all leaked before).
+        (
+            "Admiralty & Maritime LitigationAlternative Dispute ResolutionAppellate "
+            "LawAutomobile Liability DefenseBanking & Financial ServicesBusiness Litigation",
+            True,
+        ),
+        ("Civil LitigationPersonal InjuryFraudReal EstateCollections", True),
+        ("", False),
+        ("Short prose sentence about the firm.", False),
+    ],
+)
+def test_is_concatenated_list(text, expected):
+    assert _is_concatenated_list(text) is expected
+
+
+def test_parse_firm_profile_full_filters_long_aop_text_noise():
+    """Starnes-shape regression: the AOP list also renders as one or more
+    long, null-headed `div.truncate-text` blocks (recon measured 818 & 938
+    chars). The old `len < 500` gate let them through into firm_descriptions;
+    only the genuine prose block must survive.
+    """
+    prose = (
+        "Starnes Davis Florie LLP is a general civil practice law firm exclusively "
+        "committed to the trial and resolution of civil litigation. The firm serves "
+        "physicians, hospitals, banks, corporations, and governments across Alabama."
+    )
+    aop_noise_long = (
+        "Admiralty & Maritime LitigationAlternative Dispute ResolutionAppellate Law"
+        "Automobile Liability DefenseBanking & Financial ServicesBiotechnology & "
+        "PharmaceuticalBusiness Investigations & White Collar DefenseBusiness Litigation"
+        "Class Actions & Mass TortsComplex Insurance LitigationConstruction Litigation"
+    )
+    aop_noise_short = "Civil LitigationPersonal InjuryFraudReal EstateCollections"
+    html = f"""<html><body>
+      <ul class="masthead-list">
+        <li class="masthead-list__item masthead-list__item--bold">Birmingham, AL</li>
+        <li class="masthead-list__item">100 Brookwood Place, 7th Floor, Birmingham, AL 35209</li>
+      </ul>
+      <div class="truncate-text">{prose}</div>
+      <div class="truncate-text">{aop_noise_long}</div>
+      <div class="truncate-text">{aop_noise_short}</div>
+    </body></html>"""
+    result = parse_firm_profile_full(html.encode("utf-8"))
+    texts = [d["text"] for d in result["firm_descriptions"]]
+    assert texts == [prose]
 
 
 def test_extract_page_meta_falls_back_to_anchor_data_page():
