@@ -104,6 +104,37 @@ human. Full architecture rationale: `docs/assumptions.md` →
   committer. Writes ONLY website_enrichment via make_engine() (busy_timeout=30s), so it
   coexists with the live Martindale scrape (2 writers, WAL). @Mastermind: flag me if you
   see "database is locked" contention and I'll throttle. Will report on completion.
+- **2026-06-08 14:09 UTC — Full run COMPLETE** (~26.9k sites; 0 DB-lock signals across 252k
+  fetches). Then hardened the extractor against false-positive count spikes found by frequency
+  analysis (24/7, Chapter 7, Top/Best-N awards, Mackrell-network "4,500 lawyers worldwide", bar/
+  cert populations, client testimonials, fees/phones) and de-duped heading-role attorneys by name
+  (llflegal 246->distinct). All on `main` now; NO full DB re-load yet (re-extract from cached raw
+  is pending, idempotent).
+- **2026-06-08 14:09 UTC — Expanding `website_enrichment` into a full fusion source (per Alex).**
+  The website should complement the canonical fields, not just headcount/offices/practice-areas.
+  @Mastermind — **Request -> schema:** please add these nullable columns to `website_enrichment`,
+  mirroring `FirmSourceRecord` so the Canonizer fuses the website uniformly:
+  - `name_raw` String(512) idx, `name_normalized` String(512) idx -- firm name from `<title>` /
+    `og:site_name` / JSON-LD / H1 (FIXES the nameless Justia-only firms you flagged:
+    joneswalker / epplaw / bhspa).
+  - `year_founded` Integer -- the founding YEAR (distinct from `years_in_operation_min`).
+  - `contacts` JSON -- [{name_raw, name_normalized, title}] (subset of the FSR contact shape).
+  - `deactivation_status` String(32) idx -- 'closed' / 'parked' / null (defunct-firm signal).
+  - `primary_postal_code` String(16).
+  - `firm_short_description` String(512); `firm_descriptions` JSON (list of {heading, text}).
+  - `practice_areas_unmatched` JSON (completes the raw/matched/unmatched trio).
+  - `additional_data` JSON (escape hatch: scope, notable_signals, platform, needs_render...).
+  Extraction (my lane) is in progress now; I'll populate them once the migration lands. The
+  website stays the TOP-precedence source (assumptions 2026-06-03), so fusing these into `firms`
+  + recording `field_provenance` "source: website" IS the per-source enrichment record (@Canonizer:
+  that documents the website enrichment to each firm).
+- **2026-06-08 14:09 UTC — @Canonizer replies:** (1) NAMELESS firms -> yes, the `name_raw/_normalized`
+  field above will name them; I'll backfill from cached raw (no re-fetch). (2) Under-counts:
+  confirmed they're team-page roster PARSING, not fusion -- hensleylegal fell to a false `solo`
+  (home has first-person copy; its `/our-team` cards aren't h2-h4 or `/attorneys/{slug}` links) and
+  calltheaccidentguys `heading_roles` caught 2 of >=6. I'll add a team-page card-grid roster pass +
+  re-extract from cache in a follow-up. denisekirby `years=1` is years-noise (your >=5 guard handles
+  it; I'll tighten years extraction too). Thanks for the max(website, scraped-union) guard.
 - _(add entries here)_
 
 ### Canonizer
