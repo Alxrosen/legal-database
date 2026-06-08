@@ -486,6 +486,93 @@ def test_extract_site_separates_office_location_from_practice_areas():
     assert "phoenix" not in [s.lower() for s in site.practice_areas]
 
 
+def test_headcount_rejects_non_firm_stated_counts():
+    # Real full-run false positives: fees, phone tails, professional networks,
+    # bar/cert populations, statistics, other-firm mentions — none are THIS
+    # firm's own headcount, so the stated count must not be read from them.
+    cases = [
+        ("A portion of the $5000 attorney flat fee is usually paid", 5000),
+        ("DLA Piper has 4,827 attorneys, making it the second largest", 4827),
+        ("Florida Bar members, approximately 4,800 lawyers, are board certified", 4800),
+        ("a network representing 90 firms and 4,500 lawyers in 60 countries", 4500),
+        ("provides access to more than 4,500 lawyers worldwide via mackrell", 4500),
+        ("call us (401) 288 - 3888 attorney on call 24/7", 3888),
+        ("Matters Handled 3,500+ Lawyers Trained 5,000+ Courts Admitted", 3500),
+        ("Advanced Filter 2238 Lawyers Found Clear All filters", 2238),
+        ("50+ law firms with close to 3,000 lawyers practicing nationwide", 3000),
+        ("an academy that is limited to 250 attorneys in the country", 250),
+        ("Fewer than 1,600 attorneys nationwide are fellows of this society", 1600),
+        ("Court filing fees: $700 - $1,600 Attorney fees apply here", 1600),
+        ("Avvo rating and endorsed by 1,700 lawyers we will review your case", 1700),
+        # frequency-spike false positives (count clustered across many firms):
+        ("Phoenix office info Open 24/7 Attorney Advertising disclaimer", 7),  # arizonazitonlaw
+        (
+            "San Diego Chapter 7 Attorneys handle Chapter 7 Bankruptcy filings",
+            7,
+        ),  # bankruptcyattorneys
+        (
+            "Susan: After interviewing 10+ attorneys, I was glad to find them",
+            10,
+        ),  # adlerandadler (review)
+        ("Google review: 10/10 Lawyer! Jarom is responsive and helpful", 10),  # bangerterlawfirm
+        ("DUI defense. Voted as one of The Best 100 Lawyers in America", 100),  # dmcantor (award)
+        (
+            "It's personal to us. We don't have 100 attorneys here, you matter",
+            100,
+        ),  # barteltlaw (negation)
+        (
+            "He is one of approximately 100 attorneys in Ohio to have earned this",
+            100,
+        ),  # cornwell-law (cert)
+        (
+            "Big firms in Denver have teams of 100+ lawyers and staff; we differ",
+            100,
+        ),  # coloradopersonalinjuryhelp
+    ]
+    for phrase, bad in cases:
+        html = f"<html><body><p>{phrase}</p></body></html>"
+        hc, _ = extract_headcount([("home", html)], base_url="https://x.com")
+        assert hc.count != bad, f"should reject {bad} from {phrase!r} (got {hc.count})"
+
+
+def test_headcount_keeps_real_big_firm_stated_counts():
+    # Real AmLaw / large-firm self-counts that MUST survive the guards above.
+    cases = [
+        ("Approximately 4,000 Attorneys Firmwide Meet our lawyers", 4000),
+        ("our team of more than 2,200 lawyers and legal professionals", 2200),
+        ("approximately 2,200 attorneys practicing in over 250 areas", 2200),
+        ("With over 2,400 lawyers across 60 offices worldwide today", 2400),
+        ("1,250 attorneys strong. Taft Fellowship Scholars program", 1250),
+        ("Jackson Lewis P.C. 1,100+ attorneys located in major cities nationwide", 1100),
+        ("With 240 attorneys in Louisiana and Texas, we serve clients", 240),
+        ("With 35 years, 1,000 attorneys, and $30 billion recovered for clients", 1000),
+        ("Our 475 attorneys and government relations professionals serve", 475),
+        # small/mid firms whose real count must survive the spike guards above:
+        ("practice areas with the help of our 7 attorneys and 30+ staff", 7),  # avardlaw
+        (
+            "The firm now has a total of 7 Attorneys, 20 support staff and 4 offices",
+            7,
+        ),  # brookslawgroup
+        (
+            "intellectual property law firms, our 100 attorneys and agents provide",
+            100,
+        ),  # cantorcolburn
+        (
+            "Our entire firm 10 attorneys and 35+ legal professionals serve clients",
+            10,
+        ),  # 877kajycares
+        (
+            "the size of our firm 10 lawyers offers you the best choice for your case",
+            10,
+        ),  # utahattorneys
+    ]
+    for phrase, good in cases:
+        html = f"<html><body><p>{phrase}</p></body></html>"
+        hc, _ = extract_headcount([("home", html)], base_url="https://x.com")
+        assert hc.count == good, f"should keep {good} from {phrase!r} (got {hc.count}/{hc.method})"
+        assert hc.method == "stated"
+
+
 def test_extract_site_flags_gov_host():
     html = (
         "<html><head><title>Attorney General</title></head><body>"

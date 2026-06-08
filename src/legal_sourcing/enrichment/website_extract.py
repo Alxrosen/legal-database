@@ -400,9 +400,12 @@ _ANNOUNCE_LEADING: tuple[str, ...] = (
     "adds ",
     "adding ",
     "added ",
-    "top ",  # "...Top 100 Lawyers" (an award/ranking, not a firm headcount)
     "there are ",  # "...there are ~4000 lawyers throughout the nation" (population stat)
 )
+# Award/ranking words that immediately precede the number ("Top 100 Lawyers",
+# "Best 100 Lawyers") — checked as the word right before the count (head suffix),
+# NOT anywhere nearby, so "a top IP firm, our 100 attorneys" is NOT rejected.
+_AWARD_BEFORE: tuple[str, ...] = ("top", "best", "chapter")
 
 # A stated attorney/lawyer count above this is almost never a single firm's own
 # headcount in our universe — it's a statewide/national bar population stat
@@ -412,13 +415,87 @@ _ANNOUNCE_LEADING: tuple[str, ...] = (
 # not capped this tightly (a company can have thousands of employees).
 _MAX_FIRM_ATTORNEYS = 5000
 
+# Context tokens that mark a "<n> attorneys/lawyers" match as NOT this firm's own
+# headcount — a professional network/association, an elite-membership /
+# certification population, a statistic, or another firm. Validated against the
+# full-run false positives (Mackrell-network "4,500 lawyers worldwide", "Florida
+# Bar members ... board certified", "Lawyers Found/Trained", "limited to 250
+# attorneys", "DLA Piper has 4,827 attorneys"). Dollar amounts, "attorney fee"
+# phrases, and phone/number tails are handled separately below.
+_NOT_FIRM_COUNT_CTX: tuple[str, ...] = (
+    # shared network / association / org count, not one firm. NB "law firms with"
+    # / "firms with" / "firms and" (not bare "law firms") so a firm describing its
+    # category — "one of the top IP law firms, our 100 attorneys" (cantorcolburn) —
+    # is NOT rejected.
+    "network",
+    "mackrell",
+    "law firms with",
+    "firms with",
+    "firms and",
+    "access to",
+    "member firm",
+    "attorney members",
+    "lawyer members",
+    "organization of",
+    "organization with",
+    "organization made",
+    "association of",
+    "alliance",
+    "made up of",
+    "consortium",
+    "teams of",
+    # elite membership / certification / distinction population
+    "board certified",
+    "board-certified",
+    "certified by",
+    "distinction",
+    "limited to",
+    "fewer than",
+    "reserved",
+    "academy",
+    "designation",
+    "credential",
+    "diplomate",
+    "one of only",
+    "one of just",
+    "one of approximately",
+    "one of fewer",
+    "one of the few",
+    # client testimonial ("after interviewing 10+ attorneys ...") / negation
+    "interviewing",
+    "interviewed",
+    "spoke with",
+    "speaking with",
+    "worked with",
+    "n't have",
+    "not have",
+    # statistic / UI / marketing count (not a headcount)
+    "trained",
+    "readership",
+    "newsletter",
+    "surveys",
+    "peer review",
+    "endorsed by",
+    "received votes",
+    "client list",
+    "living the dream",
+    "enter the number",
+    "evidence code",
+    "making it the",
+    "not those",
+)
+# phone tail / number run before (incl. "24/7" and "10/10" via the slash)
+_NUM_RUN_BEFORE = re.compile(r"\d[\s.\-()/]{0,4}$")
+
 
 def _stated_count(
     texts: list[str], pattern: re.Pattern[str], *, max_n: int = 100000
 ) -> tuple[int, bool, str] | None:
     """Highest plausible '<n> attorneys/lawyers' (or staff) across texts,
-    EXCLUDING press-release / announcement contexts that aren't a firm total.
-    `max_n` caps an implausibly large value (a population/comparative stat)."""
+    EXCLUDING contexts that aren't this firm's own total: press-release /
+    announcement headlines, fees/phones, and professional-network / bar-
+    population / statistic mentions. `max_n` caps an implausible value.
+    """
     best: tuple[int, bool, str] | None = None
     for text in texts:
         for m in pattern.finditer(text):
@@ -428,12 +505,28 @@ def _stated_count(
                 continue
             if n <= 0 or n > max_n:
                 continue
-            tail = text[m.end() : m.end() + 30].lower()
-            head = text[max(0, m.start() - 30) : m.start()].lower()
+            tail = text[m.end() : m.end() + 45].lower()
+            head = text[max(0, m.start() - 45) : m.start()].lower()
+            # announcement headline ("N attorneys join/named/...", "Top 100 Lawyers")
             if any(w in tail for w in _ANNOUNCE_TRAILING) or any(
                 w in head for w in _ANNOUNCE_LEADING
             ):
-                continue  # a "N attorneys join/named/..." headline, not a total
+                continue
+            # word immediately before the number marks it as NOT a headcount: a
+            # fee ("$5,000 attorneys"), a bankruptcy chapter ("Chapter 7
+            # attorney"), or an award ("Top/Best 100 Lawyers"). Plus a fee phrase
+            # right after ("5,000 attorney flat fee").
+            if head.rstrip().endswith(("$", *_AWARD_BEFORE)) or any(
+                w in tail[:16] for w in ("fee", "retainer", "per hour", "hourly")
+            ):
+                continue
+            # phone tail or a longer number run immediately before ("288 - 3888
+            # attorney", "0 3253 lawyer") — a digit then optional phone separators
+            if _NUM_RUN_BEFORE.search(head) or "found" in tail[:10]:
+                continue
+            # professional-network / bar-population / statistic / other-firm context
+            if any(w in head or w in tail for w in _NOT_FIRM_COUNT_CTX):
+                continue
             if best is None or n > best[0]:
                 snippet = text[max(0, m.start() - 30) : m.end() + 30].strip()
                 best = (n, is_min, snippet)
