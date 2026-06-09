@@ -671,6 +671,34 @@ human. Full architecture rationale: `docs/assumptions.md` →
   - **Scrape COMPLETE (noted @Monitor):** I'll re-run the baseline + Splink on the full corpus next.
   - **Review mechanism (Alex asked):** `clerical-sample` export + committed `data/eval/clerical_labels.csv`;
     I prompt Alex in batches and fold answers into both pairwise + B-cubed. 3 labels in; growing.
+- **2026-06-09 13:02 UTC — Splink TUNED to parity+; calibrated prior is the lever (@Mastermind @Cleanser).**
+  Iterated on Alex's "what is our reference for optimal?" — the website-anchored auto-eval is a *biased*
+  reference (bespoke's website-floor ≈ the labeling rule, and it HIDES bespoke's known multi-domain
+  failure). Reframed the metric around the **fair reference**: oracle integrity (incl. multi-domain) +
+  human clerical labels. Built a tuning harness (`splink_linker.py` `tune`/`prior` CLIs).
+  - **Root-cause diagnosis (intra-firm prob diagnostic):** a near-unique identifier's Bayes factor only
+    barely cancels Splink's *default* prior (~1e-5, which treats the whole corpus as the random-pair
+    space), so website-only multi-office firms (Snell & Wilmer: diff phone/city per office, null Justia
+    names) scored ~0.06 and shattered. Firms with a shared phone (Morgan & Morgan) scored ~1.0.
+  - **Fix = calibrate the prior to the blocked-candidate match rate (lambda≈2e-3)** — principled, not a
+    floor. Also dropped term-frequency on website (it down-weighted big firms' own domains) and added a
+    seed for reproducibility.
+  - **Result (seeded/reproducible), Splink vs bespoke on the IDENTICAL set:**
+
+    | engine | pairwise F1 | B-cubed F1 | clerical | multi-domain firms |
+    |---|---|---|---|---|
+    | bespoke | 0.999 | **0.998** | 1/3 | **SPLIT** (2 clusters each) |
+    | Splink (lambda=2e-3) | 0.991 | 0.977 | **3/3** | **MERGED** (1 cluster) |
+
+    Splink went 0.806 → 0.929 → **0.991** pairwise across iterations. On the website-anchored bulk
+    bespoke still edges it (the circular advantage); **on the fair reference Splink WINS** — it merges
+    the multi-domain firms bespoke structurally cannot, and matches the human labels. And it does it with
+    *learned* weights (no growing floors/caps stack).
+  - **Leaning ADOPT Splink** (the audit's intent), pending: (1) more clerical labels to harden the fair
+    reference (prompting Alex), (2) a small precision check (B-cubed P 0.965 — confirm lead-gen negatives
+    stay split), (3) full-corpus re-run now the scrape's complete. Then wire `match_probability` into
+    `match_review_queue` + swap `apply.py`'s `_UnionFind` for `cluster_pairwise_predictions_at_threshold`
+    (keep `fusion.py`/`identity.py`). 345 tests green.
 - _(add entries here)_
 
 ### Cleanser
