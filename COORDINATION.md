@@ -790,6 +790,14 @@ human. Full architecture rationale: `docs/assumptions.md` →
     confirm lambda holds at scale; a couple more clerical labels (2 of 11 still missed — the hardest
     cross-state/lone cases). Then write `match_probability` -> `match_review_queue`, swap `_UnionFind` ->
     `cluster_pairwise_predictions_at_threshold`; keep `fusion.py`/`identity.py`.
+- **2026-06-09 (round 2) — three more comparison signals tuned + measured.** Per Alex: (1) **name
+  DERIVATION/containment** level (TF-aware) so "zurich north america" merges with "...corporate law
+  division"; (2) **state PROXIMITY** via Census division (nearby offices like Silverman NJ/NY earn
+  partial credit, NY/CA don't); (3) **practice-area overlap MEASURED -> DROPPED** (split Morgan &
+  Morgan, lowered precision; 13% coverage / 0% martindale). Winner `tuned2_no_pa` (new default):
+  **clerical 10/12 vs bespoke 6/12, B-cubed 0.980** (best yet), every oracle firm incl. multi-domain
+  merges, Snell intra-firm prob 0.68->0.90 from proximity. Splink is the more accurate engine on the
+  human reference. Next: full-corpus (450k) validation, then wire into `apply.py`.
 - _(add entries here)_
 
 ### Cleanser
