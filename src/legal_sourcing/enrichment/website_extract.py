@@ -1003,8 +1003,13 @@ def _is_generic_firm_name(name: str) -> bool:
     low_nodigit = re.sub(r"\s*\d+$", "", low)  # "mysite 1" -> "mysite"
     if low in _GENERIC_NAME or low_nodigit in _GENERIC_NAME or low in _NON_FIRM_NAMES:
         return True
-    if "template" in low or "hugedomains" in low or "godaddy" in low:
-        return True  # site-builder / domain-parking placeholders
+    if any(
+        s in low
+        for s in ("template", "hugedomains", "godaddy", "for sale", "coming soon", "under construction")
+    ):
+        return True  # site-builder / domain-parking / placeholder pages
+    if re.search(r"\.(?:com|net|org|biz|info|law)\b", low):
+        return True  # the candidate is a domain / URL, not a firm name
     core = _firm_name_core(name)
     if not core:
         return True
@@ -1035,7 +1040,9 @@ def _domain_consistent(name: str, host: str) -> bool:
 
 
 def _has_entity_marker(c: str) -> bool:
-    return any(mk in f" {c.lower()} " for mk in _ENTITY_SUFFIX_MARK)
+    low = c.lower()
+    padded = (f" {low} ", f" {low.replace('.', '')} ")  # match dotted "P.L.C." like "PLC"
+    return any(mk in p for mk in _ENTITY_SUFFIX_MARK for p in padded)
 
 
 def extract_firm_name(
@@ -1050,7 +1057,7 @@ def extract_firm_name(
         return None, None
     tree = _tree(next((h for r, h in pages if r == "home"), pages[0][1]))
     trusted: list[str] = []  # legal JSON-LD name + og:site_name (accept as-is)
-    weak: list[str] = []  # <title> / <h1> (require a strong firm marker)
+    weak: list[str] = []  # <title> / <h1> / logo alt (need a marker OR domain echo)
     for node in tree.css('script[type="application/ld+json"]'):
         try:
             data = json.loads(node.text() or "")
@@ -1074,6 +1081,15 @@ def extract_firm_name(
     h1 = tree.css_first("h1")
     if h1 and h1.text():
         weak.append(h1.text())
+    # Logo / header image alt-text often carries the real name when <title>/<h1> are
+    # descriptors or placeholders (alt="Aeed Law - Criminal Defense...", "Ashley
+    # Hendren, Attorney At Law", "8 Second Legal Logo"). Strip a trailing
+    # "logo"/"logo.png"; the marker-or-domain-consistency gate keeps nav/icon alts
+    # ("Menu", "Facebook") out.
+    for img in tree.css("img[alt]")[:10]:
+        alt = " ".join((img.attributes.get("alt") or "").split())
+        if alt:
+            weak.append(re.sub(r"\s*logo(?:\.\w+)?\s*$", "", alt, flags=re.I))
 
     def _segments(strings: list[str]) -> list[str]:
         # Split each candidate on title separators (a junk og:site_name like
@@ -1088,7 +1104,8 @@ def extract_firm_name(
         return out
 
     def _has_marker(c: str) -> bool:
-        return any(mk in f" {c.lower()} " for mk in _STRONG_FIRM)
+        padded = (f" {c.lower()} ", f" {c.lower().replace('.', '')} ")
+        return any(mk in p for mk in _STRONG_FIRM for p in padded)
 
     # Score every non-generic candidate and pick the best (ties -> earliest by source
     # order). A real firm name beats a co-occurring SEO descriptor because it carries
@@ -1107,14 +1124,17 @@ def extract_firm_name(
             order += 1
             entity = _has_entity_marker(c)
             weak_marker = _has_marker(c)
-            if require_marker and not (entity or weak_marker):
+            dc = _domain_consistent(c, host)
+            # A <title>/<h1>/alt candidate must look like a firm name: carry an
+            # entity/firm marker OR echo the domain. A real name like "Aeed Law" has
+            # no suffix but matches aeedlaw.com; a descriptor like "Phoenix Law Firm"
+            # on cfmlaw.com has neither, so it's dropped.
+            if require_marker and not (entity or weak_marker or dc):
                 continue
             nn = normalize_firm_name(c)
             if not (nn and nn.normalized):
                 continue
-            score = trusted_bonus + (3 if entity else 1 if weak_marker else 0)
-            if _domain_consistent(c, host):
-                score += 3
+            score = trusted_bonus + (3 if entity else 1 if weak_marker else 0) + (3 if dc else 0)
             scored.append((score, -order, c, nn.normalized))
     if not scored:
         return None, None

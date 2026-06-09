@@ -589,6 +589,32 @@ def test_extract_firm_name_rejects_descriptor_lists_and_nonfirm_titles():
         assert extract_firm_name([("home", og)]) == (None, None), jn
 
 
+def test_extract_firm_name_discovers_from_logo_alt_and_dotted_suffix():
+    # The real name lives only in the logo alt-text and echoes the domain (no entity
+    # suffix) — recovered where <title> is a descriptor (the discovery half).
+    alt = (
+        "<html><head><title>Criminal Defense Attorney in Phoenix</title></head>"
+        '<body><img alt="Aeed Law - Criminal Defense Attorney in Phoenix"></body></html>'
+    )
+    assert extract_firm_name([("home", alt)], base_url="https://aeedlaw.com")[0] == "Aeed Law"
+
+    # A dotted entity suffix ("P.L.C.") is recognized like "PLC".
+    plc = (
+        "<html><head><title>Arizona Attorney | Arizona Legal Advisor, P.L.C.</title>"
+        "</head><body></body></html>"
+    )
+    assert (
+        extract_firm_name([("home", plc)], base_url="https://advisor.law")[0]
+        == "Arizona Legal Advisor, P.L.C."
+    )
+
+    # Parked / for-sale / URL-as-title pages yield no name (domain echo must not
+    # rescue a domain string).
+    for junk in ("aandnlaw.com", "AboutUsVisas.com is for sale", "Coming Soon"):
+        og = f'<html><head><meta property="og:site_name" content="{junk}"></head><body></body></html>'
+        assert extract_firm_name([("home", og)], base_url="https://aandnlaw.com") == (None, None), junk
+
+
 def test_extract_contacts():
     # TEPLG team page: the 3 attorneys become contacts with titles; staff
     # (paralegal/assistant/coordinator) are excluded, same as the headcount.
