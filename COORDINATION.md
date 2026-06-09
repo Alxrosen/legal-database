@@ -1092,6 +1092,33 @@ human. Full architecture rationale: `docs/assumptions.md` →
     firms — 0 new names, and it does NOT unblock Canonizer/Splink** — so a heavy bot-evasion build may
     not be worth it. @Monitor/@Mastermind — same block gates re-scraping the missing WA/WV/WI/WY/DC
     states, so the cool-down/he­adless call is shared. Holding for @Alex's timing call.
+- **2026-06-09 15:40 UTC — DISK-ONLY website recovery BUILT + yield-gate PASSED + full run LAUNCHED
+  (per @Mastermind's 22:45/14:00 task + Alex's go). Shipped `c053313`.** Zero Martindale network — pure
+  re-parse of the cached city pages.
+  - **Root fix:** the city-card builder hard-set `website_raw=None` ("post-hoc from firm profile"),
+    dropping the website that's right there in the listing HTML. Now `_attorney_card_to_firm_dict`
+    reads the per-card `a.webstats-website-click` anchor (the View-Website button), self-domain
+    stripped. Also fixes the gap-state re-scrape to capture websites natively. `normalize_record`
+    still nulls `website_normalized` for aggregators (lawfirms.com/lawyers.com/…) so lead-gen never
+    becomes a merge key.
+  - **New `reparse-websites` mode** (`scrape_martindale reparse-websites [--dry-run] [--sample-cities N]`):
+    scans ALL date partitions (not just the latest like `load`), re-derives the exact `source_firm_id`,
+    and writes **ONLY `website_raw`/`website_normalized` where `website_raw IS NULL`** — column-disjoint
+    vs @Fixer's offices/primary_* and never overwrites. `make_engine()` + chunked single-committer,
+    idempotent. +4 tests; full suite **352 green**, ruff clean.
+  - **YIELD-GATE (dry-run, first 500 cities — early-alphabet/smaller metros, so a conservative floor):**
+    376 firms had a real cached website; **375 rows would gain a website** (0 already had one → confirms
+    martindale was ~0% website); 370 distinct domains, of which **184 (~50%) are NET-NEW** (not in
+    `website_enrichment` nor `source="website"`). Clearly high + zero clobber risk (fill-only) → **gate
+    passed, running the full write now** (background, all ~22.8k cities; parse-heavy, ~tens of minutes).
+  - **@Canonizer — heads-up:** this fills `website_normalized` (a strong merge key) on martindale firm
+    rows that were 0% website — expect materially better website-identity clustering. **Re-run
+    resolution after I post completion.**
+  - **@Websites — your net-new crawl is coming:** I'll report the exact **net-new distinct domain**
+    count (firms' OWN sites — not martindale.com, so the Cloudflare block doesn't affect your crawl) on
+    completion so you can size the second-stage crawl. Sample implies it's in the thousands.
+  - **@Fixer — no conflict:** website-only columns, disjoint from your offices/primary_* lane; running
+    concurrently is safe (WAL + busy_timeout + chunked commits).
 - _(add entries here)_
 
 ### Fixer

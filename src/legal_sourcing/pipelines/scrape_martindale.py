@@ -38,7 +38,8 @@ from sqlalchemy.orm import Session
 from legal_sourcing.config import get_settings
 from legal_sourcing.db import make_engine
 from legal_sourcing.geo import STATE_SLUG_TO_ABBR, parse_states_arg
-from legal_sourcing.models import FirmSourceRecord
+from legal_sourcing.models import FirmSourceRecord, WebsiteEnrichment
+from legal_sourcing.normalize.url import normalize_url
 from legal_sourcing.parsers.martindale import (
     MartindaleCityParser,
     extract_page_meta,
@@ -541,6 +542,155 @@ def run_load(*, date_str: str | None = None, resume: bool = False) -> None:
     )
 
 
+def _all_city_page_groups() -> dict[tuple[str, str], list[Path]]:
+    """Group EVERY cached Martindale city page across ALL date partitions
+    by (state, city). Layout: martindale/{date}/city/{state}/{city}_p{NN}.html.gz.
+
+    Unlike ``run_load`` (latest date only), this spans the whole fetched
+    corpus — the scrape ran over many days, so a city's pages live under
+    the date it was swept. A city re-fetched on multiple dates contributes
+    all its pages; the per-firm aggregation + fill-only write make dupes
+    harmless.
+    """
+    settings = get_settings()
+    base = settings.raw_data_dir / "martindale"
+    groups: dict[tuple[str, str], list[Path]] = {}
+    if not base.exists():
+        return groups
+    for date_dir in sorted(p for p in base.iterdir() if p.is_dir()):
+        city_root = date_dir / "city"
+        if not city_root.exists():
+            continue
+        for gz in city_root.glob("*/*.html.gz"):
+            state_slug = gz.parent.name
+            city_slug = gz.name.split(".", 1)[0].rsplit("_p", 1)[0]
+            groups.setdefault((state_slug, city_slug), []).append(gz)
+    return groups
+
+
+def _collect_card_websites(
+    groups: list[tuple[tuple[str, str], list[Path]]],
+) -> dict[str, tuple[str | None, str]]:
+    """Re-parse cached city pages and return
+    ``{source_firm_id: (website_raw, website_normalized)}`` for every NAMED
+    firm whose card carries a real (non-aggregator) website.
+
+    Reuses the exact scrape path (parse -> backfill office state ->
+    normalize -> aggregate), so ``source_firm_id`` reproduces the stored
+    upsert key and ``website_normalized`` is already aggregator-filtered by
+    ``normalize_record``. First non-empty site per firm wins.
+    """
+    found: dict[str, tuple[str | None, str]] = {}
+    for (state_slug, _city_slug), paths in groups:
+        records = parse_city_records(sorted(paths))
+        _backfill_office_state(records, state_slug)
+        for r in records:
+            normalize_record(r)
+        for firm in aggregate_by_firm(records):
+            norm = firm.get("website_normalized")
+            if norm and firm["source_firm_id"] not in found:
+                found[firm["source_firm_id"]] = (firm.get("website_raw"), norm)
+    return found
+
+
+def run_reparse_websites(*, dry_run: bool = False, sample_cities: int | None = None) -> None:
+    """Disk-only website recovery (NO network).
+
+    Re-parses the cached Martindale city pages and fills
+    ``website_raw``/``website_normalized`` on existing ``source='martindale'``
+    rows that are missing one — the websites were always in the listing HTML
+    but the card builder used to drop them. Writes ONLY the two website
+    columns, ONLY where ``website_raw IS NULL`` (column-disjoint vs @Fixer's
+    offices/primary_* and vs profile enrich; idempotent). Yield-gate with
+    ``dry_run=True`` first.
+    """
+    configure_logging()
+    groups = sorted(_all_city_page_groups().items())
+    if sample_cities is not None:
+        groups = groups[:sample_cities]
+    log.info(
+        "martindale.reparse_ws_start",
+        cities=len(groups),
+        dry_run=dry_run,
+        sample_cities=sample_cities,
+    )
+    found = _collect_card_websites(groups)
+    log.info("martindale.reparse_ws_collected", firms_with_website=len(found))
+
+    engine = make_engine()
+    sfids = list(found)
+    would_gain = 0  # rows currently NULL that would receive a website
+    already_have = 0  # rows that already have a website (never overwritten)
+    no_row = 0  # collected firms with no matching martindale row
+    gained_domains: set[str] = set()
+    updated = 0
+    chunk = 1000
+    with Session(engine) as session:
+        for i in range(0, len(sfids), chunk):
+            batch = sfids[i : i + chunk]
+            rows = session.scalars(
+                select(FirmSourceRecord).where(
+                    FirmSourceRecord.source == "martindale",
+                    FirmSourceRecord.source_firm_id.in_(batch),
+                )
+            ).all()
+            seen = set()
+            for row in rows:
+                seen.add(row.source_firm_id)
+                raw, norm = found[row.source_firm_id]
+                if row.website_raw:
+                    already_have += 1
+                    continue
+                would_gain += 1
+                gained_domains.add(norm)
+                if not dry_run:
+                    row.website_raw = raw
+                    row.website_normalized = norm
+                    updated += 1
+            no_row += sum(1 for s in batch if s not in seen)
+            if not dry_run:
+                session.commit()
+
+        # Net-new domains: gained domains not already crawled (in
+        # website_enrichment) nor already loaded as source='website' rows.
+        existing: set[str] = set()
+        for (w,) in session.execute(
+            select(FirmSourceRecord.website_normalized).where(
+                FirmSourceRecord.source == "website",
+                FirmSourceRecord.website_normalized.is_not(None),
+            )
+        ).all():
+            existing.add(w)
+        for (w,) in session.execute(select(WebsiteEnrichment.website)).all():
+            n = normalize_url(w)
+            if n:
+                existing.add(n)
+    net_new = sorted(d for d in gained_domains if d not in existing)
+
+    log.info(
+        "martindale.reparse_ws_done",
+        firms_with_website=len(found),
+        rows_would_gain=would_gain,
+        rows_already_have=already_have,
+        firms_no_matching_row=no_row,
+        distinct_domains_gained=len(gained_domains),
+        net_new_domains=len(net_new),
+        rows_updated=updated,
+        dry_run=dry_run,
+    )
+    mode = "DRY-RUN (no writes)" if dry_run else "WROTE"
+    print(
+        f"Martindale website reparse [{mode}] over {len(groups)} cities:\n"
+        f"  firms with a real website in cache: {len(found)}\n"
+        f"  rows that {'would gain' if dry_run else 'gained'} a website "
+        f"(were NULL): {would_gain}\n"
+        f"  rows already had a website (left untouched): {already_have}\n"
+        f"  distinct firm domains: {len(gained_domains)}; "
+        f"NET-NEW (not in website_enrichment / source='website'): {len(net_new)}\n"
+        f"  rows updated: {updated}"
+    )
+
+
 def run_pilot(
     *,
     cities: list[tuple[str, str]] | None = None,
@@ -797,10 +947,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "mode",
-        choices=("pilot", "full", "load", "enrich"),
+        choices=("pilot", "full", "load", "enrich", "reparse-websites"),
         help="pilot = fixed-cohort SRP sweep. full = national state->city "
         "sweep (resumable, per-city commit). load = re-parse fetched "
-        "pages from disk (no network). enrich = firm-profile enrichment.",
+        "pages from disk (no network). enrich = firm-profile enrichment. "
+        "reparse-websites = disk-only website recovery from cached city "
+        "pages (no network; fills website_* where NULL).",
     )
     parser.add_argument(
         "--max-pages-per-city",
@@ -835,6 +987,19 @@ def main() -> int:
         help="(enrich only) Cap the number of rows enriched in this run.",
     )
     parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="(reparse-websites only) Report the yield (rows that would gain "
+        "a website + net-new domains) without writing.",
+    )
+    parser.add_argument(
+        "--sample-cities",
+        type=int,
+        default=None,
+        help="(reparse-websites only) Process only the first N (state,city) "
+        "groups — for a quick yield estimate.",
+    )
+    parser.add_argument(
         "--rps",
         type=float,
         default=None,
@@ -857,6 +1022,8 @@ def main() -> int:
         run_load(date_str=args.date)
     elif args.mode == "enrich":
         run_enrich(limit=args.limit)
+    elif args.mode == "reparse-websites":
+        run_reparse_websites(dry_run=args.dry_run, sample_cities=args.sample_cities)
     return 0
 
 

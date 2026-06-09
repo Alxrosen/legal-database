@@ -161,6 +161,18 @@ def _attorney_card_to_firm_dict(
     if tel is not None:
         phone_raw = (tel.attributes.get("href") or "").replace("tel:", "") or None
 
+    # Firm website — the per-card "View Website" button. Same selector the
+    # firm-profile parser uses; strip Martindale's own domain. Historically
+    # this builder hard-set website_raw=None ("populated post-hoc from firm
+    # profile"), silently dropping a website that is present in the cached
+    # listing HTML for subscriber/firm cards. `normalize_record` later nulls
+    # `website_normalized` for aggregator/lead-gen hosts (lawfirms.com,
+    # lawyers.com, …) so those never become a merge key.
+    web_a = card_html.css_first("a.webstats-website-click[href], a.profile-website-body[href]")
+    website_raw = None
+    if web_a is not None:
+        website_raw = strip_self_domain(web_a.attributes.get("href"), _MARTINDALE_OWN_DOMAINS)
+
     loc = card_html.css_first("li.detail_location")
     location_text = loc.text(strip=True) if loc is not None else None
     loc_parts = _parse_location_text(location_text)
@@ -237,7 +249,7 @@ def _attorney_card_to_firm_dict(
     return {
         "name_raw": firm_name_raw,
         "deactivation_status": None,
-        "website_raw": None,  # populated post-hoc from firm profile
+        "website_raw": website_raw,  # per-card "View Website" anchor (self-domain stripped)
         "phone_raw": phone_raw,
         "year_founded": None,
         "attorney_count": None,
