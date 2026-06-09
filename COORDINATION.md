@@ -383,6 +383,35 @@ human. Full architecture rationale: `docs/assumptions.md` →
     assume the whole 198k gain one.
   - Strict website-only writes, `source='martindale'` scope, `make_engine()` + chunked single-committer,
     and the lead-gen/self-domain guard you already have (never store `martindale.com` as a firm site).
+- **2026-06-09 14:00 UTC — PIVOT (Alex): network enrich is DEAD → enrich from CACHED data only,
+  populate WEBSITES, then @Websites crawls the new domains.** @Enricher confirmed it (13:42): the
+  Martindale IP is under an **IP-wide Cloudflare 403** (both `/all-lawyers/` and `/organization/` 403);
+  lowering RPS won't clear a reputation block. **Decision: do NOT fight it** — no headless/TLS-impersonation
+  build (not worth it; enrich is rich-field polish, 0 new names). **This SUPERSEDES my 22:20 network
+  green-flag and folds my 22:45 website task into the new disk-only path below.**
+  - **@Enricher — pivot to DISK-ONLY enrichment (zero Martindale network calls; this is unblocked, run
+    now).** The cached city pages we already hold are the source: each carries JSON-LD `LegalService`
+    entries with `name`, **`url` (the firm website)**, `telephone`, `address` (street/locality/region/
+    postal) — confirmed on `sacramento_p08` (`"url":"http://www.weintraub.com/"` + View-Website anchors).
+    1. **PRIORITY — populate `website_raw`/`website_normalized`** by mapping each firm row to its
+       JSON-LD `url` (and/or the `webstats-website-click`/View-Website anchor). This is the key output.
+    2. **Opportunistically gap-fill** from the same JSON-LD where a row is MISSING it: `phone_*`, office
+       `address`/`primary_*`. **Fill-only — never overwrite existing-good values**, and respect @Fixer's
+       `primary_*` lane (only fill rows left NULL; settle the final ordering per your 13:42 masthead note).
+       Keep the self-domain/lead-gen guard (never store `martindale.com`).
+    3. Mechanism: `scrape_martindale load` (no network) + `make_engine()` + chunked single-committer,
+       idempotent, `source='martindale'` scope. **Yield-gate first:** sample, report (a) # rows that gain
+       a website and (b) # net-new distinct domains NOT already in `website_enrichment`/`source="website"`,
+       then run the full pass. The 25 `failed` rows from the 13:42 network attempt are harmless (idempotent).
+  - **@Websites — second stage: crawl the NET-NEW domains @Enricher surfaces.** Once Enricher lands the
+    website fields, take the domains **not already crawled** (absent from `website_enrichment` and from
+    `source="website"` FSR rows) and run them through your website crawl → `source="website"` FSR-load
+    (your existing pipeline). **This hits the FIRMS' OWN sites, not martindale.com — so the Cloudflare
+    block does NOT affect it.** Polite/distributed as before; idempotent; re-run as more land. Wait for
+    @Enricher's new-domain count to size it; coordinate start here.
+  - **@Monitor/@Alex — the WA/WV/WI/WY/DC gap re-scrape is ALSO blocked** by the same IP-wide 403, so
+    I'm **DEFERRING it** (not worth a headless build for 5 states + 2 cities). Resolution is idempotent —
+    it folds in later if the block clears on a cool-down. No action needed.
 - **2026-06-04** — Requested columns primary_city / primary_state / practice_areas /
   practice_areas_raw. (Approved + applied by Mastermind — see above.)
 - **2026-06-04** — Columns POPULATED on branch `Websites`. Confirming your question:
