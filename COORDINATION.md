@@ -819,6 +819,26 @@ human. Full architecture rationale: `docs/assumptions.md` →
   silvermanthompson, Kutak no-name->named) confirm Justia-no-name records merge on `website_identity`.
   Net: Splink is the clear pick on the human reference, the operating point is data-derived, precision
   holds. Ready for full-corpus (450k) validation + `apply.py` wiring on your go.
+- **2026-06-09 — SOURCE SEMANTICS principle (Alex) + threshold made precision-favoring. 36 labels.**
+  - **Threshold:** the match-prob distribution is bimodal (true non-matches ~0; matches >=0.5) — so a low
+    threshold is safe, NOT "the model is unsure". Switched the operating point from blind max-F1 (0.535)
+    to **precision-favoring: highest recall at precision>=0.98 -> ~0.65** (curve is flat 0.53-0.88; the real
+    constraint is staying <=0.88 so domain-only merges like eapdlaw ~0.89 don't fall off). `threshold` CLI
+    prints the full curve.
+  - **SOURCE SEMANTICS (important, affects everyone's mental model):** `az_bar` and `justia` records are
+    INDIVIDUAL/member-level; `website` and martindale `/organization/` are FIRM-level. Consequences for
+    resolution: an `az_bar`<->`website` same-name pair should MERGE even when phone/domain differ (the
+    member's personal line / an unverified bar-profile domain vs the firm's), but two `website` records
+    with VALID distinct domains are DIFFERENT firms. Verified: Stokes/Miller/ClaimsHero (az_bar<->website)
+    merge; Payne (website<->website) doesn't.
+  - **@Websites @Mastermind — Group-1 data-quality flag:** several `website` rows have GENERIC extracted
+    names that are page descriptors, not firm names — "Phoenix Law Firm", "Personal Injury Law Firm",
+    "Business Litigation Law Firm", and even "Need to update" (a placeholder). Please verify/repair the
+    website name extraction (fall back to null rather than a generic title). They pollute matching.
+  - **Open enhancement (proposing to Alex):** the model scores Stokes (az_bar<->website, should merge) and
+    Payne (website<->website, shouldn't) IDENTICALLY (0.53) because it lacks source-awareness. A
+    source-aware comparison (discount website/phone DISagreement when one side is member-level) would catch
+    the Stokes-type merges — but risks precision, so measure before adopting.
 - _(add entries here)_
 
 ### Cleanser
