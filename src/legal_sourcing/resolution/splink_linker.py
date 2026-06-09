@@ -477,6 +477,37 @@ _CLUSTER_THRESHOLDS = [0.5, 0.7, 0.9, 0.95, 0.99]
 _PROB_SWEEP = [50, 70, 80, 90, 95, 99]
 
 
+def derive_operating_threshold(linker: Linker, es) -> tuple[float, float | None]:
+    """IDIOMATIC threshold selection (no hand-set number): register the labeled
+    pairs and let Splink's ``accuracy_analysis_from_labels_table`` pick the
+    F1-optimal match-probability. That is the data-derived operating point — it
+    adapts to the corpus (e.g. lands below the ~0.89 floor that domain-only merges
+    like eapdlaw need, instead of an arbitrary 0.9)."""
+    labels = pd.DataFrame(
+        {
+            "unique_id_l": [min(p.a_id, p.b_id) for p in es.pairs],
+            "unique_id_r": [max(p.a_id, p.b_id) for p in es.pairs],
+            "clerical_match_score": [float(p.match) for p in es.pairs],
+        }
+    )
+    try:
+        lab = linker.table_management.register_labels_table(labels, "eval_labels")
+        tbl = linker.evaluation.accuracy_analysis_from_labels_table(
+            lab, output_type="table", add_metrics=["f1"]
+        ).as_pandas_dataframe()
+    except Exception as exc:  # be resilient; fall back to a sweep if the API shifts
+        logging.getLogger(__name__).warning("threshold derivation failed: %s", exc)
+        return 0.85, None
+    f1col = next((c for c in tbl.columns if c.lower() == "f1"), None)
+    pcol = next((c for c in tbl.columns if c.lower() == "truth_threshold_probability"), None)
+    pcol = pcol or next((c for c in tbl.columns if "probability" in c.lower()), None)
+    if f1col is None or pcol is None:
+        logging.getLogger(__name__).warning("accuracy table cols: %s", list(tbl.columns))
+        return 0.85, None
+    row = tbl.loc[tbl[f1col].idxmax()]
+    return float(row[pcol]), float(row[f1col])
+
+
 def _eval_config(es, df, label: str, variant: str, prob_two_random, helpers) -> None:
     bcubed, pairwise_sweep = helpers["bcubed"], helpers["pairwise_sweep"]
     print(f"\n========== SPLINK: {label} ==========")
@@ -488,15 +519,15 @@ def _eval_config(es, df, label: str, variant: str, prob_two_random, helpers) -> 
         f"  pairwise best F1={sbest.f1:.3f} @ p>={sbest.threshold / 100:.2f} "
         f"(P={sbest.precision:.3f} R={sbest.recall:.3f})"
     )
-    best_clu = None
-    for th in _CLUSTER_THRESHOLDS:
-        lab = cluster_labels(linker, pred, th)
-        p, r, f1 = bcubed(es.truth_by_id, lab)
-        if best_clu is None or f1 > best_clu[3]:
-            best_clu = (th, p, r, f1, lab)
-    th, p, r, f1, lab = best_clu
-    cc, ct = _clerical_accuracy(es, ssc, sbest.threshold)
-    print(f"  B-cubed best F1={f1:.3f} (P={p:.3f} R={r:.3f}) @ p>={th:.2f} | clerical {cc}/{ct}")
+    # Idiomatic, data-derived operating threshold (Splink chooses it).
+    thr, thr_f1 = derive_operating_threshold(linker, es)
+    lab = cluster_labels(linker, pred, thr)
+    p, r, f1 = bcubed(es.truth_by_id, lab)
+    cc, ct = _clerical_accuracy(es, ssc, thr * 100)
+    print(
+        f"  Splink-DERIVED operating threshold = {thr:.3f} (labeled-set F1={thr_f1})\n"
+        f"  B-cubed @ derived: F1={f1:.3f} (P={p:.3f} R={r:.3f}) | clerical {cc}/{ct}"
+    )
     meds = _intra_firm_prob_median(es, probs)
     print("  oracle integrity + intra-firm median prob:")
     for disp, n, nc in _oracle_integrity(es, lab):
