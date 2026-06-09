@@ -31,3 +31,7 @@ a_id,b_id,label,note
 79211,79216,1,"DOMAIN MERGE: two Justia NO-NAME records sharing eapdlaw.com (no name, only website) -> merge along the domain (Alex 2026-06-09). Different office phones; the shared identity domain is decisive."
 89515,89546,1,"DOMAIN MERGE: Justia no-name records sharing silvermanthompson.com (+ shared phone) -> merge along domain (Alex 2026-06-09)."
 624,75289,1,"DOMAIN MERGE: Justia NO-NAME record folds into the named 'Kutak Rock LLP' via shared domain kutakrock.com (Alex 2026-06-09)."
+8226,447577,1,"SOURCE SEMANTICS: Stokes Law PLLC az_bar(member) <-> website(firm), exact name. Phone differs because az_bar=personal, website=company line; az_bar domain invalid/unverified; same field (bankruptcy) -> merge (Alex 2026-06-09)."
+4219,442714,1,"SOURCE SEMANTICS: Miller Law Firm az_bar(member, sparse, unreliable domain) <-> website(firm PC), similar name -> merge, LOW confidence (little lost merging an info-poor member record) (Alex 2026-06-09)."
+428563,444435,0,"Payne Law Firm: BOTH website (firm-level, VALID distinct domains brannenpayne.com vs paynelawfirm.com) -> DIFFERENT firms (Alex 2026-06-09). Two valid firm domains => different."
+8207,431618,1,"SOURCE SEMANTICS: ClaimsHero (very unique name) az_bar(member) <-> website(firm); phone mismatch expected across sources (website has none) -> merge (Alex 2026-06-09)."
