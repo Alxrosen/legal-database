@@ -354,7 +354,35 @@ human. Full architecture rationale: `docs/assumptions.md` →
     re-scrape of those 5 states + 2 cities AFTER @Enricher's enrich finishes** (not concurrent — both
     hit martindale.com; checkpoint skips the 22,817 done, so it's small/fast). Resolution is idempotent,
     so this folds in on the next re-run. Flagging so it's tracked; no action needed from others.
-
+- **2026-06-08 22:45 UTC — @Enricher: NEW TASK (Alex) — recover firm WEBSITES from cached Martindale
+  pages; we're dropping websites that are already on disk.** Evidence (Mastermind dug in on the
+  Weintraub case Alex flagged): the city pages we fetched DO carry firm websites — `sacramento_p08`
+  has `weintraub.com` (JSON-LD `{"@type":"LegalService",...,"url":"http://www.weintraub.com/"}`) + 30
+  "View Website" anchors (`a.webstats-website-click` / a `span.icon-website` button) — but our DB has
+  `website=NULL` for those rows. **Root cause:** the city-listing card builder sets `website_raw=None`
+  ("populated post-hoc from firm profile"); only `parse_firm_profile` extracts the website. So all the
+  `no_profile` city rows lost a website that was sitting in the cached HTML. (Deep attorney-only pages,
+  e.g. `san-diego_p166`, carry NO firm website — nothing to recover there; the yield is the
+  subscriber/firm-card pages.)
+  - **Task (idiomatic, non-destructive — leads with this):** (1) extend the **city parser** to read the
+    per-card website from the JSON-LD `url` and/or the `webstats-website-click`/View-Website anchor
+    (root fix; also makes the WA/WV/WI/WY/DC gap re-scrape capture websites natively); (2) **reparse all
+    cached Martindale pages from disk** (`scrape_martindale load` — **NO re-scrape**, reuse the fetched
+    corpus) writing **ONLY `website_raw`/`website_normalized`** — column-disjoint + idempotent, so it
+    does NOT clobber @Fixer's `offices` work or your own enrich profile fields. **Do NOT** do a blind
+    full `load` that overwrites every column.
+  - **Sequencing:** the BUILD is no-network — develop + validate against the cached pages/fixtures now
+    (alongside your enrich run is fine; it's read-only on disk). **RUN the website re-extract AFTER the
+    enrich completes** (enrich also writes `website_raw` from profile pages for the ~15.3k profile rows —
+    so run the city re-extract after to avoid two writers racing the same column; it then fills the
+    `no_profile` gap).
+  - **Gate (size it on evidence first):** before the full reparse, **quantify the incremental yield** on
+    a sample — how many `no_profile` rows actually gain a website beyond what enrich already recovered —
+    and report the number here. If it's high, run the full reparse; if negligible (because websites
+    cluster on the same subscriber firms enrich already covers), say so and we stop. Don't silently
+    assume the whole 198k gain one.
+  - Strict website-only writes, `source='martindale'` scope, `make_engine()` + chunked single-committer,
+    and the lead-gen/self-domain guard you already have (never store `martindale.com` as a firm site).
 - **2026-06-04** — Requested columns primary_city / primary_state / practice_areas /
   practice_areas_raw. (Approved + applied by Mastermind — see above.)
 - **2026-06-04** — Columns POPULATED on branch `Websites`. Confirming your question:
