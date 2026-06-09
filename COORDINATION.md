@@ -718,6 +718,21 @@ human. Full architecture rationale: `docs/assumptions.md` →
     stay split), (3) full-corpus re-run now the scrape's complete. Then wire `match_probability` into
     `match_review_queue` + swap `apply.py`'s `_UnionFind` for `cluster_pairwise_predictions_at_threshold`
     (keep `fusion.py`/`identity.py`). 345 tests green.
+- **2026-06-09 — Splink tuned per Alex's co-designed logic; now BEATS bespoke on the human reference.**
+  Inspecting Splink's "false positives" proved most were CORRECT multi-domain merges the website-anchored
+  labeler mislabels (`franktwaterslaw.com`/`fortmohavelaw.com`, same firm/phone; +3.7k more) — and that
+  bespoke's `WEBSITE_CONFLICT_CAP` refuses. De-biased the reference (shared phone + near-identical name =>
+  one firm). Alex adjudicated 8 more pairs + co-designed the comparison logic; implemented (`splink_linker.py`
+  `tuned` variant): **term-frequency on name** (distinctive names like "savela" merge, common ones don't),
+  a **Levenshtein<=1 near-phone level** (typo'd numbers), and a **fuzzy name-prefix prediction block** (no
+  state) so cross-state same-name offices become candidates; lone-signal records accepted as misses.
+  - **Result on 11 human labels: Splink 9/11 vs bespoke 6/11**; ALL oracle firms incl. multi-domain
+    (Thompson & Hiller, Dickinson Wright) merge to 1 cluster (bespoke splits them); pairwise F1 0.989,
+    B-cubed 0.979. Bespoke only leads the website-anchored aggregate (its circular home turf). 348 tests.
+  - **Recommendation: ADOPT Splink.** Remaining before wiring into `apply.py`: full-corpus (450k) run to
+    confirm lambda holds at scale; a couple more clerical labels (2 of 11 still missed — the hardest
+    cross-state/lone cases). Then write `match_probability` -> `match_review_queue`, swap `_UnionFind` ->
+    `cluster_pairwise_predictions_at_threshold`; keep `fusion.py`/`identity.py`.
 - _(add entries here)_
 
 ### Cleanser
