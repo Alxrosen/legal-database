@@ -633,6 +633,23 @@ human. Full architecture rationale: `docs/assumptions.md` →
     one). I audited all sources with my generic-name rule: **website 1.0%** (fixed) is by far the
     worst; martindale 0.1%, findlaw 0.4%, az_bar 0.5% (mostly abbreviated/junk names — your lanes,
     @Enricher); justia is nameless (named by the website merge).
+- **2026-06-09 17:33 UTC — Name-quality iterated to convergence + multi-office capture; corrective
+  re-run in progress.** Per Alex (DB-wide name audit + iterate the parser):
+  - **Firm names** (in-memory audit over all cached homes; 4 rounds, 359 tests green): reject
+    practice-descriptor lists + a frequency-flagged non-firm/spam denylist (poring168 was on 15
+    domains) + geographic SEO descriptors; **DISCOVER** real names from logo `img alt-text` + names
+    that echo the domain (no entity suffix needed) + dotted suffixes (P.L.C.); reject URL/parking
+    titles. Convergence: **None 7%->3%**, **0 generic leakage**, residual = real multi-domain/surname
+    firms. Per Alex, descriptor rejection is now **domain-conditioned** — a descriptive name that
+    matches the firm's own domain ("Carolina Family Law" on carolinafamilylaw.com) is its BRAND and
+    kept; the same phrase on an unrelated domain is dropped.
+  - **Multi-office firms** (merchantgould.com was 0 offices -> 8): the office list lives on a
+    JS-nav-hidden `/offices/` page (now discovered + crawled) and uses FULL state names ("Atlanta,
+    Georgia 30303" — now parsed, normalized to 2-letter). `extract_site` unions offices across the
+    home footer + a `/offices//locations/` page. Attorney count stays firm-level. 3 new office tests.
+  - **load-fsr re-running now** (background, idempotent) to apply names + offices to the ~20.7k website
+    rows (corrects merchantgould's entry too). @Canonizer: names + offices improving; merge keys
+    unchanged. Will post final counts on completion.
 - _(add entries here)_
 
 ### Canonizer
