@@ -412,6 +412,35 @@ human. Full architecture rationale: `docs/assumptions.md` →
   - **@Monitor/@Alex — the WA/WV/WI/WY/DC gap re-scrape is ALSO blocked** by the same IP-wide 403, so
     I'm **DEFERRING it** (not worth a headless build for 5 states + 2 cities). Resolution is idempotent —
     it folds in later if the block clears on a cool-down. No action needed.
+- **2026-06-09 15:30 UTC — @Fixer: NEW TASK (Alex-flagged, Mastermind-investigated) — FindLaw parser
+  ingested ATTORNEYS as firms; fix + reparse from cache.** Alex flagged two rows
+  (`id=130789`, `id=136718`, both `name_raw='Scott Cohen'`). I root-caused it — it's systemic, not two rows:
+  - **Root cause:** FindLaw SERP cards come in two types — `<li class="fl-serp-card firm organic">` and
+    `<li class="fl-serp-card attorney organic" aria-label="attorney" data-testid="attorney-card-N">`.
+    `parsers/findlaw.py::_extract_card` selects the generic `.fl-serp-card.organic` and takes the card
+    **title** as `name_raw` — so for attorney cards it stores the *person's* name as a firm.
+  - **Magnitude (measured):** of **7,570** findlaw rows, **≥4,668 are confirmed `attorney-card-*`** and
+    **0 are `firm-card`** (the remaining ~2,902 carry other/missing `data_testid` and need
+    classification). The firm name is **NOT recoverable** from what we stored — `card_text` is just
+    practice-area/service text (e.g. *"Workers' Compensation Lawyers Serving Port Saint Lucie, FL
+    (Davie)"*), confirmed on both flagged rows. So these are attorneys with no firm identity captured.
+  - **Task (cache-only, NO re-scrape — 27,756 findlaw pages are on disk; mirrors your Martindale fix):**
+    1. Teach `_extract_card` to **detect card type** (the `attorney`/`firm` class token / `aria-label` /
+       `data-testid` prefix) and record it.
+    2. **Reparse FindLaw from cached disk** (a `scrape_findlaw load` mode if present, else a small
+       `scripts/fix_findlaw_cards.py` analogous to your `fix_martindale_offices.py`) and apply the
+       **treatment** below.
+    3. **Verify** `id=130789` + `id=136718` come out correctly under that treatment, and re-run idempotently.
+  - **TREATMENT — my recommendation, pending @Alex (flagging in my reply to him too):** since the
+    deliverable is firm-level canonical records and attorney cards carry **no firm identity**, **exclude
+    attorney cards from `firm_source_records`** (don't emit them as firms; they'd be nameless singletons
+    resolution skips anyway). Net effect: FindLaw contributes ~0 firms from these SERP pages — an
+    honest reflection of what we actually captured. **Hold the destructive delete of existing rows until
+    Alex confirms** the treatment (skip vs. keep-and-flag vs. later recover-firm-from-profile-page, which
+    would need a network re-scrape of attorney profiles — FindLaw isn't under the Martindale block).
+    Build the parser-type-detection + reparse logic now (no-network, no writes until confirmed); ping me
+    with a dry-run count (rows that would be dropped/kept) so Alex can green-light the write. Strict
+    `source='findlaw'` scope, `make_engine()` + chunked, idempotent.
 - **2026-06-04** — Requested columns primary_city / primary_state / practice_areas /
   practice_areas_raw. (Approved + applied by Mastermind — see above.)
 - **2026-06-04** — Columns POPULATED on branch `Websites`. Confirming your question:
