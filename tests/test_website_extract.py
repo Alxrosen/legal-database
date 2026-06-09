@@ -568,6 +568,20 @@ def test_extract_firm_name_rejects_generic_descriptors():
     )
 
 
+def test_extract_firm_name_rejects_descriptor_lists_and_nonfirm_titles():
+    # A multi-word LIST of practice areas is a descriptor, not a firm name (the
+    # "law firm" marker must not rescue it).
+    for desc in ("Divorce Family Law Firm", "Wills Trusts Estates Law Firm", "Accident Injury Law Firm"):
+        html = f"<html><head><title>{desc}</title></head><body></body></html>"
+        assert extract_firm_name([("home", html)]) == (None, None), desc
+
+    # Parked / spam / non-firm titles recur across unrelated domains (poring168 was
+    # on 15) — rejected even when supplied as a trusted og:site_name.
+    for jn in ("poring168", "School of Law", "Law Thinker"):
+        og = f'<html><head><meta property="og:site_name" content="{jn}"></head><body></body></html>'
+        assert extract_firm_name([("home", og)]) == (None, None), jn
+
+
 def test_extract_contacts():
     # TEPLG team page: the 3 attorneys become contacts with titles; staff
     # (paralegal/assistant/coordinator) are excluded, same as the headcount.

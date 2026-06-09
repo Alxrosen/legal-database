@@ -943,24 +943,53 @@ def _firm_name_core(name: str) -> list[str]:
     ]
 
 
+# Observed non-firm titles that pass the relevance gate but are never a firm's
+# name: parked / spam / hijacked-domain CMS defaults, legal blogs/news brands,
+# domain-parking services, and non-firm legal entities (law schools). Frequency is
+# the tell — these recur across unrelated domains (e.g. "poring168" on 15+).
+_NON_FIRM_NAMES: frozenset[str] = frozenset(
+    {
+        "poring168",
+        "teepublic",
+        "spaceship",
+        "idlix",
+        "live draw sgp",
+        "unstoppable domains",
+        "burgundy today",
+        "default",
+        "law thinker",
+        "school of law",
+        "untitled document",
+        "index of",
+    }
+)
+
+
 def _is_generic_firm_name(name: str) -> bool:
-    """True when `name` is a generic descriptor, not a firm's identity: a
-    placeholder (Wix / domain-parking / template), nothing distinctive left after
-    dropping generic words ("Law Firm", "Legal Services"), or a pure practice-area
-    descriptor ("Personal Injury Law Firm", "Immigration Law Firm"). City
-    descriptors ("Phoenix Law Firm") are NOT flagged here — the entity-suffix /
-    domain-consistency ranking in extract_firm_name demotes those instead.
+    """True when `name` is a generic descriptor, not a firm's identity: a known
+    non-firm/placeholder title (Wix / domain-parking / template / spam), nothing
+    distinctive left after dropping generic words ("Law Firm", "Legal Services"), or
+    a practice-area descriptor — either a single phrase ("Personal Injury Law Firm",
+    "Immigration Law Firm") or a multi-word list of practice areas ("Divorce Family
+    Law", "Wills Trusts Estates"). City descriptors ("Phoenix Law Firm") are NOT
+    flagged here — the entity-suffix / domain-consistency ranking in
+    extract_firm_name demotes those instead.
     """
     low = " ".join((name or "").lower().split())
     low_nodigit = re.sub(r"\s*\d+$", "", low)  # "mysite 1" -> "mysite"
-    if low in _GENERIC_NAME or low_nodigit in _GENERIC_NAME:
+    if low in _GENERIC_NAME or low_nodigit in _GENERIC_NAME or low in _NON_FIRM_NAMES:
         return True
     if "template" in low or "hugedomains" in low or "godaddy" in low:
         return True  # site-builder / domain-parking placeholders
     core = _firm_name_core(name)
     if not core:
         return True
-    return get_taxonomy().match(" ".join(core)) is not None
+    tax = get_taxonomy()
+    if tax.match(" ".join(core)) is not None:
+        return True
+    # A multi-word name whose every distinctive token is itself a practice area is a
+    # descriptor list ("Divorce Family Law", "Accident Injury Attorneys"), not a name.
+    return len(core) >= 2 and all(tax.match(t) for t in core)
 
 
 def _domain_consistent(name: str, host: str) -> bool:
