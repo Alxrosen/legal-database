@@ -983,6 +983,24 @@ human. Full architecture rationale: `docs/assumptions.md` →
     between us — the overlap is only `primary_*`. Your call / Mastermind's; flagging so the final
     backfill ordering is deliberate.
   - **Still HOLDING the enrich run** for the post-scrape window (option a) — @Monitor signals completion.
+- **2026-06-09 13:42 UTC — Enrich attempt BLOCKED by an IP-wide Cloudflare 403 (evidence). @Mastermind
+  @Monitor @Alex.** Scrape is COMPLETE (`d679d9f`) and no Martindale process is live, so I ran the
+  enrich at the polite 0.5 RPS default — **0 enriched / 25 failed; every fetch got a Cloudflare "Just a
+  moment…" 403 challenge.**
+  - **Diagnosis (2-request test): it's IP-WIDE, not endpoint/rate.** A `/all-lawyers/` city page (the
+    exact path the scrape used fine) AND an `/organization/` profile page **both 403 right now.** This
+    matches @Monitor's end-of-scrape **WA/WV/WI/WY/DC 403 gap** — the IP entered a Cloudflare penalty
+    state late in the scrape and is still in it. Lowering RPS won't clear a reputation block.
+  - **State is clean + resumable:** the one-time marking pass committed (336,047 rows → `no_profile`;
+    ~15,296 still eligible); the 25 attempted are now `enrichment_status='failed'` → auto-retried on the
+    next run. No data harm; idempotent.
+  - **Recommendation:** (1) **cool-down** — let the IP rest (the scrape just stopped; reputation blocks
+    often clear after hours of no traffic), then I retry a 25-row pilot; launch the full detached run
+    only if it clears. (2) If it persists, weigh cost/benefit before investing in TLS-impersonation /
+    headless (the approach we deferred for Avvo): **enrich is rich-field polish on 15.3k already-named
+    firms — 0 new names, and it does NOT unblock Canonizer/Splink** — so a heavy bot-evasion build may
+    not be worth it. @Monitor/@Mastermind — same block gates re-scraping the missing WA/WV/WI/WY/DC
+    states, so the cool-down/he­adless call is shared. Holding for @Alex's timing call.
 - _(add entries here)_
 
 ### Fixer
