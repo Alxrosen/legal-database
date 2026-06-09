@@ -28,3 +28,6 @@ a_id,b_id,label,note
 434757,437581,0,"Hunt Law Firm TX vs LA: DO NOT merge. 'Hunt'+'law firm' not distinctive enough (single common surname) AND different phone AND location (Alex 2026-06-09). Contrast WCTL/Peter Thompson."
 88560,437581,1,"Hunt Law Firm: no-name justia record merges via SAME domain huntlawfirm.com + same phone (domain is the only/credible signal) (Alex 2026-06-09)."
 448,12429,1,"Arizona State University + ...Sandra Day O'Connor College of Law: merge (Alex 2026-06-09). LOW STAKES — universities aren't the sourcing target; merging cuts noise, accuracy across them doesn't matter."
+79211,79216,1,"DOMAIN MERGE: two Justia NO-NAME records sharing eapdlaw.com (no name, only website) -> merge along the domain (Alex 2026-06-09). Different office phones; the shared identity domain is decisive."
+89515,89546,1,"DOMAIN MERGE: Justia no-name records sharing silvermanthompson.com (+ shared phone) -> merge along domain (Alex 2026-06-09)."
+624,75289,1,"DOMAIN MERGE: Justia NO-NAME record folds into the named 'Kutak Rock LLP' via shared domain kutakrock.com (Alex 2026-06-09)."
