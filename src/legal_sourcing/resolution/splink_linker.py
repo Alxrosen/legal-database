@@ -477,34 +477,53 @@ _CLUSTER_THRESHOLDS = [0.5, 0.7, 0.9, 0.95, 0.99]
 _PROB_SWEEP = [50, 70, 80, 90, 95, 99]
 
 
-def derive_operating_threshold(linker: Linker, es) -> tuple[float, float | None]:
-    """IDIOMATIC threshold selection (no hand-set number): register the labeled
-    pairs and let Splink's ``accuracy_analysis_from_labels_table`` pick the
-    F1-optimal match-probability. That is the data-derived operating point — it
-    adapts to the corpus (e.g. lands below the ~0.89 floor that domain-only merges
-    like eapdlaw need, instead of an arbitrary 0.9)."""
+def _accuracy_table(linker: Linker, es, trusted_only: bool = False):
+    """Splink's precision/recall/F1-vs-threshold table on the labeled pairs.
+    ``trusted_only`` restricts to human/oracle labels (excludes the website-anchored
+    auto-labels, whose negatives are partly mislabeled multi-domain merges)."""
+    trusted = {"clerical", "oracle_pos", "multidomain_pos"}
+    pairs = [p for p in es.pairs if p.source in trusted] if trusted_only else es.pairs
     labels = pd.DataFrame(
         {
-            "unique_id_l": [min(p.a_id, p.b_id) for p in es.pairs],
-            "unique_id_r": [max(p.a_id, p.b_id) for p in es.pairs],
-            "clerical_match_score": [float(p.match) for p in es.pairs],
+            "unique_id_l": [min(p.a_id, p.b_id) for p in pairs],
+            "unique_id_r": [max(p.a_id, p.b_id) for p in pairs],
+            "clerical_match_score": [float(p.match) for p in pairs],
         }
     )
-    try:
-        lab = linker.table_management.register_labels_table(labels, "eval_labels")
-        tbl = linker.evaluation.accuracy_analysis_from_labels_table(
-            lab, output_type="table", add_metrics=["f1"]
-        ).as_pandas_dataframe()
-    except Exception as exc:  # be resilient; fall back to a sweep if the API shifts
-        logging.getLogger(__name__).warning("threshold derivation failed: %s", exc)
-        return 0.85, None
+    name = "eval_labels_trusted" if trusted_only else "eval_labels"
+    lab = linker.table_management.register_labels_table(labels, name)
+    tbl = linker.evaluation.accuracy_analysis_from_labels_table(
+        lab, output_type="table", add_metrics=["f1"]
+    ).as_pandas_dataframe()
+    return tbl
+
+
+def _threshold_cols(tbl):
     f1col = next((c for c in tbl.columns if c.lower() == "f1"), None)
     pcol = next((c for c in tbl.columns if c.lower() == "truth_threshold_probability"), None)
     pcol = pcol or next((c for c in tbl.columns if "probability" in c.lower()), None)
-    if f1col is None or pcol is None:
+    prec = next((c for c in tbl.columns if c.lower() == "precision"), None)
+    rec = next((c for c in tbl.columns if c.lower() == "recall"), None)
+    return pcol, prec, rec, f1col
+
+
+def derive_operating_threshold(linker: Linker, es) -> tuple[float, float | None]:
+    """Data-derived operating point. NOT blind max-F1 (which a clean DB shouldn't
+    use — false merges irreversibly conflate two real firms): we take the
+    HIGHEST-recall threshold that still holds **precision >= 0.98**, so the point is
+    precision-favoring yet still captures the confident low-corroboration merges
+    (domain-only/multi-office sit at ~0.89, well above the chosen point)."""
+    try:
+        tbl = _accuracy_table(linker, es)
+    except Exception as exc:  # resilient if the API shifts
+        logging.getLogger(__name__).warning("threshold derivation failed: %s", exc)
+        return 0.85, None
+    pcol, prec, rec, f1col = _threshold_cols(tbl)
+    if not all((pcol, prec, f1col)):
         logging.getLogger(__name__).warning("accuracy table cols: %s", list(tbl.columns))
         return 0.85, None
-    row = tbl.loc[tbl[f1col].idxmax()]
+    ok = tbl[tbl[prec] >= 0.98]
+    row = ok.loc[ok[rec].idxmax()] if len(ok) else tbl.loc[tbl[f1col].idxmax()]
     return float(row[pcol]), float(row[f1col])
 
 
@@ -594,6 +613,7 @@ def main() -> int:
     psa = sub.add_parser("sample", help="Export active-learning pairs (uncertain + disagreements).")
     psa.add_argument("--n", type=int, default=40)
     psa.add_argument("--out", default="data/eval/active_sample.csv")
+    sub.add_parser("threshold", help="Print the precision/recall/F1-vs-threshold curve.")
     args = ap.parse_args()
 
     from legal_sourcing.resolution.eval_harness import (
@@ -637,6 +657,31 @@ def main() -> int:
             probs, _ = predict_pairs(linker)
             k = export_active_sample(es, probs, args.out, args.n)
             print(f"wrote {k} active-learning pairs -> {args.out}")
+        elif args.cmd == "threshold":
+            linker = train_linker(df, DEFAULT_VARIANT, DEFAULT_PROB_TWO_RANDOM)
+            for scope in ("full labeled set", "TRUSTED labels only"):
+                tbl = _accuracy_table(linker, es, trusted_only=(scope.startswith("TRUSTED")))
+                pcol, prec, rec, f1col = _threshold_cols(tbl)
+                print(f"\n=== precision/recall/F1 vs threshold ({scope}) ===")
+                print("   p_thresh   precision   recall      F1")
+                prev = None
+                for _, r in tbl.sort_values(pcol).iterrows():
+                    pt = round(float(r[pcol]), 2)
+                    if pt == prev:
+                        continue
+                    prev = pt
+                    print(
+                        f"   {pt:7.2f}    {float(r[prec]):.3f}      {float(r[rec]):.3f}    {float(r[f1col]):.3f}"
+                    )
+                f1row = tbl.loc[tbl[f1col].idxmax()]
+                okp = tbl[tbl[prec] >= 0.98]
+                print(f"  max-F1 @ p>={float(f1row[pcol]):.3f} (F1={float(f1row[f1col]):.3f})")
+                if len(okp):
+                    pr = okp.loc[okp[rec].idxmax()]
+                    print(
+                        f"  highest-recall @ precision>=0.98: p>={float(pr[pcol]):.3f} "
+                        f"(P={float(pr[prec]):.3f} R={float(pr[rec]):.3f})"
+                    )
         else:
             variants = args.variants.split(",") if args.cmd == "tune" else [DEFAULT_VARIANT]
             for variant in variants:
