@@ -42,7 +42,9 @@ logging.getLogger("splink").setLevel(logging.WARNING)
 # At this lambda a near-unique-identifier match becomes decisive (the learned-model
 # equivalent of the bespoke website floor) WITHOUT a hand-set floor -- sweeping it
 # (CLI `prior`) showed it is the dominant accuracy lever (B-cubed 0.95 -> 0.98).
-DEFAULT_PROB_TWO_RANDOM = 2e-3
+DEFAULT_PROB_TWO_RANDOM = 5e-3
+# The Alex-2026-06-09 comparison design (TF-name + near-phone + fuzzy-name block).
+DEFAULT_VARIANT = "tuned"
 # Seed for estimate_u_using_random_sampling so runs are reproducible (without it
 # u wobbles run-to-run, e.g. pairwise F1 0.962 vs 0.994 at the same lambda).
 _U_SEED = 20260608
@@ -99,24 +101,41 @@ def extract_frame(session: Session, ids: list[int] | None = None) -> pd.DataFram
 # ---------------------------------------------------------------------------
 
 
-# Blocking is held CONSTANT across config variants so the EM training blocks
-# below stay aligned. We block on the three near-identifiers; clustering recall
-# is then a function of the comparison weights, not the candidate set.
-_BLOCKING = [
+# EM-training blocks: the near-identifiers. Kept tight so EM stays fast and each
+# block has enough match signal to estimate m. (name varies within each, so its m
+# is estimable.)
+_EM_BLOCKING = [
     block_on("phone_normalized"),
     block_on("website_identity"),
     block_on("substr(name_normalized, 1, 8)", "primary_state"),
 ]
+# PREDICTION blocks add a fuzzy name-prefix key WITHOUT state (Alex 2026-06-09) so
+# a distinctively-named firm's offices across DIFFERENT states/sources become
+# candidate pairs (West Coast Trial Lawyers NV<->CA; Silverman NJ<->NY) even with
+# no shared phone/website. Term-frequency on name then keeps precision: a rare
+# prefix merges, a common one ("law office") gets ~no weight despite blocking.
+_PREDICTION_BLOCKING = [*_EM_BLOCKING, block_on("substr(name_normalized, 1, 10)")]
 
 
 def _comparisons(variant: str) -> list:
     """Comparison sets to tune. The design principle (from the multi-office
-    evidence): a near-unique identifier match (website/phone) must DOMINATE, and
-    weak-field DISAGREEMENT (a firm's offices differ in city/state/phone) must not
-    veto it. Variants probe how to encode that."""
+    evidence): a near-unique identifier match (website/phone) must DOMINATE, weak-
+    field DISAGREEMENT (offices differ in city/state/phone) must not veto it, and a
+    DISTINCTIVE name must be able to merge on its own (rare-name term frequency)."""
     name = cl.JaroWinklerAtThresholds("name_normalized", [0.92, 0.85, 0.70])
+    # TF on name: a rare name ("savela", "west coast trial lawyers") becomes a
+    # strong merge signal; a common one does not -- the lever for the name-only
+    # merges Alex flagged.
+    name_tf = cl.JaroWinklerAtThresholds("name_normalized", [0.92, 0.85, 0.70]).configure(
+        term_frequency_adjustments=True
+    )
     phone_tf = cl.ExactMatch("phone_normalized").configure(term_frequency_adjustments=True)
     phone_plain = cl.ExactMatch("phone_normalized")
+    # Near-phone: a Levenshtein<=1 level credits typo'd numbers (Savela ...101 vs
+    # ...001) just below an exact match (Alex 2026-06-09).
+    phone_near = cl.LevenshteinAtThresholds("phone_normalized", [1]).configure(
+        term_frequency_adjustments=True
+    )
     # NO TF on website: a firm's own domain shared across its records is the
     # SAME-firm signal; TF down-weights big firms' domains and shatters them.
     web = cl.ExactMatch("website_identity")
@@ -124,6 +143,8 @@ def _comparisons(variant: str) -> list:
     state = cl.ExactMatch("primary_state")
     if variant == "base":
         return [name, phone_tf, web, city, state]
+    if variant == "tuned":  # the Alex-2026-06-09 design
+        return [name_tf, phone_near, web, city, state]
     if variant == "no_geo":
         # Drop city/state: their DISagreement was penalizing multi-office firms.
         return [name, phone_tf, web]
@@ -146,7 +167,7 @@ def build_settings(variant: str = "base", prob_two_random: float | None = None) 
         kw["probability_two_random_records_match"] = prob_two_random
     return SettingsCreator(
         link_type="dedupe_only",
-        blocking_rules_to_generate_predictions=list(_BLOCKING),
+        blocking_rules_to_generate_predictions=list(_PREDICTION_BLOCKING),
         comparisons=_comparisons(variant),
         retain_intermediate_calculation_columns=True,
         **kw,
@@ -171,7 +192,7 @@ def train_linker(
             [block_on("phone_normalized", "website_identity")], recall=0.7
         )
     linker.training.estimate_u_using_random_sampling(max_pairs=2_000_000, seed=_U_SEED)
-    for br in _BLOCKING:
+    for br in _EM_BLOCKING:
         try:
             linker.training.estimate_parameters_using_expectation_maximisation(br)
         except Exception as exc:  # a degenerate block can fail EM; keep the others
@@ -269,7 +290,7 @@ def _intra_firm_prob_median(es, probs: dict[tuple[int, int], float]) -> dict[str
 # CLI
 # ---------------------------------------------------------------------------
 
-_TUNE_VARIANTS = ["base", "no_geo", "no_geo_phone_plain", "geo_no_state"]
+_TUNE_VARIANTS = ["base", "tuned", "no_geo", "geo_no_state"]
 _CLUSTER_THRESHOLDS = [0.5, 0.7, 0.9, 0.95, 0.99]
 _PROB_SWEEP = [50, 70, 80, 90, 95, 99]
 
@@ -341,8 +362,9 @@ def main() -> int:
     sub.add_parser("compare", help="Single base-config run vs bespoke.")
     pt = sub.add_parser("tune", help="Sweep comparison variants vs bespoke.")
     pt.add_argument("--variants", default=",".join(_TUNE_VARIANTS))
-    pp = sub.add_parser("prior", help="Sweep the prior lambda on the base variant (the key lever).")
+    pp = sub.add_parser("prior", help="Sweep the prior lambda on a variant (the key lever).")
     pp.add_argument("--lambdas", default="estimate,1e-4,1e-3,1e-2,5e-2")
+    pp.add_argument("--variant", default="tuned")
     sub.add_parser("errors", help="Inspect Splink's FP/FN pairs vs the eval labels.")
     args = ap.parse_args()
 
@@ -377,13 +399,13 @@ def main() -> int:
         if args.cmd == "prior":
             for tok in args.lambdas.split(","):
                 lam = tok if tok == "estimate" else float(tok)
-                _eval_config(es, df, f"lambda={tok}", "base", lam, helpers)
+                _eval_config(es, df, f"{args.variant} lambda={tok}", args.variant, lam, helpers)
         elif args.cmd == "errors":
-            linker = train_linker(df, "base", DEFAULT_PROB_TWO_RANDOM)
+            linker = train_linker(df, DEFAULT_VARIANT, DEFAULT_PROB_TWO_RANDOM)
             probs, _ = predict_pairs(linker)
             _inspect_errors(es, probs)
         else:
-            variants = args.variants.split(",") if args.cmd == "tune" else ["base"]
+            variants = args.variants.split(",") if args.cmd == "tune" else [DEFAULT_VARIANT]
             for variant in variants:
                 _eval_config(es, df, variant, variant, DEFAULT_PROB_TWO_RANDOM, helpers)
     return 0
