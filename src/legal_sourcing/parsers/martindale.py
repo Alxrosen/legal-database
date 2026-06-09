@@ -33,6 +33,7 @@ from urllib.parse import urlparse
 
 from selectolax.parser import HTMLParser
 
+from legal_sourcing.normalize.address import parse_full_location
 from legal_sourcing.normalize.url import safe_urlparse, strip_self_domain
 from legal_sourcing.parsers.base import BaseParser
 
@@ -41,8 +42,6 @@ from legal_sourcing.parsers.base import BaseParser
 _MARTINDALE_OWN_DOMAINS = ("martindale.com",)
 
 _ATTORNEY_ID_RE = re.compile(r"-(\d+)/?$")
-# US-state postal codes for the location_text city/state parse.
-_US_STATE_RE = re.compile(r"^([\w\s.\-']+?),\s*([A-Z]{2})$")
 
 
 def _parse_gtm(attr_value: str) -> dict[str, Any] | None:
@@ -82,15 +81,29 @@ def _split_title_at_firm(text: str) -> tuple[str | None, str | None]:
 
 
 def _parse_location_text(text: str | None) -> dict[str, Any]:
-    """Best-effort split of `"City, ST"` into city + state."""
-    if not text:
+    """Split a city-card location string into raw address components.
+
+    Martindale's city cards cram the WHOLE office address into one location
+    element — e.g. ``"101 Court Sq Ste I, Abbeville, AL 36310-2135"`` — not a
+    tidy ``"City, ST"``. The old strict ``"City, ST$"`` regex never matched
+    those (street + ZIP) and dumped the entire string into ``city_raw`` with no
+    state, blocking ``primary_state`` on ~76.5k rows. ``parse_full_location``
+    recovers ``[street, ]city, ST [zip]`` properly, so emit each component into
+    its own raw field (``normalize_record`` then derives ``offices[].normalized``).
+    """
+    na = parse_full_location(text)
+    if na is None:
         return {}
-    s = text.strip()
-    m = _US_STATE_RE.match(s)
-    if m:
-        return {"city_raw": m.group(1).strip(), "state_raw": m.group(2)}
-    # Fallback: city only.
-    return {"city_raw": s}
+    out: dict[str, Any] = {}
+    if na.street:
+        out["street_raw"] = na.street
+    if na.city:
+        out["city_raw"] = na.city
+    if na.state:
+        out["state_raw"] = na.state
+    if na.postal_code:
+        out["postal_code_raw"] = na.postal_code
+    return out
 
 
 def _attorney_card_to_firm_dict(
@@ -147,6 +160,18 @@ def _attorney_card_to_firm_dict(
     phone_raw = None
     if tel is not None:
         phone_raw = (tel.attributes.get("href") or "").replace("tel:", "") or None
+
+    # Firm website — the per-card "View Website" button. Same selector the
+    # firm-profile parser uses; strip Martindale's own domain. Historically
+    # this builder hard-set website_raw=None ("populated post-hoc from firm
+    # profile"), silently dropping a website that is present in the cached
+    # listing HTML for subscriber/firm cards. `normalize_record` later nulls
+    # `website_normalized` for aggregator/lead-gen hosts (lawfirms.com,
+    # lawyers.com, …) so those never become a merge key.
+    web_a = card_html.css_first("a.webstats-website-click[href], a.profile-website-body[href]")
+    website_raw = None
+    if web_a is not None:
+        website_raw = strip_self_domain(web_a.attributes.get("href"), _MARTINDALE_OWN_DOMAINS)
 
     loc = card_html.css_first("li.detail_location")
     location_text = loc.text(strip=True) if loc is not None else None
@@ -224,7 +249,7 @@ def _attorney_card_to_firm_dict(
     return {
         "name_raw": firm_name_raw,
         "deactivation_status": None,
-        "website_raw": None,  # populated post-hoc from firm profile
+        "website_raw": website_raw,  # per-card "View Website" anchor (self-domain stripped)
         "phone_raw": phone_raw,
         "year_founded": None,
         "attorney_count": None,
@@ -474,6 +499,27 @@ def _walk_dfs(node):
         yield from _walk_dfs(child)
 
 
+def _is_concatenated_list(text: str, threshold: float = 0.02) -> bool:
+    """True when `text` is a separator-less TitleCase list (the Areas-of-
+    Practice block rendered as text — "Civil LitigationPersonal Injury...")
+    rather than genuine prose.
+
+    Discriminator: the density of lowercase->uppercase character joins. A
+    concatenated list of TitleCase items has a join at nearly every item
+    boundary; prose almost never does (its proper nouns are space- or
+    punctuation-separated, neither of which is a lowercase char). Measured
+    across the 5 recon firms this cleanly separates prose (<=0.003) from
+    AOP-noise (>=0.037), so 0.02 sits safely in the gap. It is
+    LENGTH-INDEPENDENT — the real noise blocks ran 58 to 1,144 chars, so the
+    previous `len(text) < 500` gate let almost all of them through.
+    """
+    n = len(text)
+    if n < 2:
+        return False
+    joins = sum(1 for i in range(n - 1) if text[i].islower() and text[i + 1].isupper())
+    return joins / n >= threshold
+
+
 def _extract_descriptions(tree: HTMLParser) -> list[dict[str, Any]]:
     """Pair each `div.truncate-text` with the nearest preceding `h2`
     in document order. Filter the AOP-rendered-as-text noise block.
@@ -494,16 +540,16 @@ def _extract_descriptions(tree: HTMLParser) -> list[dict[str, Any]]:
             text = node.text(strip=True) or ""
             if not text:
                 continue
-            # Filter the AOP rendered as text. Two signals together:
-            # the parent heading is "Areas of Practice..." OR the text
-            # body has fewer than 1 space per 20 chars (concatenated
-            # CamelCase areas like "Civil LitigationPersonal Injury...").
+            # Filter the AOP-rendered-as-text noise. Heading signal first
+            # (the block sits under "Areas of Practice" / "People"), then a
+            # length-independent content signal: a concatenated TitleCase
+            # list. Most real noise blocks carry a null heading, so the
+            # content check is what actually catches them.
             if last_heading and last_heading.startswith("Areas of Practice"):
                 continue
             if last_heading and last_heading.startswith("People"):
                 continue
-            space_density = text.count(" ") / max(len(text), 1)
-            if len(text) < 500 and space_density < 0.05:
+            if _is_concatenated_list(text):
                 continue
             out.append({"heading": last_heading, "text": text})
     return out

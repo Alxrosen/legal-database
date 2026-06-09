@@ -12,31 +12,26 @@ dependencies = [
     "httpx>=0.27",
     "selectolax>=0.3.21",
     "beautifulsoup4>=4.12",
-
     # Data normalization
     "rapidfuzz>=3.9",
     "usaddress>=0.5.10",
     "phonenumbers>=8.13",
-
     # Persistence
     "sqlalchemy>=2.0",
     "alembic>=1.13",
-
     # Reference data / text processing
     "pyyaml>=6.0",
     "inflect>=7.3",  # singularize "injuries" -> "injury" for practice-area matching
-
     # IANA tzdata for zoneinfo lookups on Windows (Python stdlib zoneinfo
     # has no fallback database on Windows). Used by alembic.ini's
     # `timezone = UTC` and any ZoneInfo() callsites.
     "tzdata>=2024.1",
-
     # Config + logging
     "pydantic-settings>=2.4",
     "structlog>=24.4",
-
     # CLI
     "click>=8.1",
+    "splink>=4",
 ]
 
 [project.optional-dependencies]

@@ -12,6 +12,7 @@ import pytest
 
 from legal_sourcing.parsers.martindale import (
     MartindaleCityParser,
+    _is_concatenated_list,
     _split_title_at_firm,
     extract_page_meta,
     parse_firm_profile,
@@ -148,6 +149,74 @@ def test_city_parser_handles_solo_no_firm():
     assert rec["name_raw"] is None
     assert rec["contacts"][0]["title"] == "Solo Practitioner"
     assert rec["additional_data"]["card_shape"] == "solo"
+
+
+def _subscriber_card(website_href: str | None) -> bytes:
+    """A subscriber firm card matching the real Sacramento shape, with an
+    optional per-card 'View Website' button.
+    """
+    web = (
+        f'<a class="button webstats-website-click pulsepoint-click-out" '
+        f'href="{website_href}">View Website</a>'
+        if website_href is not None
+        else ""
+    )
+    return f"""<html><body>
+    <div class="card card--attorney">
+      <ul>
+        <li class="detail_title">
+          <a href="https://www.martindale.com/attorney/jane-doe-123/"><h3>Jane Doe</h3></a>
+        </li>
+        <li class="detail_position">
+          <a class="detail_position--office-link"
+             href="https://www.martindale.com/organization/acme-law-9/"
+             data-gtm-tracking='{{"firm_id":"9","profile_type":"Subscriber"}}'>Acme Law LLP</a>
+        </li>
+        <li class="detail_location">Sacramento, CA</li>
+        <a class="button webstats-phone-click" href="tel:279-221-6996">Call</a>
+        {web}
+      </ul>
+    </div>
+    </body></html>""".encode()
+
+
+def _parse_one_card(payload: bytes):
+    recs = MartindaleCityParser().parse_bytes(
+        payload, source_url="https://www.martindale.com/all-lawyers/sacramento/california/"
+    )
+    assert len(recs) == 1
+    return recs[0]
+
+
+def test_city_card_extracts_website_from_view_website_anchor():
+    """Root fix: the per-card webstats-website-click anchor IS the firm
+    website — the builder used to drop it (website_raw=None)."""
+    rec = _parse_one_card(_subscriber_card("https://www.acmelaw.com/"))
+    assert rec["name_raw"] == "Acme Law LLP"
+    assert rec["website_raw"] == "https://www.acmelaw.com/"
+
+
+def test_city_card_website_none_when_no_anchor():
+    rec = _parse_one_card(_subscriber_card(None))
+    assert rec["website_raw"] is None
+
+
+def test_city_card_website_strips_martindale_self_domain():
+    """A View-Website button pointing back at martindale.com is not a firm
+    site — strip_self_domain drops it."""
+    rec = _parse_one_card(_subscriber_card("https://www.martindale.com/organization/acme-law-9/"))
+    assert rec["website_raw"] is None
+
+
+def test_city_card_aggregator_website_kept_raw_but_not_a_merge_key():
+    """A lead-gen aggregator (e.g. lawfirms.com) survives as website_raw but
+    normalize_record nulls website_normalized so it never merges firms."""
+    from legal_sourcing.pipelines.scrape_az_bar import normalize_record
+
+    rec = _parse_one_card(_subscriber_card("https://westcoast.lawfirms.com/x-ca/"))
+    assert rec["website_raw"] == "https://westcoast.lawfirms.com/x-ca/"
+    normalize_record(rec)
+    assert rec["website_normalized"] is None
 
 
 # ---- Firm profile parser -----------------------------------------------
@@ -352,6 +421,63 @@ def test_parse_firm_profile_full_office_count_when_distinct_from_people():
     result = parse_firm_profile_full(html.encode("utf-8"))
     # 100 is wildly larger than 5 -> trust it as office_count.
     assert result["office_count"] == 100
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        # Genuine prose (recon: all 5 firms' real description blocks).
+        (
+            "Starnes Davis Florie LLP is a general civil practice law firm "
+            "exclusively committed to the trial and resolution of civil litigation.",
+            False,
+        ),
+        # AOP list rendered without separators (recon: Starnes 818/938-char
+        # blocks, McGhee 1,144, Sargon 123, Prim 58 — all leaked before).
+        (
+            "Admiralty & Maritime LitigationAlternative Dispute ResolutionAppellate "
+            "LawAutomobile Liability DefenseBanking & Financial ServicesBusiness Litigation",
+            True,
+        ),
+        ("Civil LitigationPersonal InjuryFraudReal EstateCollections", True),
+        ("", False),
+        ("Short prose sentence about the firm.", False),
+    ],
+)
+def test_is_concatenated_list(text, expected):
+    assert _is_concatenated_list(text) is expected
+
+
+def test_parse_firm_profile_full_filters_long_aop_text_noise():
+    """Starnes-shape regression: the AOP list also renders as one or more
+    long, null-headed `div.truncate-text` blocks (recon measured 818 & 938
+    chars). The old `len < 500` gate let them through into firm_descriptions;
+    only the genuine prose block must survive.
+    """
+    prose = (
+        "Starnes Davis Florie LLP is a general civil practice law firm exclusively "
+        "committed to the trial and resolution of civil litigation. The firm serves "
+        "physicians, hospitals, banks, corporations, and governments across Alabama."
+    )
+    aop_noise_long = (
+        "Admiralty & Maritime LitigationAlternative Dispute ResolutionAppellate Law"
+        "Automobile Liability DefenseBanking & Financial ServicesBiotechnology & "
+        "PharmaceuticalBusiness Investigations & White Collar DefenseBusiness Litigation"
+        "Class Actions & Mass TortsComplex Insurance LitigationConstruction Litigation"
+    )
+    aop_noise_short = "Civil LitigationPersonal InjuryFraudReal EstateCollections"
+    html = f"""<html><body>
+      <ul class="masthead-list">
+        <li class="masthead-list__item masthead-list__item--bold">Birmingham, AL</li>
+        <li class="masthead-list__item">100 Brookwood Place, 7th Floor, Birmingham, AL 35209</li>
+      </ul>
+      <div class="truncate-text">{prose}</div>
+      <div class="truncate-text">{aop_noise_long}</div>
+      <div class="truncate-text">{aop_noise_short}</div>
+    </body></html>"""
+    result = parse_firm_profile_full(html.encode("utf-8"))
+    texts = [d["text"] for d in result["firm_descriptions"]]
+    assert texts == [prose]
 
 
 def test_extract_page_meta_falls_back_to_anchor_data_page():
