@@ -354,7 +354,64 @@ human. Full architecture rationale: `docs/assumptions.md` →
     re-scrape of those 5 states + 2 cities AFTER @Enricher's enrich finishes** (not concurrent — both
     hit martindale.com; checkpoint skips the 22,817 done, so it's small/fast). Resolution is idempotent,
     so this folds in on the next re-run. Flagging so it's tracked; no action needed from others.
-
+- **2026-06-08 22:45 UTC — @Enricher: NEW TASK (Alex) — recover firm WEBSITES from cached Martindale
+  pages; we're dropping websites that are already on disk.** Evidence (Mastermind dug in on the
+  Weintraub case Alex flagged): the city pages we fetched DO carry firm websites — `sacramento_p08`
+  has `weintraub.com` (JSON-LD `{"@type":"LegalService",...,"url":"http://www.weintraub.com/"}`) + 30
+  "View Website" anchors (`a.webstats-website-click` / a `span.icon-website` button) — but our DB has
+  `website=NULL` for those rows. **Root cause:** the city-listing card builder sets `website_raw=None`
+  ("populated post-hoc from firm profile"); only `parse_firm_profile` extracts the website. So all the
+  `no_profile` city rows lost a website that was sitting in the cached HTML. (Deep attorney-only pages,
+  e.g. `san-diego_p166`, carry NO firm website — nothing to recover there; the yield is the
+  subscriber/firm-card pages.)
+  - **Task (idiomatic, non-destructive — leads with this):** (1) extend the **city parser** to read the
+    per-card website from the JSON-LD `url` and/or the `webstats-website-click`/View-Website anchor
+    (root fix; also makes the WA/WV/WI/WY/DC gap re-scrape capture websites natively); (2) **reparse all
+    cached Martindale pages from disk** (`scrape_martindale load` — **NO re-scrape**, reuse the fetched
+    corpus) writing **ONLY `website_raw`/`website_normalized`** — column-disjoint + idempotent, so it
+    does NOT clobber @Fixer's `offices` work or your own enrich profile fields. **Do NOT** do a blind
+    full `load` that overwrites every column.
+  - **Sequencing:** the BUILD is no-network — develop + validate against the cached pages/fixtures now
+    (alongside your enrich run is fine; it's read-only on disk). **RUN the website re-extract AFTER the
+    enrich completes** (enrich also writes `website_raw` from profile pages for the ~15.3k profile rows —
+    so run the city re-extract after to avoid two writers racing the same column; it then fills the
+    `no_profile` gap).
+  - **Gate (size it on evidence first):** before the full reparse, **quantify the incremental yield** on
+    a sample — how many `no_profile` rows actually gain a website beyond what enrich already recovered —
+    and report the number here. If it's high, run the full reparse; if negligible (because websites
+    cluster on the same subscriber firms enrich already covers), say so and we stop. Don't silently
+    assume the whole 198k gain one.
+  - Strict website-only writes, `source='martindale'` scope, `make_engine()` + chunked single-committer,
+    and the lead-gen/self-domain guard you already have (never store `martindale.com` as a firm site).
+- **2026-06-09 14:00 UTC — PIVOT (Alex): network enrich is DEAD → enrich from CACHED data only,
+  populate WEBSITES, then @Websites crawls the new domains.** @Enricher confirmed it (13:42): the
+  Martindale IP is under an **IP-wide Cloudflare 403** (both `/all-lawyers/` and `/organization/` 403);
+  lowering RPS won't clear a reputation block. **Decision: do NOT fight it** — no headless/TLS-impersonation
+  build (not worth it; enrich is rich-field polish, 0 new names). **This SUPERSEDES my 22:20 network
+  green-flag and folds my 22:45 website task into the new disk-only path below.**
+  - **@Enricher — pivot to DISK-ONLY enrichment (zero Martindale network calls; this is unblocked, run
+    now).** The cached city pages we already hold are the source: each carries JSON-LD `LegalService`
+    entries with `name`, **`url` (the firm website)**, `telephone`, `address` (street/locality/region/
+    postal) — confirmed on `sacramento_p08` (`"url":"http://www.weintraub.com/"` + View-Website anchors).
+    1. **PRIORITY — populate `website_raw`/`website_normalized`** by mapping each firm row to its
+       JSON-LD `url` (and/or the `webstats-website-click`/View-Website anchor). This is the key output.
+    2. **Opportunistically gap-fill** from the same JSON-LD where a row is MISSING it: `phone_*`, office
+       `address`/`primary_*`. **Fill-only — never overwrite existing-good values**, and respect @Fixer's
+       `primary_*` lane (only fill rows left NULL; settle the final ordering per your 13:42 masthead note).
+       Keep the self-domain/lead-gen guard (never store `martindale.com`).
+    3. Mechanism: `scrape_martindale load` (no network) + `make_engine()` + chunked single-committer,
+       idempotent, `source='martindale'` scope. **Yield-gate first:** sample, report (a) # rows that gain
+       a website and (b) # net-new distinct domains NOT already in `website_enrichment`/`source="website"`,
+       then run the full pass. The 25 `failed` rows from the 13:42 network attempt are harmless (idempotent).
+  - **@Websites — second stage: crawl the NET-NEW domains @Enricher surfaces.** Once Enricher lands the
+    website fields, take the domains **not already crawled** (absent from `website_enrichment` and from
+    `source="website"` FSR rows) and run them through your website crawl → `source="website"` FSR-load
+    (your existing pipeline). **This hits the FIRMS' OWN sites, not martindale.com — so the Cloudflare
+    block does NOT affect it.** Polite/distributed as before; idempotent; re-run as more land. Wait for
+    @Enricher's new-domain count to size it; coordinate start here.
+  - **@Monitor/@Alex — the WA/WV/WI/WY/DC gap re-scrape is ALSO blocked** by the same IP-wide 403, so
+    I'm **DEFERRING it** (not worth a headless build for 5 states + 2 cities). Resolution is idempotent —
+    it folds in later if the block clears on a cool-down. No action needed.
 - **2026-06-04** — Requested columns primary_city / primary_state / practice_areas /
   practice_areas_raw. (Approved + applied by Mastermind — see above.)
 - **2026-06-04** — Columns POPULATED on branch `Websites`. Confirming your question:
