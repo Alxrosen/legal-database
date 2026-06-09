@@ -24,14 +24,74 @@ import logging
 import sys
 
 import pandas as pd
+import splink.comparison_level_library as cll
 import splink.comparison_library as cl
 from splink import DuckDBAPI, Linker, SettingsCreator, block_on
+from splink.comparison_library import CustomComparison
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from legal_sourcing.db import make_engine
 from legal_sourcing.models import FirmSourceRecord
 from legal_sourcing.resolution.identity import is_identity_website
+
+# US Census DIVISION per state (finer than the 4 regions) — proximity proxy for
+# "nearby offices are likelier the same firm" (Alex 2026-06-09: Silverman NJ/NY
+# are close => likelier one firm; NY/CA far => likelier different). Same division
+# (e.g. NJ+NY+PA = Middle Atlantic) earns partial state-agreement credit.
+_STATE_DIVISION = {
+    "CT": "NE",
+    "ME": "NE",
+    "MA": "NE",
+    "NH": "NE",
+    "RI": "NE",
+    "VT": "NE",
+    "NJ": "MA",
+    "NY": "MA",
+    "PA": "MA",
+    "IL": "ENC",
+    "IN": "ENC",
+    "MI": "ENC",
+    "OH": "ENC",
+    "WI": "ENC",
+    "IA": "WNC",
+    "KS": "WNC",
+    "MN": "WNC",
+    "MO": "WNC",
+    "NE": "WNC",
+    "ND": "WNC",
+    "SD": "WNC",
+    "DE": "SA",
+    "FL": "SA",
+    "GA": "SA",
+    "MD": "SA",
+    "NC": "SA",
+    "SC": "SA",
+    "VA": "SA",
+    "WV": "SA",
+    "DC": "SA",
+    "AL": "ESC",
+    "KY": "ESC",
+    "MS": "ESC",
+    "TN": "ESC",
+    "AR": "WSC",
+    "LA": "WSC",
+    "OK": "WSC",
+    "TX": "WSC",
+    "AZ": "MTN",
+    "CO": "MTN",
+    "ID": "MTN",
+    "MT": "MTN",
+    "NV": "MTN",
+    "NM": "MTN",
+    "UT": "MTN",
+    "WY": "MTN",
+    "AK": "PAC",
+    "CA": "PAC",
+    "HI": "PAC",
+    "OR": "PAC",
+    "WA": "PAC",
+}
 
 # Splink/py4j-style chatter is noisy; quiet it for CLI runs.
 logging.getLogger("splink").setLevel(logging.WARNING)
@@ -43,8 +103,13 @@ logging.getLogger("splink").setLevel(logging.WARNING)
 # equivalent of the bespoke website floor) WITHOUT a hand-set floor -- sweeping it
 # (CLI `prior`) showed it is the dominant accuracy lever (B-cubed 0.95 -> 0.98).
 DEFAULT_PROB_TWO_RANDOM = 5e-3
-# The Alex-2026-06-09 comparison design (TF-name + near-phone + fuzzy-name block).
-DEFAULT_VARIANT = "tuned"
+# Chosen production comparison set (Alex 2026-06-09, round 2): TF-name +
+# name-DERIVATION containment ("zurich north america" inside "...corporate law
+# division") + near-phone (Levenshtein<=1) + website + city + STATE-PROXIMITY
+# (same Census division earns partial credit, so nearby offices like Silverman
+# NJ/NY merge). Practice-area overlap was MEASURED and DROPPED — it split
+# Morgan & Morgan and lowered precision (13% coverage / 0% on martindale).
+DEFAULT_VARIANT = "tuned2_no_pa"
 # Seed for estimate_u_using_random_sampling so runs are reproducible (without it
 # u wobbles run-to-run, e.g. pairwise F1 0.962 vs 0.994 at the same lambda).
 _U_SEED = 20260608
@@ -70,6 +135,7 @@ def extract_frame(session: Session, ids: list[int] | None = None) -> pd.DataFram
         FirmSourceRecord.primary_city,
         FirmSourceRecord.primary_state,
         FirmSourceRecord.source,
+        FirmSourceRecord.practice_areas_matched,
     )
     if ids is None:
         rows = session.execute(select(*cols)).all()
@@ -80,8 +146,10 @@ def extract_frame(session: Session, ids: list[int] | None = None) -> pd.DataFram
             chunk = ids[i : i + 900]
             rows.extend(session.execute(select(*cols).where(FirmSourceRecord.id.in_(chunk))).all())
     recs = []
-    for id_, name, phone, web, city, state, source in rows:
+    for id_, name, phone, web, city, state, source, pareas in rows:
         dom = (web or "").strip().lower() or None
+        st = (state or "").strip().upper() or None
+        pa = sorted({p for p in (pareas or []) if p}) or None  # None when empty -> null level
         recs.append(
             {
                 "unique_id": id_,
@@ -89,7 +157,9 @@ def extract_frame(session: Session, ids: list[int] | None = None) -> pd.DataFram
                 "phone_normalized": (phone or "").strip() or None,
                 "website_identity": dom if (dom and is_identity_website(dom)) else None,
                 "primary_city": (city or "").strip().lower() or None,
-                "primary_state": (state or "").strip().upper() or None,
+                "primary_state": st,
+                "region": _STATE_DIVISION.get(st) if st else None,
+                "practice_areas": pa,
                 "source": source,
             }
         )
@@ -141,10 +211,66 @@ def _comparisons(variant: str) -> list:
     web = cl.ExactMatch("website_identity")
     city = cl.ExactMatch("primary_city")
     state = cl.ExactMatch("primary_state")
+    # --- tuned2 additions (Alex 2026-06-09 round 2) ---
+    # Name with a DERIVATION level: one normalized name CONTAINS the other (e.g.
+    # "zurich north america" inside "zurich north america corporate law division").
+    # Guarded by length>=12 so trivial common substrings ("law office") don't fire;
+    # TF on the exact level keeps rare names strong. Ordered between the 0.92 and
+    # 0.85 Jaro-Winkler levels.
+    name_deriv = CustomComparison(
+        output_column_name="name_normalized",
+        comparison_description="name (exact/TF, jw, derivation-containment)",
+        comparison_levels=[
+            cll.NullLevel("name_normalized"),
+            cll.ExactMatchLevel("name_normalized", term_frequency_adjustments=True),
+            cll.JaroWinklerLevel("name_normalized", 0.92),
+            cll.CustomLevel(
+                sql_condition=(
+                    "(LENGTH(name_normalized_l) >= 12 AND "
+                    "name_normalized_r LIKE '%' || name_normalized_l || '%') OR "
+                    "(LENGTH(name_normalized_r) >= 12 AND "
+                    "name_normalized_l LIKE '%' || name_normalized_r || '%')"
+                ),
+                label_for_charts="one name contains the other (derivation)",
+            ),
+            cll.JaroWinklerLevel("name_normalized", 0.85),
+            cll.JaroWinklerLevel("name_normalized", 0.70),
+            cll.ElseLevel(),
+        ],
+    )
+    # State with PROXIMITY: exact state > same Census division (nearby) > else.
+    state_prox = CustomComparison(
+        output_column_name="primary_state",
+        comparison_description="state with regional proximity",
+        comparison_levels=[
+            cll.NullLevel("primary_state"),
+            cll.ExactMatchLevel("primary_state"),
+            cll.CustomLevel(
+                sql_condition="region_l = region_r AND region_l IS NOT NULL",
+                label_for_charts="same census division (nearby)",
+            ),
+            cll.ElseLevel(),
+        ],
+    )
+    # Practice-area overlap (sparse: 13% coverage, 0% martindale) — weak corroborator.
+    pareas = CustomComparison(
+        output_column_name="practice_areas",
+        comparison_description="practice-area overlap",
+        comparison_levels=[
+            cll.NullLevel("practice_areas"),
+            cll.ArrayIntersectLevel("practice_areas", min_intersection=2),
+            cll.ArrayIntersectLevel("practice_areas", min_intersection=1),
+            cll.ElseLevel(),
+        ],
+    )
     if variant == "base":
         return [name, phone_tf, web, city, state]
     if variant == "tuned":  # the Alex-2026-06-09 design
         return [name_tf, phone_near, web, city, state]
+    if variant == "tuned2":  # + name-derivation, state proximity, practice areas
+        return [name_deriv, phone_near, web, city, state_prox, pareas]
+    if variant == "tuned2_no_pa":  # isolate whether practice areas help
+        return [name_deriv, phone_near, web, city, state_prox]
     if variant == "no_geo":
         # Drop city/state: their DISagreement was penalizing multi-office firms.
         return [name, phone_tf, web]
@@ -290,7 +416,7 @@ def _intra_firm_prob_median(es, probs: dict[tuple[int, int], float]) -> dict[str
 # CLI
 # ---------------------------------------------------------------------------
 
-_TUNE_VARIANTS = ["base", "tuned", "no_geo", "geo_no_state"]
+_TUNE_VARIANTS = ["base", "tuned", "tuned2_no_pa", "tuned2"]
 _CLUSTER_THRESHOLDS = [0.5, 0.7, 0.9, 0.95, 0.99]
 _PROB_SWEEP = [50, 70, 80, 90, 95, 99]
 
