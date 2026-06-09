@@ -570,8 +570,15 @@ def test_extract_firm_name_rejects_generic_descriptors():
 
 def test_extract_firm_name_rejects_descriptor_lists_and_nonfirm_titles():
     # A multi-word LIST of practice areas is a descriptor, not a firm name (the
-    # "law firm" marker must not rescue it).
-    for desc in ("Divorce Family Law Firm", "Wills Trusts Estates Law Firm", "Accident Injury Law Firm"):
+    # "law firm" marker must not rescue it). Includes "{Geography} {practice}" SEO
+    # descriptors ("Georgia Nursing Home Abuse Lawyers").
+    for desc in (
+        "Divorce Family Law Firm",
+        "Wills Trusts Estates Law Firm",
+        "Accident Injury Law Firm",
+        "Georgia Nursing Home Abuse Lawyers",
+        "Florida Car Accident Law Firm",
+    ):
         html = f"<html><head><title>{desc}</title></head><body></body></html>"
         assert extract_firm_name([("home", html)]) == (None, None), desc
 

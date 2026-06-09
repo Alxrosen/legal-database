@@ -919,7 +919,7 @@ _NAME_STOPWORDS: frozenset[str] = frozenset(
         "center", "centers", "practice", "practices",
         "attorney", "attorneys", "lawyer", "lawyers", "counsel", "esq",
         "legal", "services", "service", "associates", "association", "partners",
-        "blog", "blawg", "news", "home", "homepage", "website",
+        "blog", "blawg", "news",
         "llp", "lllp", "llc", "pllc", "pc", "pa", "apc", "plc", "ltd", "co", "inc",
         "skilled", "experienced", "trusted", "local", "affordable", "aggressive",
         "best", "top", "premier", "leading", "global", "national", "nationwide",
@@ -964,6 +964,30 @@ _NON_FIRM_NAMES: frozenset[str] = frozenset(
     }
 )
 
+# US state names + distinctive city tokens — used only to spot LOCATION SEO
+# descriptors ("Georgia Nursing Home Abuse Lawyers"). Multi-word places reduce to
+# the distinctive token ("new"/"north"/"south"/"west" are stopwords). The geo rule
+# requires a practice-area remainder too, so a bare place / surname ("Texas Law")
+# is never flagged on this basis.
+_GEO_TERMS: frozenset[str] = frozenset(
+    {
+        "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
+        "connecticut", "delaware", "florida", "georgia", "hawaii", "idaho", "illinois",
+        "indiana", "iowa", "kansas", "kentucky", "louisiana", "maine", "maryland",
+        "massachusetts", "michigan", "minnesota", "mississippi", "missouri", "montana",
+        "nebraska", "nevada", "hampshire", "jersey", "mexico", "carolina", "dakota",
+        "ohio", "oklahoma", "oregon", "pennsylvania", "rhode", "tennessee", "texas",
+        "utah", "vermont", "virginia", "wisconsin", "wyoming",
+        "phoenix", "tucson", "dallas", "houston", "antonio", "miami", "orlando",
+        "tampa", "jacksonville", "atlanta", "denver", "seattle", "portland",
+        "philadelphia", "pittsburgh", "detroit", "cleveland", "columbus",
+        "indianapolis", "nashville", "memphis", "louisville", "charlotte", "raleigh",
+        "vegas", "angeles", "diego", "francisco", "sacramento", "fresno", "brooklyn",
+        "baltimore", "richmond", "norfolk", "savannah", "orleans", "birmingham",
+        "minneapolis", "milwaukee", "omaha", "tulsa", "albuquerque", "boise", "spokane",
+    }
+)
+
 
 def _is_generic_firm_name(name: str) -> bool:
     """True when `name` is a generic descriptor, not a firm's identity: a known
@@ -989,7 +1013,15 @@ def _is_generic_firm_name(name: str) -> bool:
         return True
     # A multi-word name whose every distinctive token is itself a practice area is a
     # descriptor list ("Divorce Family Law", "Accident Injury Attorneys"), not a name.
-    return len(core) >= 2 and all(tax.match(t) for t in core)
+    if len(core) >= 2 and all(tax.match(t) for t in core):
+        return True
+    # "{Geography} {practice area(s)}" is a location SEO descriptor, not a name
+    # ("Georgia Nursing Home Abuse Lawyers"). Requires BOTH a geo token and a
+    # practice-area remainder, so a bare place / surname ("Texas Law") is NOT flagged.
+    non_geo = [t for t in core if t not in _GEO_TERMS]
+    if non_geo and len(non_geo) < len(core):
+        return tax.match(" ".join(non_geo)) is not None or all(tax.match(t) for t in non_geo)
+    return False
 
 
 def _domain_consistent(name: str, host: str) -> bool:
