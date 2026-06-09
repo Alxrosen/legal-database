@@ -352,6 +352,62 @@ def cluster_labels(linker: Linker, pred, threshold: float) -> dict[int, str]:
     return {int(r.unique_id): f"s{r.cluster_id}" for r in cdf.itertuples(index=False)}
 
 
+def export_active_sample(es, probs, out: str, n: int = 40, seed: int = _U_SEED) -> int:
+    """Active-learning export for human review: the MOST informative unlabeled
+    pairs — Splink's UNCERTAIN band (0.4-0.7, the decision boundary) + its
+    HIGH-confidence merges the website-labeler disputes (precision spot-checks).
+    Writes a CSV with record context + an empty clerical_match column."""
+    import csv
+    import os
+    import random
+
+    rng = random.Random(seed)
+    rec = es.records
+    labeled = {(p.a_id, p.b_id) for p in es.pairs}
+    auto = {(p.a_id, p.b_id): p.match for p in es.pairs}
+    uncertain, high_disagree = [], []
+    for (a, b), pv in probs.items():
+        key = (a, b) if a < b else (b, a)
+        if key in labeled:
+            continue
+        if 0.40 <= pv <= 0.70:
+            uncertain.append((*key, pv, "uncertain"))
+        elif pv >= 0.97 and auto.get(key) == 0:
+            high_disagree.append((*key, pv, "high_conf_vs_label"))
+    rng.shuffle(uncertain)
+    rng.shuffle(high_disagree)
+    picks = uncertain[: n - n // 2] + high_disagree[: n // 2]
+    rows = []
+    for a, b, pv, cat in picks:
+        ra, rb = rec[a], rec[b]
+        rows.append(
+            {
+                "a_id": a,
+                "b_id": b,
+                "splink_prob": round(pv, 3),
+                "category": cat,
+                "a_name": ra.name_raw or "",
+                "b_name": rb.name_raw or "",
+                "a_src": ra.source,
+                "b_src": rb.source,
+                "a_web": ra.website_normalized or "",
+                "b_web": rb.website_normalized or "",
+                "a_phone": ra.phone_normalized or "",
+                "b_phone": rb.phone_normalized or "",
+                "a_city": f"{ra.primary_city or ''},{ra.primary_state or ''}",
+                "b_city": f"{rb.primary_city or ''},{rb.primary_state or ''}",
+                "clerical_match": "",
+            }
+        )
+    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+    if rows:
+        with open(out, "w", newline="", encoding="utf-8") as fh:
+            w = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
+            w.writeheader()
+            w.writerows(rows)
+    return len(rows)
+
+
 # ---------------------------------------------------------------------------
 # Fair-reference scoring helpers
 # ---------------------------------------------------------------------------
@@ -504,6 +560,9 @@ def main() -> int:
     pp.add_argument("--lambdas", default="estimate,1e-4,1e-3,1e-2,5e-2")
     pp.add_argument("--variant", default="tuned")
     sub.add_parser("errors", help="Inspect Splink's FP/FN pairs vs the eval labels.")
+    psa = sub.add_parser("sample", help="Export active-learning pairs (uncertain + disagreements).")
+    psa.add_argument("--n", type=int, default=40)
+    psa.add_argument("--out", default="data/eval/active_sample.csv")
     args = ap.parse_args()
 
     from legal_sourcing.resolution.eval_harness import (
@@ -542,6 +601,11 @@ def main() -> int:
             linker = train_linker(df, DEFAULT_VARIANT, DEFAULT_PROB_TWO_RANDOM)
             probs, _ = predict_pairs(linker)
             _inspect_errors(es, probs)
+        elif args.cmd == "sample":
+            linker = train_linker(df, DEFAULT_VARIANT, DEFAULT_PROB_TWO_RANDOM)
+            probs, _ = predict_pairs(linker)
+            k = export_active_sample(es, probs, args.out, args.n)
+            print(f"wrote {k} active-learning pairs -> {args.out}")
         else:
             variants = args.variants.split(",") if args.cmd == "tune" else [DEFAULT_VARIANT]
             for variant in variants:
