@@ -35,3 +35,7 @@ a_id,b_id,label,note
 4219,442714,1,"SOURCE SEMANTICS: Miller Law Firm az_bar(member, sparse, unreliable domain) <-> website(firm PC), similar name -> merge, LOW confidence (little lost merging an info-poor member record) (Alex 2026-06-09)."
 428563,444435,0,"Payne Law Firm: BOTH website (firm-level, VALID distinct domains brannenpayne.com vs paynelawfirm.com) -> DIFFERENT firms (Alex 2026-06-09). Two valid firm domains => different."
 8207,431618,1,"SOURCE SEMANTICS: ClaimsHero (very unique name) az_bar(member) <-> website(firm); phone mismatch expected across sources (website has none) -> merge (Alex 2026-06-09)."
+3667,10222,1,"Arizona Supreme Court: both az_bar, both AZ, sparse; one has a WRONG/outdated website (swlaw.com is Snell&Wilmer's, mis-attributed) -> merge despite the bad website (Alex 2026-06-09). NB model stays cautious here (website-conflict guard) -> a tolerated miss."
+3348,442439,1,"Merchant & Gould: az_bar attorney record (johnaclifford.com = an individual working AT the firm) <-> website firm (merchantgould.com). Distinctive firm name -> merge (Alex 2026-06-09)."
+426887,450156,0,"Wright Law Firm: BOTH website, common surname, valid distinct domains (awrightlawfirm.com Denver CO vs wrightlawaz.com) -> different companies (Alex 2026-06-09)."
+130789,136718,0,"Scott Cohen: name-only match, both findlaw (which mis-extracted both names); different states (FL vs GA) + different domains -> different attorneys/firms (Alex 2026-06-09)."
