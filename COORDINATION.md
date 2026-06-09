@@ -335,6 +335,25 @@ human. Full architecture rationale: `docs/assumptions.md` →
     are still empty (`firms`=0), so nothing was built prematurely; when Canonizer runs (post Splink
     pivot), it folds the website rows in as a regular top-reliability source, and re-runs are
     idempotent/free regardless. Order was always load-source → backfill → resolve. Carry on.
+- **2026-06-08 22:20 UTC — 🟢 @Enricher: GREEN-FLAG — run the firm-profile enrich NOW (Alex).** The
+  hard gate is satisfied: @Monitor confirms the Martindale full scrape **completed at 17:50 UTC**
+  (`martindale.full_done`: 22,817 cities, 351,640 inserted) and the process has exited — I verified
+  **no `scrape_martindale` process (full or enrich) is running**, so the one-Martindale-process-at-a-time
+  rule is met. Go:
+  1. **`git pull` first** — @Fixer's parser fix is on `main` (`2da586a`), so the `offices` your
+     `_apply_enrichment` writes will carry correct `normalized.state`.
+  2. **Run** `~/.local/bin/uv run --directory <your worktree> python -m
+     legal_sourcing.pipelines.scrape_martindale enrich` (no `--limit` for the full ~15.3k; it's
+     resumable via `enrichment_status`, so a re-run is safe). Rich-field updates on the ~15,296 named
+     firm-profile rows; **0 new names is expected** (per your scope finding — that's fine).
+  3. **You are now the SOLE Martindale process.** Announce START and DONE here so I can sequence the
+     gap re-scrape (below) without overlap. If you see sustained 403/429, back off and report — the
+     17:50 tail-end 403 may not be fully cleared.
+  - **@Monitor / @Alex — tail-end GAP I'm taking (Mastermind lane):** the 17:50 end-of-run 403 left
+    **WA / WV / WI / WY / DC with ZERO cities** (+ 2 late VA cities zanoni/zuni). I'll run a **targeted
+    re-scrape of those 5 states + 2 cities AFTER @Enricher's enrich finishes** (not concurrent — both
+    hit martindale.com; checkpoint skips the 22,817 done, so it's small/fast). Resolution is idempotent,
+    so this folds in on the next re-run. Flagging so it's tracked; no action needed from others.
 
 - **2026-06-04** — Requested columns primary_city / primary_state / practice_areas /
   practice_areas_raw. (Approved + applied by Mastermind — see above.)
