@@ -441,6 +441,39 @@ human. Full architecture rationale: `docs/assumptions.md` →
     Build the parser-type-detection + reparse logic now (no-network, no writes until confirmed); ping me
     with a dry-run count (rows that would be dropped/kept) so Alex can green-light the write. Strict
     `source='findlaw'` scope, `make_engine()` + chunked, idempotent.
+- **2026-06-09 18:10 UTC — @Fixer: CONSOLIDATED DIRECTIVE (Alex) — firm-NAME quality across the
+  non-website sources. SUPERSEDES/ABSORBS my 15:30 FindLaw task (now Problem 1 below).** Triggered by
+  Alex's FindLaw flag + @Websites' 17:33 cross-source name audit — same theme (firm-name correctness),
+  one work order. Cache-only, idempotent; you're in the `Fixer` worktree, `make_engine()`, chunked
+  single-committer, per-source scope, tests+ruff green, commit specific files, no `Co-Authored-By`.
+  **Both problems are fixable from cached HTML — NO re-scrape** (Martindale is under the IP-wide CF 403;
+  FindLaw/AZ Bar pages are on disk).
+  - **PROBLEM 1 — FindLaw ingested individual ATTORNEYS as firms (severe).** Of 7,570 `source='findlaw'`
+    rows, **≥4,668 are `additional_data.data_testid='attorney-card-*'`, 0 are firm-cards.**
+    `parsers/findlaw.py::_extract_card` selects the generic `.fl-serp-card.organic` and takes the card
+    title as `name_raw`, so attorney cards (`class="fl-serp-card attorney organic"`, `aria-label="attorney"`)
+    store the *person's* name (e.g. "Scott Cohen"; rows `id=130789`, `id=136718`). Firm name NOT
+    recoverable from stored fields (`card_text` = practice-area/location only). Fix: teach `_extract_card`
+    to detect card type, reparse FindLaw from cache (a `scrape_findlaw load` mode if present, else a
+    `scripts/fix_findlaw_cards.py` modeled on your `fix_martindale_offices.py`). **Treatment — Alex's
+    call (he'll set it when he hands you this): recommended = EXCLUDE attorney cards from
+    `firm_source_records` (no firm identity → nameless singletons resolution skips); alternatives =
+    keep-and-flag, or a network re-scrape of attorney profile pages to recover each firm (FindLaw is NOT
+    blocked).**
+  - **PROBLEM 2 — cross-source generic/junk firm names (per @Websites' audit).** martindale 0.1%
+    (~350), findlaw 0.4%, az_bar 0.5% (~140 abbreviated/junk). Non-distinctive names ("Phoenix Law
+    Firm", "Personal Injury Law Firm") risk **false merges** in @Canonizer's name+city+state floor.
+    Apply a generic/junk-name guard to `martindale`/`az_bar`/`findlaw` rows: reject pure-generic,
+    practice-area descriptors (via the taxonomy), placeholders, spam/abbreviation denylist. Per flagged
+    name: **recover the real name from cached source HTML where possible; else NULL it** (nameless
+    singleton beats a false-merge magnet).
+  - **REUSE, don't reinvent (idiomatic):** @Websites already built + validated this generic-name logic
+    in `extract_firm_name`. Coordinate with @Websites + me to **factor it into one shared util**
+    (e.g. `normalize/firm_name.py`) used by website extraction, this cleanup, AND @Canonizer's floor.
+    Shared-file change → **I integrate the dependency to `main`** (ping me).
+  - **PROCESS:** DRY-RUN first — report per-source counts (rows affected; names recovered vs cleared;
+    FindLaw drop-vs-keep) here + @-flag me. **HOLD all destructive writes (deletes / NULL-outs) until
+    Alex/I confirm the dry-run numbers.** Then apply, idempotent.
 - **2026-06-04** — Requested columns primary_city / primary_state / practice_areas /
   practice_areas_raw. (Approved + applied by Mastermind — see above.)
 - **2026-06-04** — Columns POPULATED on branch `Websites`. Confirming your question:
