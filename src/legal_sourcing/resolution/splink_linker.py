@@ -36,6 +36,17 @@ from legal_sourcing.resolution.identity import is_identity_website
 # Splink/py4j-style chatter is noisy; quiet it for CLI runs.
 logging.getLogger("splink").setLevel(logging.WARNING)
 
+# Calibrated prior: P(two random *blocked-candidate* records are the same firm).
+# Splink's deterministic estimate undershoots (~1e-5, treating the whole corpus as
+# the random-pair space); within blocked candidates the true match rate is ~2e-3.
+# At this lambda a near-unique-identifier match becomes decisive (the learned-model
+# equivalent of the bespoke website floor) WITHOUT a hand-set floor -- sweeping it
+# (CLI `prior`) showed it is the dominant accuracy lever (B-cubed 0.95 -> 0.98).
+DEFAULT_PROB_TWO_RANDOM = 2e-3
+# Seed for estimate_u_using_random_sampling so runs are reproducible (without it
+# u wobbles run-to-run, e.g. pairwise F1 0.962 vs 0.994 at the same lambda).
+_U_SEED = 20260608
+
 
 # ---------------------------------------------------------------------------
 # Extract (the only DB read; one row per FSR identity record)
@@ -88,41 +99,79 @@ def extract_frame(session: Session, ids: list[int] | None = None) -> pd.DataFram
 # ---------------------------------------------------------------------------
 
 
-def build_settings() -> SettingsCreator:
+# Blocking is held CONSTANT across config variants so the EM training blocks
+# below stay aligned. We block on the three near-identifiers; clustering recall
+# is then a function of the comparison weights, not the candidate set.
+_BLOCKING = [
+    block_on("phone_normalized"),
+    block_on("website_identity"),
+    block_on("substr(name_normalized, 1, 8)", "primary_state"),
+]
+
+
+def _comparisons(variant: str) -> list:
+    """Comparison sets to tune. The design principle (from the multi-office
+    evidence): a near-unique identifier match (website/phone) must DOMINATE, and
+    weak-field DISAGREEMENT (a firm's offices differ in city/state/phone) must not
+    veto it. Variants probe how to encode that."""
+    name = cl.JaroWinklerAtThresholds("name_normalized", [0.92, 0.85, 0.70])
+    phone_tf = cl.ExactMatch("phone_normalized").configure(term_frequency_adjustments=True)
+    phone_plain = cl.ExactMatch("phone_normalized")
+    # NO TF on website: a firm's own domain shared across its records is the
+    # SAME-firm signal; TF down-weights big firms' domains and shatters them.
+    web = cl.ExactMatch("website_identity")
+    city = cl.ExactMatch("primary_city")
+    state = cl.ExactMatch("primary_state")
+    if variant == "base":
+        return [name, phone_tf, web, city, state]
+    if variant == "no_geo":
+        # Drop city/state: their DISagreement was penalizing multi-office firms.
+        return [name, phone_tf, web]
+    if variant == "no_geo_phone_plain":
+        return [name, phone_plain, web]
+    if variant == "geo_no_state":
+        return [name, phone_tf, web, city]
+    raise ValueError(variant)
+
+
+def build_settings(variant: str = "base", prob_two_random: float | None = None) -> SettingsCreator:
+    kw = {}
+    if prob_two_random is not None:
+        # Inject the prior directly. lambda is the dominant lever: a near-unique
+        # identifier's Bayes factor (~2^13 for a domain) only barely cancels a
+        # tiny lambda, so website-only matches land at ~0.06 and weak-field
+        # disagreement sinks them. A higher lambda (these blocked candidates are
+        # match-enriched, NOT random pairs) lets a domain match be decisive —
+        # the learned-model equivalent of the bespoke website floor.
+        kw["probability_two_random_records_match"] = prob_two_random
     return SettingsCreator(
         link_type="dedupe_only",
-        blocking_rules_to_generate_predictions=[
-            block_on("phone_normalized"),
-            block_on("website_identity"),
-            block_on("substr(name_normalized, 1, 8)", "primary_state"),
-        ],
-        comparisons=[
-            cl.JaroWinklerAtThresholds("name_normalized", [0.92, 0.85, 0.70]),
-            cl.ExactMatch("phone_normalized").configure(term_frequency_adjustments=True),
-            # NO term-frequency on website: a firm's own domain shared across its
-            # own records is the SAME-firm signal; TF would down-weight big firms'
-            # domains and shatter them (observed: Snell&Wilmer -> 8 clusters).
-            cl.ExactMatch("website_identity"),
-            cl.ExactMatch("primary_city"),
-            cl.ExactMatch("primary_state"),
-        ],
+        blocking_rules_to_generate_predictions=list(_BLOCKING),
+        comparisons=_comparisons(variant),
         retain_intermediate_calculation_columns=True,
+        **kw,
     )
 
 
-def train_linker(df: pd.DataFrame) -> Linker:
-    """Build + EM-train the linker (the unsupervised m/u estimation)."""
-    linker = Linker(df, build_settings(), DuckDBAPI())
-    # Deterministic seed for "probability two random records match".
-    linker.training.estimate_probability_two_random_records_match(
-        [block_on("phone_normalized", "website_identity")], recall=0.7
-    )
-    linker.training.estimate_u_using_random_sampling(max_pairs=2_000_000)
-    for br in (
-        block_on("phone_normalized"),
-        block_on("website_identity"),
-        block_on("substr(name_normalized, 1, 8)", "primary_state"),
-    ):
+def train_linker(
+    df: pd.DataFrame,
+    variant: str = "base",
+    prob_two_random: float | str = DEFAULT_PROB_TWO_RANDOM,
+) -> Linker:
+    """Build + EM-train the linker (the unsupervised m/u estimation).
+
+    ``prob_two_random`` fixes the prior lambda (default = the calibrated
+    ``DEFAULT_PROB_TWO_RANDOM``); pass the string ``"estimate"`` to use Splink's
+    deterministic-rule estimate instead (for sweeping/comparison)."""
+    estimate = prob_two_random == "estimate"
+    lam = None if estimate else float(prob_two_random)
+    linker = Linker(df, build_settings(variant, lam), DuckDBAPI())
+    if estimate:
+        linker.training.estimate_probability_two_random_records_match(
+            [block_on("phone_normalized", "website_identity")], recall=0.7
+        )
+    linker.training.estimate_u_using_random_sampling(max_pairs=2_000_000, seed=_U_SEED)
+    for br in _BLOCKING:
         try:
             linker.training.estimate_parameters_using_expectation_maximisation(br)
         except Exception as exc:  # a degenerate block can fail EM; keep the others
@@ -157,25 +206,111 @@ def cluster_labels(linker: Linker, pred, threshold: float) -> dict[int, str]:
 
 
 # ---------------------------------------------------------------------------
-# Head-to-head CLI
+# Fair-reference scoring helpers
 # ---------------------------------------------------------------------------
+
+
+def _splink_score_fn(probs: dict[tuple[int, int], float]):
+    def fn(a: int, b: int) -> float:
+        return probs.get((a, b) if a < b else (b, a), 0.0) * 100.0
+
+    return fn
+
+
+def _oracle_integrity(es, pred: dict[int, str]) -> list[tuple[str, int, int]]:
+    """Per oracle firm: (display, n_records, n_predicted_clusters). 1 cluster = OK
+    (multi-domain firms must merge into 1 — exactly where BESPOKE fails)."""
+    from collections import Counter, defaultdict
+
+    from legal_sourcing.resolution.eval_harness import ORACLE_FIRMS
+
+    members: dict[str, list[int]] = defaultdict(list)
+    for rid, fid in es.truth_by_id.items():
+        members[fid].append(rid)
+    out = []
+    for f in ORACLE_FIRMS:
+        ids_f = members.get(f"oracle:{f.key}", [])
+        nclusters = len(Counter(pred.get(i) for i in ids_f)) if ids_f else 0
+        out.append((f.display, len(ids_f), nclusters))
+    return out
+
+
+def _clerical_accuracy(es, score_fn, threshold: float) -> tuple[int, int]:
+    """(correct, total) on the human-adjudicated pairs at a match threshold."""
+    cler = [p for p in es.pairs if p.source == "clerical"]
+    correct = sum(1 for p in cler if (score_fn(p.a_id, p.b_id) >= threshold) == bool(p.match))
+    return correct, len(cler)
+
+
+def _intra_firm_prob_median(es, probs: dict[tuple[int, int], float]) -> dict[str, float]:
+    """Median pairwise match-prob WITHIN each oracle firm — diagnoses whether a
+    split is a SCORING problem (low intra-prob) or a THRESHOLD problem."""
+    from collections import defaultdict
+    from statistics import median
+
+    from legal_sourcing.resolution.eval_harness import ORACLE_FIRMS
+
+    members: dict[str, list[int]] = defaultdict(list)
+    for rid, fid in es.truth_by_id.items():
+        members[fid].append(rid)
+    out: dict[str, float] = {}
+    for f in ORACLE_FIRMS:
+        ids_f = sorted(members.get(f"oracle:{f.key}", []))
+        ps = [
+            probs.get((ids_f[i], ids_f[j]), 0.0)
+            for i in range(len(ids_f))
+            for j in range(i + 1, len(ids_f))
+        ]
+        out[f.display] = median(ps) if ps else float("nan")
+    return out
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+_TUNE_VARIANTS = ["base", "no_geo", "no_geo_phone_plain", "geo_no_state"]
+_CLUSTER_THRESHOLDS = [0.5, 0.7, 0.9, 0.95, 0.99]
+_PROB_SWEEP = [50, 70, 80, 90, 95, 99]
+
+
+def _eval_config(es, df, label: str, variant: str, prob_two_random, helpers) -> None:
+    bcubed, pairwise_sweep = helpers["bcubed"], helpers["pairwise_sweep"]
+    print(f"\n========== SPLINK: {label} ==========")
+    linker = train_linker(df, variant, prob_two_random)
+    probs, pred = predict_pairs(linker)
+    ssc = _splink_score_fn(probs)
+    sbest = max(pairwise_sweep(es, ssc, _PROB_SWEEP), key=lambda p: p.f1)
+    print(
+        f"  pairwise best F1={sbest.f1:.3f} @ p>={sbest.threshold / 100:.2f} "
+        f"(P={sbest.precision:.3f} R={sbest.recall:.3f})"
+    )
+    best_clu = None
+    for th in _CLUSTER_THRESHOLDS:
+        lab = cluster_labels(linker, pred, th)
+        p, r, f1 = bcubed(es.truth_by_id, lab)
+        if best_clu is None or f1 > best_clu[3]:
+            best_clu = (th, p, r, f1, lab)
+    th, p, r, f1, lab = best_clu
+    cc, ct = _clerical_accuracy(es, ssc, sbest.threshold)
+    print(f"  B-cubed best F1={f1:.3f} (P={p:.3f} R={r:.3f}) @ p>={th:.2f} | clerical {cc}/{ct}")
+    meds = _intra_firm_prob_median(es, probs)
+    print("  oracle integrity + intra-firm median prob:")
+    for disp, n, nc in _oracle_integrity(es, lab):
+        print(f"    {disp:22s} {n:3d} recs -> {nc} clusters (intra-prob med={meds[disp]:.3f})")
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    pc = sub.add_parser("compare", help="Splink vs bespoke on the identical eval set.")
-    pc.add_argument(
-        "--cluster-threshold",
-        type=float,
-        default=0.95,
-        help="Probability threshold for clustering / B-cubed.",
-    )
+    sub.add_parser("compare", help="Single base-config run vs bespoke.")
+    pt = sub.add_parser("tune", help="Sweep comparison variants vs bespoke.")
+    pt.add_argument("--variants", default=",".join(_TUNE_VARIANTS))
+    pp = sub.add_parser("prior", help="Sweep the prior lambda on the base variant (the key lever).")
+    pp.add_argument("--lambdas", default="estimate,1e-4,1e-3,1e-2,5e-2")
     args = ap.parse_args()
 
-    # Imported here so eval_harness stays splink-free.
     from legal_sourcing.resolution.eval_harness import (
-        ORACLE_FIRMS,
         bcubed,
         bespoke_clusters,
         bespoke_score_fn,
@@ -183,73 +318,34 @@ def main() -> int:
         pairwise_sweep,
     )
 
+    helpers = {"bcubed": bcubed, "pairwise_sweep": pairwise_sweep}
     engine = make_engine()
     with Session(engine) as session:
-        print("building eval set ...")
+        print("building eval set + extracting frame (once) ...")
         es = build_eval_set(session)
-        ids = list(es.records)
-        print(f"extracting {len(ids)} records -> Splink frame ...")
-        df = extract_frame(session, ids)
+        df = extract_frame(session, list(es.records))
+        print(f"  {len(es.records)} records, {len(es.pairs)} labeled pairs\n")
 
-        print("training Splink (EM) ...")
-        linker = train_linker(df)
-        print("predicting ...")
-        probs, pred = predict_pairs(linker)
+        bsc = bespoke_score_fn(es)
+        bbest = max(pairwise_sweep(es, bsc, [40, 50, 55, 60, 70, 80, 85, 88]), key=lambda p: p.f1)
+        bclu = bespoke_clusters(es, merge_threshold=85.0)
+        bp, br_, bf = bcubed(es.truth_by_id, bclu)
+        bc_corr, bc_tot = _clerical_accuracy(es, bsc, 85.0)
+        print("=== BESPOKE (reference) ===")
+        print(f"  pairwise best F1={bbest.f1:.3f} (P={bbest.precision:.3f} R={bbest.recall:.3f})")
+        print(f"  B-cubed F1={bf:.3f} (P={bp:.3f} R={br_:.3f}) | clerical {bc_corr}/{bc_tot}")
+        print("  oracle integrity (1 cluster = OK):")
+        for disp, n, nc in _oracle_integrity(es, bclu):
+            print(f"    {disp:22s} {n:3d} recs -> {nc} clusters")
 
-        def splink_score(a: int, b: int) -> float:
-            return probs.get((a, b) if a < b else (b, a), 0.0) * 100.0
-
-        prob_thresholds = [50, 70, 80, 90, 95, 99]
-        print("\n=== SPLINK pairwise sweep (match_probability * 100) ===")
-        print("  thresh   TP    FP    FN     prec    rec     F1")
-        best = None
-        for pt in pairwise_sweep(es, splink_score, prob_thresholds):
-            print(
-                f"  {pt.threshold:5.0f}  {pt.tp:5d} {pt.fp:5d} {pt.fn:5d}   "
-                f"{pt.precision:.3f}  {pt.recall:.3f}  {pt.f1:.3f}"
-            )
-            if best is None or pt.f1 > best.f1:
-                best = pt
-        if best:
-            print(
-                f"  -> SPLINK best F1={best.f1:.3f} @ p>={best.threshold / 100:.2f} "
-                f"(prec={best.precision:.3f} rec={best.recall:.3f})"
-            )
-
-        # Bespoke best F1 on the same set, for the side-by-side.
-        bspoke = bespoke_score_fn(es)
-        bbest = max(
-            pairwise_sweep(es, bspoke, [40, 50, 55, 60, 70, 80, 85, 88]),
-            key=lambda p: p.f1,
-        )
-        print(
-            f"  -> BESPOKE best F1={bbest.f1:.3f} @ {bbest.threshold:.0f} "
-            f"(prec={bbest.precision:.3f} rec={bbest.recall:.3f})"
-        )
-
-        th = args.cluster_threshold
-        spred = cluster_labels(linker, pred, th)
-        sp, sr, sf = bcubed(es.truth_by_id, spred)
-        bp, br_, bf = bcubed(es.truth_by_id, bespoke_clusters(es, merge_threshold=85.0))
-        print("\n=== B-cubed ===")
-        print(f"  SPLINK  @ p>={th:.2f} : precision={sp:.3f} recall={sr:.3f} F1={sf:.3f}")
-        print(f"  BESPOKE @ thr=85    : precision={bp:.3f} recall={br_:.3f} F1={bf:.3f}")
-
-        print("\n=== ORACLE firms (Splink clusters) ===")
-        from collections import Counter, defaultdict
-
-        members: dict[str, list[int]] = defaultdict(list)
-        for rid, fid in es.truth_by_id.items():
-            members[fid].append(rid)
-        for f in ORACLE_FIRMS:
-            ids_f = members.get(f"oracle:{f.key}", [])
-            clusters = Counter(spred.get(i) for i in ids_f)
-            verdict = (
-                "OK (1 cluster)"
-                if len(clusters) == 1 and ids_f
-                else ("no records" if not ids_f else f"SPLIT into {len(clusters)}")
-            )
-            print(f"  {f.display:22s} {len(ids_f):3d} recs -> {verdict}")
+        if args.cmd == "prior":
+            for tok in args.lambdas.split(","):
+                lam = tok if tok == "estimate" else float(tok)
+                _eval_config(es, df, f"lambda={tok}", "base", lam, helpers)
+        else:
+            variants = args.variants.split(",") if args.cmd == "tune" else ["base"]
+            for variant in variants:
+                _eval_config(es, df, variant, variant, DEFAULT_PROB_TWO_RANDOM, helpers)
     return 0
 
 
