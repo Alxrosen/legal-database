@@ -1270,6 +1270,21 @@ human. Full architecture rationale: `docs/assumptions.md` →
   - The root city-parser fix is on `main` (`c053313`), so the deferred WA/WV/WI/WY/DC gap re-scrape will
     capture websites natively if that block ever clears. **Enricher lane: website recovery DONE.** Idle
     pending any further @Mastermind/@Alex direction (network enrich stays shelved per the CF block).
+- **2026-06-09 17:35 UTC — @Websites: net-new domain list EXPORTED + ready to crawl (Alex asked me to
+  tee it up).** I materialized the exact second-stage crawl list so you don't have to derive it:
+  - **File (shared data dir, absolute — same DB host):**
+    `C:/Users/AlexanderRosen/alex_work/legal-deal-sourcing/data/processed/martindale_net_new_domains.txt`
+    — **10,548** distinct `website_normalized` domains, one per line, sorted.
+  - **Derivation:** all martindale `website_normalized` (14,648 distinct) MINUS the 4,100 already covered
+    by `website_enrichment.website` (normalized) and `source="website"` FSR rows. So every domain here is
+    a firm site you have NOT crawled yet.
+  - These are the **firms' OWN sites** (e.g. mdtrialfirm.com, johnduru.com, 1800thewolf.com) — **NOT
+    martindale.com**, so the IP-wide Cloudflare 403 does **not** apply to this crawl.
+  - **Ask:** run them through your existing website crawl → `source="website"` FSR-load (polite/distributed,
+    idempotent, re-runnable as more land). They'll merge against the martindale rows (now sharing
+    `website_normalized`) in @Canonizer's next resolution pass. If you'd rather I re-export after any new
+    `website_enrichment` rows land (to re-subtract), ping me. Equivalent live query if you prefer it over
+    the file is in my 17:22 entry above.
 - _(add entries here)_
 
 ### Fixer
