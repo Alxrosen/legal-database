@@ -528,6 +528,46 @@ def test_extract_firm_name():
     assert extract_firm_name([("home", desc)]) == (None, None)
 
 
+def test_extract_firm_name_rejects_generic_descriptors():
+    # The SEO descriptor segment ("Phoenix Law Firm") must lose to the real name
+    # later in the title via its entity suffix (Alex's flagged cfmlaw/treonshook bug).
+    t = "<html><head><title>Phoenix Law Firm | Treon &amp; Shook, PLLC</title></head><body></body></html>"
+    assert extract_firm_name([("home", t)])[0] == "Treon & Shook, PLLC"
+
+    # JSON-LD LocalBusiness/Organization name is now trusted (treonshook's real name
+    # lived only under @type LocalBusiness, so it was being ignored).
+    lb = (
+        "<html><head><title>Phoenix Law Firm</title>"
+        '<script type="application/ld+json">'
+        '{"@type":"LocalBusiness","name":"Treon & Shook, PLLC"}</script>'
+        "</head><body></body></html>"
+    )
+    assert extract_firm_name([("home", lb)])[0] == "Treon & Shook, PLLC"
+
+    # Domain-consistency picks the real name over a co-occurring practice descriptor.
+    og = (
+        '<html><head><meta property="og:site_name" '
+        'content="Fielding Law | Personal Injury Law Firm"></head><body></body></html>'
+    )
+    assert extract_firm_name([("home", og)], base_url="https://fieldinglawfirm.com")[0] == "Fielding Law"
+
+    # Pure-generic + practice-area descriptors are NEVER a firm identity.
+    for desc in ("Law Firm", "Legal Services", "Personal Injury Law Firm", "Immigration Law Firm"):
+        html = f"<html><head><title>{desc}</title></head><body></body></html>"
+        assert extract_firm_name([("home", html)]) == (None, None), desc
+
+    # Site-builder / domain-parking placeholders are not names.
+    for ph in ("HugeDomains.com", "mysite 1", "IM Template FL2"):
+        html = f"<html><head><title>{ph}</title></head><body></body></html>"
+        assert extract_firm_name([("home", html)]) == (None, None), ph
+
+    # A real surname firm whose name echoes its domain is KEPT (no over-correction).
+    sm = "<html><head><title>Personal Injury Lawyers | Smith Law Firm</title></head><body></body></html>"
+    assert (
+        extract_firm_name([("home", sm)], base_url="https://smithlawfirm.com")[0] == "Smith Law Firm"
+    )
+
+
 def test_extract_contacts():
     # TEPLG team page: the 3 attorneys become contacts with titles; staff
     # (paralegal/assistant/coordinator) are excluded, same as the headcount.

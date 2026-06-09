@@ -62,7 +62,19 @@ _LEGAL_TOKENS: tuple[str, ...] = (
     "defense",
 )
 _LEGAL_JSONLD_TYPES: frozenset[str] = frozenset(
-    {"legalservice", "attorney", "lawyer", "legalservices"}
+    {
+        "legalservice",
+        "legalservices",
+        "attorney",
+        "lawyer",
+        # Generic org/business types — a firm's structured name often lives under
+        # LocalBusiness/Organization (e.g. "Treon & Shook, PLLC"). Generic
+        # descriptors are still filtered downstream, so this only recovers real names.
+        "localbusiness",
+        "organization",
+        "corporation",
+        "professionalservice",
+    }
 )
 
 # Role keywords for team-page person classification (§4 table).
@@ -820,7 +832,11 @@ def extract_year_founded(text: str, *, now_year: int | None = None) -> int | Non
 
 # Title separators: pipe, en/em dash, middot, bullet, or " - ". e.g.
 # "Firm | Tagline" / "Firm - PI Lawyers".
-_TITLE_SEP = re.compile(r"\s*[|–—·•]\s*|\s+-\s+")  # noqa: RUF001 (intentional dash separators)
+# � = the Unicode replacement char, which scraped <title>s carry where a real
+# separator (en/em-dash, bullet, (TM)/(R)) was mojibake'd — split on it too so a
+# real name fused to an SEO descriptor ("Fielding Law<?> Personal Injury Law Firm")
+# still separates.
+_TITLE_SEP = re.compile(r"\s*[|–—·•�]\s*|\s+-\s+")  # noqa: RUF001 (intentional dash separators)
 # Strong firm-name markers — stricter than looks_like_firm (which matches bare
 # "Lawyers"), so a practice DESCRIPTOR in a <title>/<h1> ("Personal Injury
 # Lawyers") is NOT taken as a name. Trailing spaces on short suffixes avoid the
@@ -881,8 +897,84 @@ _GENERIC_NAME: frozenset[str] = frozenset(
 
 
 def _clean_name(s: str) -> str:
-    s = " ".join((s or "").split()).strip(" -|·•")
-    return re.sub(r"^(welcome to|home)\s+", "", s, flags=re.I).strip()
+    # Trim leading/trailing junk — separator punctuation, mojibake replacement chars
+    # (a ™/®/dash left clinging to a segment, e.g. "Fielding Law<?>"), stray symbols
+    # — codepoint-agnostically (strip anything that isn't a word char), while keeping
+    # interior text and a trailing "." / ")" (entity suffixes "P.A.", "(Chikk)").
+    s = " ".join((s or "").split())
+    s = re.sub(r"^[^\w(]+", "", s)
+    s = re.sub(r"[^\w.)]+$", "", s)
+    s = re.sub(r"^(welcome to|home)\s+", "", s, flags=re.I)
+    return s.strip()
+
+
+# Generic words that carry no firm IDENTITY. Stripped before deciding whether a
+# candidate is merely a descriptor ("Phoenix Law Firm", "Personal Injury Law Firm",
+# "Global Law Firm") rather than a real name: entity suffixes, legal-org nouns,
+# filler, and size/quality qualifiers.
+_NAME_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "the", "and", "of", "a", "an", "at", "for", "your", "our", "is", "in",
+        "law", "laws", "firm", "firms", "office", "offices", "group", "groups",
+        "center", "centers", "practice", "practices",
+        "attorney", "attorneys", "lawyer", "lawyers", "counsel", "esq",
+        "legal", "services", "service", "associates", "association", "partners",
+        "blog", "blawg", "news", "home", "homepage", "website",
+        "llp", "lllp", "llc", "pllc", "pc", "pa", "apc", "plc", "ltd", "co", "inc",
+        "skilled", "experienced", "trusted", "local", "affordable", "aggressive",
+        "best", "top", "premier", "leading", "global", "national", "nationwide",
+        "international", "statewide", "regional", "online",
+    }
+)
+
+# Entity-suffix / "&" markers — a STRONG signal a candidate is a real firm name (a
+# subset of _STRONG_FIRM; "law firm"/"law office" are weaker, descriptor-prone).
+_ENTITY_SUFFIX_MARK: tuple[str, ...] = (
+    " llp", " lllp", " llc", " pllc", " p.c", " pc ", " p.a", " pa ",
+    " apc ", " plc ", " ltd ", " & ", " and associates", "& associates",
+)
+
+
+def _firm_name_core(name: str) -> list[str]:
+    """Distinctive (identity-bearing) tokens of a name — alphabetic tokens with the
+    generic legal / structural / qualifier words removed."""
+    return [
+        t for t in re.findall(r"[a-z]+", name.lower()) if len(t) > 1 and t not in _NAME_STOPWORDS
+    ]
+
+
+def _is_generic_firm_name(name: str) -> bool:
+    """True when `name` is a generic descriptor, not a firm's identity: a
+    placeholder (Wix / domain-parking / template), nothing distinctive left after
+    dropping generic words ("Law Firm", "Legal Services"), or a pure practice-area
+    descriptor ("Personal Injury Law Firm", "Immigration Law Firm"). City
+    descriptors ("Phoenix Law Firm") are NOT flagged here — the entity-suffix /
+    domain-consistency ranking in extract_firm_name demotes those instead.
+    """
+    low = " ".join((name or "").lower().split())
+    low_nodigit = re.sub(r"\s*\d+$", "", low)  # "mysite 1" -> "mysite"
+    if low in _GENERIC_NAME or low_nodigit in _GENERIC_NAME:
+        return True
+    if "template" in low or "hugedomains" in low or "godaddy" in low:
+        return True  # site-builder / domain-parking placeholders
+    core = _firm_name_core(name)
+    if not core:
+        return True
+    return get_taxonomy().match(" ".join(core)) is not None
+
+
+def _domain_consistent(name: str, host: str) -> bool:
+    """A distinctive name token (>=4 chars) appears in the domain host. Real firms'
+    domains usually echo their name (Fielding -> fieldinglawfirm.com), so this
+    separates the real name from a co-occurring SEO descriptor."""
+    if not host:
+        return False
+    stem = host.split(".")[0].replace("-", "")
+    return any(len(t) >= 4 and t in stem for t in _firm_name_core(name))
+
+
+def _has_entity_marker(c: str) -> bool:
+    return any(mk in f" {c.lower()} " for mk in _ENTITY_SUFFIX_MARK)
 
 
 def extract_firm_name(
@@ -925,30 +1017,48 @@ def extract_firm_name(
     def _segments(strings: list[str]) -> list[str]:
         # Split each candidate on title separators (a junk og:site_name like
         # "Jones Walker LLP - Jones Walker LLP | Homepage" -> "Jones Walker LLP"),
-        # clean, and drop generic placeholders / out-of-range lengths.
+        # clean, and drop generic descriptors / placeholders / out-of-range lengths.
         out: list[str] = []
         for s in strings:
             for seg in _TITLE_SEP.split(s):
                 c = _clean_name(seg)
-                if c and 2 <= len(c) <= 80 and c.lower() not in _GENERIC_NAME and c not in out:
+                if c and 2 <= len(c) <= 80 and not _is_generic_firm_name(c) and c not in out:
                     out.append(c)
         return out
 
     def _has_marker(c: str) -> bool:
         return any(mk in f" {c.lower()} " for mk in _STRONG_FIRM)
 
-    # Trusted (JSON-LD / og:site_name): firm-marker segment first, else any clean
-    # segment. Weak (<title>/<h1>): a strong firm marker is required so a practice
-    # descriptor ("Personal Injury Lawyers") is never mistaken for a name.
-    for segs, require_marker in ((_segments(trusted), False), (_segments(weak), True)):
-        ordered = [c for c in segs if _has_marker(c)]
-        if not require_marker:
-            ordered += [c for c in segs if not _has_marker(c)]
-        for c in ordered:
+    # Score every non-generic candidate and pick the best (ties -> earliest by source
+    # order). A real firm name beats a co-occurring SEO descriptor because it carries
+    # an entity suffix (PLLC / P.A. / &) and/or echoes the domain, whereas "Phoenix
+    # Law Firm" / "Personal Injury Law Firm" carry only a weak descriptor marker and
+    # don't match the host. Weak (<title>/<h1>) candidates still must look like a firm
+    # name (carry some marker) to be considered at all.
+    host = _host(base_url)
+    scored: list[tuple[int, int, str, str]] = []
+    order = 0
+    for segs, require_marker, trusted_bonus in (
+        (_segments(trusted), False, 2),
+        (_segments(weak), True, 0),
+    ):
+        for c in segs:
+            order += 1
+            entity = _has_entity_marker(c)
+            weak_marker = _has_marker(c)
+            if require_marker and not (entity or weak_marker):
+                continue
             nn = normalize_firm_name(c)
-            if nn and nn.normalized:
-                return c, nn.normalized
-    return None, None
+            if not (nn and nn.normalized):
+                continue
+            score = trusted_bonus + (3 if entity else 1 if weak_marker else 0)
+            if _domain_consistent(c, host):
+                score += 3
+            scored.append((score, -order, c, nn.normalized))
+    if not scored:
+        return None, None
+    scored.sort(reverse=True)
+    return scored[0][2], scored[0][3]
 
 
 def extract_phones(html: str | bytes) -> list[str]:
