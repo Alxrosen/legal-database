@@ -528,6 +528,156 @@ def test_extract_firm_name():
     assert extract_firm_name([("home", desc)]) == (None, None)
 
 
+def test_extract_firm_name_rejects_generic_descriptors():
+    # The SEO descriptor segment ("Phoenix Law Firm") must lose to the real name
+    # later in the title via its entity suffix (Alex's flagged cfmlaw/treonshook bug).
+    t = "<html><head><title>Phoenix Law Firm | Treon &amp; Shook, PLLC</title></head><body></body></html>"
+    assert extract_firm_name([("home", t)])[0] == "Treon & Shook, PLLC"
+
+    # JSON-LD LocalBusiness/Organization name is now trusted (treonshook's real name
+    # lived only under @type LocalBusiness, so it was being ignored).
+    lb = (
+        "<html><head><title>Phoenix Law Firm</title>"
+        '<script type="application/ld+json">'
+        '{"@type":"LocalBusiness","name":"Treon & Shook, PLLC"}</script>'
+        "</head><body></body></html>"
+    )
+    assert extract_firm_name([("home", lb)])[0] == "Treon & Shook, PLLC"
+
+    # Domain-consistency picks the real name over a co-occurring practice descriptor.
+    og = (
+        '<html><head><meta property="og:site_name" '
+        'content="Fielding Law | Personal Injury Law Firm"></head><body></body></html>'
+    )
+    assert extract_firm_name([("home", og)], base_url="https://fieldinglawfirm.com")[0] == "Fielding Law"
+
+    # Pure-generic + practice-area descriptors are NEVER a firm identity.
+    for desc in ("Law Firm", "Legal Services", "Personal Injury Law Firm", "Immigration Law Firm"):
+        html = f"<html><head><title>{desc}</title></head><body></body></html>"
+        assert extract_firm_name([("home", html)]) == (None, None), desc
+
+    # Site-builder / domain-parking placeholders are not names.
+    for ph in ("HugeDomains.com", "mysite 1", "IM Template FL2"):
+        html = f"<html><head><title>{ph}</title></head><body></body></html>"
+        assert extract_firm_name([("home", html)]) == (None, None), ph
+
+    # A real surname firm whose name echoes its domain is KEPT (no over-correction).
+    sm = "<html><head><title>Personal Injury Lawyers | Smith Law Firm</title></head><body></body></html>"
+    assert (
+        extract_firm_name([("home", sm)], base_url="https://smithlawfirm.com")[0] == "Smith Law Firm"
+    )
+
+
+def test_extract_firm_name_rejects_descriptor_lists_and_nonfirm_titles():
+    # A multi-word LIST of practice areas is a descriptor, not a firm name (the
+    # "law firm" marker must not rescue it). Includes "{Geography} {practice}" SEO
+    # descriptors ("Georgia Nursing Home Abuse Lawyers").
+    for desc in (
+        "Divorce Family Law Firm",
+        "Wills Trusts Estates Law Firm",
+        "Accident Injury Law Firm",
+        "Georgia Nursing Home Abuse Lawyers",
+        "Florida Car Accident Law Firm",
+    ):
+        html = f"<html><head><title>{desc}</title></head><body></body></html>"
+        assert extract_firm_name([("home", html)]) == (None, None), desc
+
+    # Parked / spam / non-firm titles recur across unrelated domains (poring168 was
+    # on 15) — rejected even when supplied as a trusted og:site_name.
+    for jn in ("poring168", "School of Law", "Law Thinker"):
+        og = f'<html><head><meta property="og:site_name" content="{jn}"></head><body></body></html>'
+        assert extract_firm_name([("home", og)]) == (None, None), jn
+
+
+def test_extract_firm_name_keeps_domain_matching_descriptive_brand():
+    # A practice/geo descriptor that ECHOES the firm's own domain is its chosen brand
+    # and must NOT be erroneously rejected; the same phrase on an unrelated firm's
+    # domain is a generic SEO descriptor and IS dropped.
+    desc = "Georgia Nursing Home Abuse Lawyers"
+    og = f'<html><head><meta property="og:site_name" content="{desc}"></head><body></body></html>'
+    assert extract_firm_name([("home", og)], base_url="https://smithlegalgroup.com") == (None, None)
+    assert (
+        extract_firm_name([("home", og)], base_url="https://georgianursinghomeabuselawyers.com")[0]
+        == desc
+    )
+    cfl = '<html><head><meta property="og:site_name" content="Carolina Family Law"></head><body></body></html>'
+    assert (
+        extract_firm_name([("home", cfl)], base_url="https://carolinafamilylaw.com")[0]
+        == "Carolina Family Law"
+    )
+
+
+def test_extract_firm_name_discovers_from_logo_alt_and_dotted_suffix():
+    # The real name lives only in the logo alt-text and echoes the domain (no entity
+    # suffix) — recovered where <title> is a descriptor (the discovery half).
+    alt = (
+        "<html><head><title>Criminal Defense Attorney in Phoenix</title></head>"
+        '<body><img alt="Aeed Law - Criminal Defense Attorney in Phoenix"></body></html>'
+    )
+    assert extract_firm_name([("home", alt)], base_url="https://aeedlaw.com")[0] == "Aeed Law"
+
+    # A dotted entity suffix ("P.L.C.") is recognized like "PLC".
+    plc = (
+        "<html><head><title>Arizona Attorney | Arizona Legal Advisor, P.L.C.</title>"
+        "</head><body></body></html>"
+    )
+    assert (
+        extract_firm_name([("home", plc)], base_url="https://advisor.law")[0]
+        == "Arizona Legal Advisor, P.L.C."
+    )
+
+    # Parked / for-sale / URL-as-title pages yield no name (domain echo must not
+    # rescue a domain string).
+    for junk in ("aandnlaw.com", "AboutUsVisas.com is for sale", "Coming Soon"):
+        og = f'<html><head><meta property="og:site_name" content="{junk}"></head><body></body></html>'
+        assert extract_firm_name([("home", og)], base_url="https://aandnlaw.com") == (None, None), junk
+
+
+def test_extract_offices_full_state_names():
+    # Merchant & Gould /offices/ style: addresses use FULL state names, not 2-letter
+    # codes -> must still parse, normalized to the 2-letter form.
+    html = (
+        "<html><body>"
+        "<div>Atlanta 191 Peachtree Suite 3800 Atlanta, Georgia 30303</div>"
+        "<div>Denver 1125 17th St Suite 2100 Denver, Colorado 80202</div>"
+        "<div>Minneapolis 150 South Fifth Street Suite 2200 Minneapolis, Minnesota 55402</div>"
+        "</body></html>"
+    )
+    cnt, addrs = extract_offices(html)
+    assert cnt == 3
+    assert {a["city"] for a in addrs} == {"Atlanta", "Denver", "Minneapolis"}
+    assert {a["state"] for a in addrs} == {"GA", "CO", "MN"}  # full names -> 2-letter
+    # the 2-letter form still works (and a lowercase word is NOT read as a state)
+    assert extract_offices("<p>Phoenix, AZ 85016</p>")[1][0]["state"] == "AZ"
+
+
+def test_extract_site_unions_offices_from_offices_page():
+    # The office list lives on a dedicated /offices/ page (the nav hides it behind a
+    # button), and the home footer has no address — all offices must still be captured.
+    home = (
+        "<html><head><title>Merchant &amp; Gould P.C.</title></head>"
+        "<body><p>An intellectual property law firm.</p></body></html>"
+    )
+    offices = (
+        "<html><body>"
+        "<div>Boston 125 High Street Suite 2300 Boston, Massachusetts 02109</div>"
+        "<div>New York 500 Fifth Avenue Suite 4100 New York, New York 10110</div>"
+        "</body></html>"
+    )
+    site = extract_site([("home", home), ("offices", offices)], base_url="https://merchantgould.com")
+    assert site.office_count == 2
+    assert {o["city"] for o in site.office_addresses} == {"Boston", "New York"}
+
+
+def test_discover_internal_pages_finds_offices_page():
+    home = (
+        '<html><body><a href="/offices/">Our Offices</a>'
+        '<a href="/attorneys/">Attorneys</a></body></html>'
+    )
+    disc = discover_internal_pages(home, "https://x.com")
+    assert any(u.endswith("/offices") for u in disc["offices"])
+
+
 def test_extract_contacts():
     # TEPLG team page: the 3 attorneys become contacts with titles; staff
     # (paralegal/assistant/coordinator) are excluded, same as the headcount.

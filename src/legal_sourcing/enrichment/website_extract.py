@@ -62,7 +62,19 @@ _LEGAL_TOKENS: tuple[str, ...] = (
     "defense",
 )
 _LEGAL_JSONLD_TYPES: frozenset[str] = frozenset(
-    {"legalservice", "attorney", "lawyer", "legalservices"}
+    {
+        "legalservice",
+        "legalservices",
+        "attorney",
+        "lawyer",
+        # Generic org/business types — a firm's structured name often lives under
+        # LocalBusiness/Organization (e.g. "Treon & Shook, PLLC"). Generic
+        # descriptors are still filtered downstream, so this only recovers real names.
+        "localbusiness",
+        "organization",
+        "corporation",
+        "professionalservice",
+    }
 )
 
 # Role keywords for team-page person classification (§4 table).
@@ -141,7 +153,29 @@ _OFFICE_COUNT = re.compile(r"(?<![\d.\-])([1-9]\d{0,2})\s*\+?\s*(offices?|locati
 _YEARS = re.compile(r"(\d{1,3})\s*\+?\s*(?:years?|yrs?)\b", re.I)
 _FOUNDED = re.compile(r"(?:founded|established|since|serving\D{0,20}since)\D{0,12}(\d{4})", re.I)
 _PHONE = re.compile(r"\(?\b\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}\b")
-_CITY_STATE_ZIP = re.compile(r"([A-Za-z][A-Za-z.\s]{1,38}?),\s*([A-Z]{2})\s+(\d{5})(?:-\d{4})?")
+# Full US state names -> 2-letter, so an address written "Atlanta, Georgia 30303"
+# (full-name state, common on a firm's /offices/ page) parses like "Atlanta, GA
+# 30303". DC included.
+_STATE_NAMES: dict[str, str] = {
+    "alabama": "AL", "alaska": "AK", "arizona": "AZ", "arkansas": "AR", "california": "CA",
+    "colorado": "CO", "connecticut": "CT", "delaware": "DE", "florida": "FL", "georgia": "GA",
+    "hawaii": "HI", "idaho": "ID", "illinois": "IL", "indiana": "IN", "iowa": "IA", "kansas": "KS",
+    "kentucky": "KY", "louisiana": "LA", "maine": "ME", "maryland": "MD", "massachusetts": "MA",
+    "michigan": "MI", "minnesota": "MN", "mississippi": "MS", "missouri": "MO", "montana": "MT",
+    "nebraska": "NE", "nevada": "NV", "new hampshire": "NH", "new jersey": "NJ", "new mexico": "NM",
+    "new york": "NY", "north carolina": "NC", "north dakota": "ND", "ohio": "OH", "oklahoma": "OK",
+    "oregon": "OR", "pennsylvania": "PA", "rhode island": "RI", "south carolina": "SC",
+    "south dakota": "SD", "tennessee": "TN", "texas": "TX", "utah": "UT", "vermont": "VT",
+    "virginia": "VA", "washington": "WA", "west virginia": "WV", "wisconsin": "WI",
+    "wyoming": "WY", "district of columbia": "DC",
+}
+_STATE_NAME_ALT = "|".join(re.escape(s) for s in sorted(_STATE_NAMES, key=len, reverse=True))
+# "City, ST 12345" OR "City, Full State Name 12345". The 2-letter form stays
+# case-sensitive (so "in"/"is" aren't read as states); full names are matched
+# case-insensitively via the scoped (?i:) group.
+_CITY_STATE_ZIP = re.compile(
+    rf"([A-Za-z][A-Za-z.\s]{{1,38}}?),\s*([A-Z]{{2}}|(?i:{_STATE_NAME_ALT}))\s+(\d{{5}})(?:-\d{{4}})?"
+)
 # Street-suffix / unit / compound-directional tokens that must NOT be read as
 # part of a city when walking back through flat footer text ("...Inverness
 # Drive East Englewood, CO" -> "Englewood", not "Drive East Englewood"). Excludes
@@ -759,7 +793,8 @@ def extract_offices(html: str | bytes) -> tuple[int | None, list[dict[str, str]]
             else:
                 break
         city = " ".join(city_words[-3:])
-        state, postal = m.group(2), m.group(3)
+        state = _STATE_NAMES.get(m.group(2).lower(), m.group(2).upper())
+        postal = m.group(3)
         key = (city.lower(), state, postal)
         if not city or key in seen:
             continue
@@ -773,6 +808,26 @@ def extract_offices(html: str | bytes) -> tuple[int | None, list[dict[str, str]]
         if mo:
             office_count = int(mo.group(1))
     return office_count, addrs
+
+
+def _collect_offices(htmls: list[str | bytes]) -> tuple[int | None, list[dict[str, str]]]:
+    """Union offices across the home footer AND any dedicated /offices//locations/
+    page (a JS nav may hide the link, but the page itself is server-rendered, e.g.
+    Merchant & Gould's 8 offices). Dedup by (city, state, postal); fall back to a
+    stated "N offices" count only when no address parsed on any page."""
+    seen: set[tuple[str, str, str]] = set()
+    addrs: list[dict[str, str]] = []
+    stated: int | None = None
+    for h in htmls:
+        oc, page_addrs = extract_offices(h)
+        for d in page_addrs:
+            k = (d["city"].lower(), d["state"], d["postal_code"])
+            if k not in seen:
+                seen.add(k)
+                addrs.append(d)
+        if not page_addrs and oc and stated is None:
+            stated = oc
+    return (len(addrs) or stated), addrs
 
 
 def extract_years(text: str, *, now_year: int | None = None) -> tuple[int | None, bool]:
@@ -820,7 +875,11 @@ def extract_year_founded(text: str, *, now_year: int | None = None) -> int | Non
 
 # Title separators: pipe, en/em dash, middot, bullet, or " - ". e.g.
 # "Firm | Tagline" / "Firm - PI Lawyers".
-_TITLE_SEP = re.compile(r"\s*[|–—·•]\s*|\s+-\s+")  # noqa: RUF001 (intentional dash separators)
+# � = the Unicode replacement char, which scraped <title>s carry where a real
+# separator (en/em-dash, bullet, (TM)/(R)) was mojibake'd — split on it too so a
+# real name fused to an SEO descriptor ("Fielding Law<?> Personal Injury Law Firm")
+# still separates.
+_TITLE_SEP = re.compile(r"\s*[|–—·•�]\s*|\s+-\s+")  # noqa: RUF001 (intentional dash separators)
 # Strong firm-name markers — stricter than looks_like_firm (which matches bare
 # "Lawyers"), so a practice DESCRIPTOR in a <title>/<h1> ("Personal Injury
 # Lawyers") is NOT taken as a name. Trailing spaces on short suffixes avoid the
@@ -881,8 +940,160 @@ _GENERIC_NAME: frozenset[str] = frozenset(
 
 
 def _clean_name(s: str) -> str:
-    s = " ".join((s or "").split()).strip(" -|·•")
-    return re.sub(r"^(welcome to|home)\s+", "", s, flags=re.I).strip()
+    # Trim leading/trailing junk — separator punctuation, mojibake replacement chars
+    # (a ™/®/dash left clinging to a segment, e.g. "Fielding Law<?>"), stray symbols
+    # — codepoint-agnostically (strip anything that isn't a word char), while keeping
+    # interior text and a trailing "." / ")" (entity suffixes "P.A.", "(Chikk)").
+    s = " ".join((s or "").split())
+    s = re.sub(r"^[^\w(]+", "", s)
+    s = re.sub(r"[^\w.)]+$", "", s)
+    s = re.sub(r"^(welcome to|home)\s+", "", s, flags=re.I)
+    return s.strip()
+
+
+# Generic words that carry no firm IDENTITY. Stripped before deciding whether a
+# candidate is merely a descriptor ("Phoenix Law Firm", "Personal Injury Law Firm",
+# "Global Law Firm") rather than a real name: entity suffixes, legal-org nouns,
+# filler, and size/quality qualifiers.
+_NAME_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "the", "and", "of", "a", "an", "at", "for", "your", "our", "is", "in",
+        "law", "laws", "firm", "firms", "office", "offices", "group", "groups",
+        "center", "centers", "practice", "practices",
+        "attorney", "attorneys", "lawyer", "lawyers", "counsel", "esq",
+        "legal", "services", "service", "associates", "association", "partners",
+        "blog", "blawg", "news",
+        "llp", "lllp", "llc", "pllc", "pc", "pa", "apc", "plc", "ltd", "co", "inc",
+        "skilled", "experienced", "trusted", "local", "affordable", "aggressive",
+        "best", "top", "premier", "leading", "global", "national", "nationwide",
+        "international", "statewide", "regional", "online",
+    }
+)
+
+# Entity-suffix / "&" markers — a STRONG signal a candidate is a real firm name (a
+# subset of _STRONG_FIRM; "law firm"/"law office" are weaker, descriptor-prone).
+_ENTITY_SUFFIX_MARK: tuple[str, ...] = (
+    " llp", " lllp", " llc", " pllc", " p.c", " pc ", " p.a", " pa ",
+    " apc ", " plc ", " ltd ", " & ", " and associates", "& associates",
+)
+
+
+def _firm_name_core(name: str) -> list[str]:
+    """Distinctive (identity-bearing) tokens of a name — alphabetic tokens with the
+    generic legal / structural / qualifier words removed."""
+    return [
+        t for t in re.findall(r"[a-z]+", name.lower()) if len(t) > 1 and t not in _NAME_STOPWORDS
+    ]
+
+
+# Observed non-firm titles that pass the relevance gate but are never a firm's
+# name: parked / spam / hijacked-domain CMS defaults, legal blogs/news brands,
+# domain-parking services, and non-firm legal entities (law schools). Frequency is
+# the tell — these recur across unrelated domains (e.g. "poring168" on 15+).
+_NON_FIRM_NAMES: frozenset[str] = frozenset(
+    {
+        "poring168",
+        "teepublic",
+        "spaceship",
+        "idlix",
+        "live draw sgp",
+        "unstoppable domains",
+        "burgundy today",
+        "default",
+        "law thinker",
+        "school of law",
+        "untitled document",
+        "index of",
+    }
+)
+
+# US state names + distinctive city tokens — used only to spot LOCATION SEO
+# descriptors ("Georgia Nursing Home Abuse Lawyers"). Multi-word places reduce to
+# the distinctive token ("new"/"north"/"south"/"west" are stopwords). The geo rule
+# requires a practice-area remainder too, so a bare place / surname ("Texas Law")
+# is never flagged on this basis.
+_GEO_TERMS: frozenset[str] = frozenset(
+    {
+        "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
+        "connecticut", "delaware", "florida", "georgia", "hawaii", "idaho", "illinois",
+        "indiana", "iowa", "kansas", "kentucky", "louisiana", "maine", "maryland",
+        "massachusetts", "michigan", "minnesota", "mississippi", "missouri", "montana",
+        "nebraska", "nevada", "hampshire", "jersey", "mexico", "carolina", "dakota",
+        "ohio", "oklahoma", "oregon", "pennsylvania", "rhode", "tennessee", "texas",
+        "utah", "vermont", "virginia", "wisconsin", "wyoming",
+        "phoenix", "tucson", "dallas", "houston", "antonio", "miami", "orlando",
+        "tampa", "jacksonville", "atlanta", "denver", "seattle", "portland",
+        "philadelphia", "pittsburgh", "detroit", "cleveland", "columbus",
+        "indianapolis", "nashville", "memphis", "louisville", "charlotte", "raleigh",
+        "vegas", "angeles", "diego", "francisco", "sacramento", "fresno", "brooklyn",
+        "baltimore", "richmond", "norfolk", "savannah", "orleans", "birmingham",
+        "minneapolis", "milwaukee", "omaha", "tulsa", "albuquerque", "boise", "spokane",
+    }
+)
+
+
+def _is_generic_firm_name(name: str) -> bool:
+    """True when `name` is UNCONDITIONALLY not a firm identity: a known
+    non-firm/placeholder title (Wix / domain-parking / template / spam / "for sale"),
+    a URL, or nothing distinctive left after dropping generic words ("Law Firm",
+    "Legal Services"). Practice-area / geographic DESCRIPTORS are handled separately
+    by _is_descriptor_name (which the caller keeps when they match the firm's own
+    domain), so a valid descriptive brand is never erroneously discarded here.
+    """
+    low = " ".join((name or "").lower().split())
+    low_nodigit = re.sub(r"\s*\d+$", "", low)  # "mysite 1" -> "mysite"
+    if low in _GENERIC_NAME or low_nodigit in _GENERIC_NAME or low in _NON_FIRM_NAMES:
+        return True
+    if any(
+        s in low
+        for s in ("template", "hugedomains", "godaddy", "for sale", "coming soon", "under construction")
+    ):
+        return True  # site-builder / domain-parking / placeholder pages
+    if re.search(r"\.(?:com|net|org|biz|info|law)\b", low):
+        return True  # the candidate is a domain / URL, not a firm name
+    return not _firm_name_core(name)  # nothing distinctive left ("Law Firm")
+
+
+def _is_descriptor_name(name: str) -> bool:
+    """A practice-area / geographic DESCRIPTOR rather than a firm identity:
+    a single practice phrase ("Personal Injury Law Firm", "Immigration Law Firm"), a
+    multi-word list of practice areas ("Divorce Family Law", "Wills Trusts Estates"),
+    or "{Geography} {practice area}" ("Georgia Nursing Home Abuse Lawyers"). The
+    caller KEEPS such a name when it echoes the firm's own domain (its chosen brand,
+    e.g. "Carolina Family Law" on carolinafamilylaw.com) and drops it otherwise (a
+    generic SEO descriptor not tied to this firm) — so a valid descriptive brand is
+    never erroneously discarded.
+    """
+    core = _firm_name_core(name)
+    if not core:
+        return False
+    tax = get_taxonomy()
+    if tax.match(" ".join(core)) is not None:
+        return True
+    if len(core) >= 2 and all(tax.match(t) for t in core):
+        return True
+    # "{Geography} {practice}" — requires BOTH a geo token and a practice-area
+    # remainder, so a bare place / surname ("Texas Law") is NOT flagged.
+    non_geo = [t for t in core if t not in _GEO_TERMS]
+    if non_geo and len(non_geo) < len(core):
+        return tax.match(" ".join(non_geo)) is not None or all(tax.match(t) for t in non_geo)
+    return False
+
+
+def _domain_consistent(name: str, host: str) -> bool:
+    """A distinctive name token (>=4 chars) appears in the domain host. Real firms'
+    domains usually echo their name (Fielding -> fieldinglawfirm.com), so this
+    separates the real name from a co-occurring SEO descriptor."""
+    if not host:
+        return False
+    stem = host.split(".")[0].replace("-", "")
+    return any(len(t) >= 4 and t in stem for t in _firm_name_core(name))
+
+
+def _has_entity_marker(c: str) -> bool:
+    low = c.lower()
+    padded = (f" {low} ", f" {low.replace('.', '')} ")  # match dotted "P.L.C." like "PLC"
+    return any(mk in p for mk in _ENTITY_SUFFIX_MARK for p in padded)
 
 
 def extract_firm_name(
@@ -897,7 +1108,7 @@ def extract_firm_name(
         return None, None
     tree = _tree(next((h for r, h in pages if r == "home"), pages[0][1]))
     trusted: list[str] = []  # legal JSON-LD name + og:site_name (accept as-is)
-    weak: list[str] = []  # <title> / <h1> (require a strong firm marker)
+    weak: list[str] = []  # <title> / <h1> / logo alt (need a marker OR domain echo)
     for node in tree.css('script[type="application/ld+json"]'):
         try:
             data = json.loads(node.text() or "")
@@ -921,34 +1132,70 @@ def extract_firm_name(
     h1 = tree.css_first("h1")
     if h1 and h1.text():
         weak.append(h1.text())
+    # Logo / header image alt-text often carries the real name when <title>/<h1> are
+    # descriptors or placeholders (alt="Aeed Law - Criminal Defense...", "Ashley
+    # Hendren, Attorney At Law", "8 Second Legal Logo"). Strip a trailing
+    # "logo"/"logo.png"; the marker-or-domain-consistency gate keeps nav/icon alts
+    # ("Menu", "Facebook") out.
+    for img in tree.css("img[alt]")[:10]:
+        alt = " ".join((img.attributes.get("alt") or "").split())
+        if alt:
+            weak.append(re.sub(r"\s*logo(?:\.\w+)?\s*$", "", alt, flags=re.I))
 
     def _segments(strings: list[str]) -> list[str]:
         # Split each candidate on title separators (a junk og:site_name like
         # "Jones Walker LLP - Jones Walker LLP | Homepage" -> "Jones Walker LLP"),
-        # clean, and drop generic placeholders / out-of-range lengths.
+        # clean, and drop generic descriptors / placeholders / out-of-range lengths.
         out: list[str] = []
         for s in strings:
             for seg in _TITLE_SEP.split(s):
                 c = _clean_name(seg)
-                if c and 2 <= len(c) <= 80 and c.lower() not in _GENERIC_NAME and c not in out:
+                if c and 2 <= len(c) <= 80 and not _is_generic_firm_name(c) and c not in out:
                     out.append(c)
         return out
 
     def _has_marker(c: str) -> bool:
-        return any(mk in f" {c.lower()} " for mk in _STRONG_FIRM)
+        padded = (f" {c.lower()} ", f" {c.lower().replace('.', '')} ")
+        return any(mk in p for mk in _STRONG_FIRM for p in padded)
 
-    # Trusted (JSON-LD / og:site_name): firm-marker segment first, else any clean
-    # segment. Weak (<title>/<h1>): a strong firm marker is required so a practice
-    # descriptor ("Personal Injury Lawyers") is never mistaken for a name.
-    for segs, require_marker in ((_segments(trusted), False), (_segments(weak), True)):
-        ordered = [c for c in segs if _has_marker(c)]
-        if not require_marker:
-            ordered += [c for c in segs if not _has_marker(c)]
-        for c in ordered:
+    # Score every non-generic candidate and pick the best (ties -> earliest by source
+    # order). A real firm name beats a co-occurring SEO descriptor because it carries
+    # an entity suffix (PLLC / P.A. / &) and/or echoes the domain, whereas "Phoenix
+    # Law Firm" / "Personal Injury Law Firm" carry only a weak descriptor marker and
+    # don't match the host. Weak (<title>/<h1>) candidates still must look like a firm
+    # name (carry some marker) to be considered at all.
+    host = _host(base_url)
+    scored: list[tuple[int, int, str, str]] = []
+    order = 0
+    for segs, require_marker, trusted_bonus in (
+        (_segments(trusted), False, 2),
+        (_segments(weak), True, 0),
+    ):
+        for c in segs:
+            order += 1
+            entity = _has_entity_marker(c)
+            weak_marker = _has_marker(c)
+            dc = _domain_consistent(c, host)
+            # A <title>/<h1>/alt candidate must look like a firm name: carry an
+            # entity/firm marker OR echo the domain. A real name like "Aeed Law" has
+            # no suffix but matches aeedlaw.com; a descriptor like "Phoenix Law Firm"
+            # on cfmlaw.com has neither, so it's dropped.
+            if require_marker and not (entity or weak_marker or dc):
+                continue
+            # A practice/geo DESCRIPTOR ("Personal Injury Law Firm", "Georgia Nursing
+            # Home Abuse Lawyers") is kept only when it echoes the firm's own domain
+            # (its chosen brand); otherwise it's an SEO descriptor, not this firm's name.
+            if _is_descriptor_name(c) and not dc:
+                continue
             nn = normalize_firm_name(c)
-            if nn and nn.normalized:
-                return c, nn.normalized
-    return None, None
+            if not (nn and nn.normalized):
+                continue
+            score = trusted_bonus + (3 if entity else 1 if weak_marker else 0) + (3 if dc else 0)
+            scored.append((score, -order, c, nn.normalized))
+    if not scored:
+        return None, None
+    scored.sort(reverse=True)
+    return scored[0][2], scored[0][3]
 
 
 def extract_phones(html: str | bytes) -> list[str]:
@@ -1249,11 +1496,13 @@ _NAV_KEYWORDS: dict[str, tuple[str, ...]] = {
         "professionals",
         "our attorney",
     ),
+    "offices": ("offices", "our offices", "locations", "our locations", "office locations"),
 }
 _KNOWN_PATHS: dict[str, tuple[str, ...]] = {
     "about": ("/about", "/about-us", "/our-firm", "/firm", "/the-firm"),
     "team": ("/our-team", "/team", "/our-people", "/people"),
     "attorneys": ("/attorneys", "/our-attorneys", "/lawyers", "/our-attorney", "/attorney"),
+    "offices": ("/offices", "/locations", "/our-offices", "/office-locations", "/our-locations"),
 }
 # Pages that are NOT firm-identity/headcount content (skip when discovering).
 _SKIP_PATH = re.compile(
@@ -1276,7 +1525,7 @@ def discover_internal_pages(
     """
     tree = _tree(home_html)
     host = _host(base_url)
-    out: dict[str, list[str]] = {"about": [], "team": [], "attorneys": []}
+    out: dict[str, list[str]] = {"about": [], "team": [], "attorneys": [], "offices": []}
     seen: set[str] = set()
 
     def _add(role: str, url: str) -> None:
@@ -1341,7 +1590,11 @@ def extract_site(
     is_law_related = any(r.is_law_related for r in rels)
     relevance_terms = sorted({t for r in rels for t in r.terms})
     headcount, staff = extract_headcount(pages, base_url)
-    office_count, addresses = extract_offices(home_html)
+    # Offices live in the home footer OR on a dedicated /offices//locations/ page
+    # (the nav link may be JS-revealed, but the page itself is server-rendered).
+    office_count, addresses = _collect_offices(
+        [home_html, *(h for r, h in pages if r in ("offices", "locations"))]
+    )
     years, years_min = extract_years(all_text, now_year=now_year)
     practice_areas, practice_areas_raw, practice_areas_unmatched = extract_practice_areas(
         pages, base_url=base_url
