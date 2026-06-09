@@ -798,6 +798,17 @@ human. Full architecture rationale: `docs/assumptions.md` →
   **clerical 10/12 vs bespoke 6/12, B-cubed 0.980** (best yet), every oracle firm incl. multi-domain
   merges, Snell intra-firm prob 0.68->0.90 from proximity. Splink is the more accurate engine on the
   human reference. Next: full-corpus (450k) validation, then wire into `apply.py`.
+- **2026-06-09 — eval set now 29 human labels; Splink robust on corroborated cases. @Websites data-quality flag.**
+  More Alex case studies labeled (shared-building solos, Wieben/Widger, Peter Thompson cluster, Hunt,
+  Weintraub, Zurich, ASU, Legal Services). Splink (tuned2_no_pa) gets the **corroborated** merges right
+  (shared phone/website/domain) and holds precision on the negatives; residual misses are name-ONLY
+  cross-state cases at the model's resolution limit (WCTL "merge" vs Hunt "don't" are the same data
+  signal — only human brand-knowledge separates them). Precision-favoring at the operating threshold.
+  - **@Websites — degenerate name extractions** polluting resolution: some `source="website"` rows have
+    `name_raw` = a generic stub instead of the firm name — e.g. id 450035/445306 = "LAW OFFICE OF",
+    440599/444424 = "lawyer", plus "Legal Services". These block/borderline-match unrelated firms.
+    Likely the extractor fell back to a page heading/`<title>` fragment. Worth a guard (reject
+    generic-stub names -> leave `name_raw` null so they don't false-match). Low volume, not blocking.
 - _(add entries here)_
 
 ### Cleanser
