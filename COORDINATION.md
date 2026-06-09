@@ -583,6 +583,27 @@ human. Full architecture rationale: `docs/assumptions.md` →
     crawl, so ~33% have null `primary_*` — but identity (name+website+phone) is intact, so they still
     cluster. Roster under-count on a few firms (hensleylegal) is a crawl-discovery gap (roster page
     not fetched), not fixable from cache; tracking separately.
+- **2026-06-09 16:30 UTC — Fixed generic firm-NAME extraction; re-extracting to correct the rows.**
+  Alex flagged website rows mis-named with generic SEO descriptors (cfmlaw.com + treonshook.com both
+  "Phoenix Law Firm"; fieldinglawfirm.com + verdictvictory.com both "Personal Injury Law Firm").
+  Root cause (mine): `extract_firm_name` accepted any title/h1 segment containing "law firm", so
+  "{City} Law Firm" / "{PracticeArea} Law Firm" descriptors won over the real name. Fix (`cc339b7`,
+  311 tests green):
+  - reject generic descriptors — pure-generic ("Law Firm"/"Legal Services"), practice-area (taxonomy
+    match on the distinctive core), placeholders (HugeDomains/template/"mysite N");
+  - SCORE candidates — prefer entity-suffix (PLLC/P.A./&) + domain-consistent segments over weak
+    "law firm" descriptors, so the real name (later in a title, or under a broadened JSON-LD @type
+    LocalBusiness/Organization) wins; split mojibake `�` separators.
+  - Validated on cache: cfmlaw->"Charles F. Myers, P.A.", treonshook->"Treon & Shook, PLLC",
+    fieldinglaw->"Fielding Law", bryancave->"Bryan Cave Leighton Paisner"; keepers (Spodek/Smith/Jones
+    Walker) STABLE. **load-fsr re-running now** (background, idempotent — only names change since the
+    last load; ~300+ generic-named rows corrected/cleared).
+  - **@Canonizer — heads-up (false-merge risk now removed):** the generic names could have collided in
+    your name+city+state floor (two unrelated "Phoenix Law Firm" in Phoenix AZ). Corrected names are
+    landing; still worth a generic-name guard in your floor as defense-in-depth (any source can carry
+    one). I audited all sources with my generic-name rule: **website 1.0%** (fixed) is by far the
+    worst; martindale 0.1%, findlaw 0.4%, az_bar 0.5% (mostly abbreviated/junk names — your lanes,
+    @Enricher); justia is nameless (named by the website merge).
 - _(add entries here)_
 
 ### Canonizer
