@@ -1368,4 +1368,51 @@ human. Full architecture rationale: `docs/assumptions.md` →
     `2da586a`** — your call on timing (I won't touch the scrape). No rush: I'll re-run the re-derive +
     backfill idempotently to mop up any rows added in the interim (and as the scrape grows).
   - **@Enricher — pull `main` before enriching** (parser fix landed), per your brief's dependency.
+- **2026-06-09 18:10 UTC — DRY-RUN: firm-name remediation (FindLaw attorney-cards + cross-source
+  generic names). Numbers below; HOLDING all destructive writes for @Mastermind/@Alex confirm.**
+  Cache-only, no re-scrape. Two parts:
+  - **PART 1 — FindLaw attorney-as-firm (clean, high-confidence; ready to apply).** The card type is
+    fully determined by the STORED `additional_data.data_testid` (verified against cache class/aria):
+    `attorney-card-*` = `class="...attorney organic"`/`aria="attorney"` (a PERSON); `organic-card-*` =
+    `aria="law firm"` (a real FIRM). Exhaustive split of the 7,570 findlaw rows:
+    - **DROP 4,668** attorney-card rows (incl. Alex's `id=130789`,`id=136718` = "Scott Cohen") — no firm
+      identity captured (`card_text` is practice/location only), so they're nameless false-firms.
+    - **KEEP 2,902** organic-card rows — these are correctly-named firms (Morgan & Morgan, Wisner Baum
+      LLP, AWBF Law P.C. …). No reload needed; they're already correct.
+    - **Treatment:** (a) teach `parsers/findlaw.py::_extract_card` to detect type and return None for
+      attorney cards (stops future re-introduction; `scrape_findlaw load` already exists); (b) DELETE
+      the 4,668 existing attorney rows (`source='findlaw'` AND `data_testid LIKE 'attorney-card%'`),
+      `make_engine` + chunked, idempotent. Net: FindLaw contributes 2,902 firms, 0 attorney-as-firm.
+  - **PART 2 — cross-source generic/junk names. KEY FINDING: a blind generic-name NULL pass is
+    UNSAFE — it false-positives real short firms.** I reused @Websites' validated predicates
+    (`_is_generic_firm_name` / `_is_descriptor_name` / `_domain_consistent` / `_has_entity_marker`) +
+    an `&`/entity-suffix rescue. Even so, the raw guard flags **real** firms (J&Y Law / The H Law Group
+    / D2 Injury Law — all in the FindLaw keep-set; F&B Law Firm P.C.; THE 702 FIRM). Splitting by
+    "has a website" (a domain to rescue/recover from) gives a safe tier vs a hold tier:
+    | source | named rows | SAFE-NULL (no website, non-distinctive) | NEEDS-REVIEW (has website → real/recoverable) |
+    |---|---|---|---|
+    | martindale | 151,865 | **128** | 43 |
+    | az_bar | 15,115 | **43** | 24 |
+    | findlaw (keep-set) | 2,902 | **0** | 9 |
+    - **SAFE-NULL (171 total):** pure generic/descriptor placeholders with no website to anchor a real
+      identity — "Attorney at Law", "law office", "Alabama Personal Injury Law Firm", "Florida Injury
+      Law Group", "School of Law", "Visa Inc". These are exactly the false-merge magnets; **NULL is the
+      right call** (a nameless singleton can't false-merge). Recovery N/A (the stored name IS the cache
+      value for these; nothing better on the card). A few initials-without-`&` are borderline ("N.H.
+      Partners") — low volume, flagging for your eye.
+    - **NEEDS-REVIEW (76 total): HOLD — do NOT blind-NULL.** These have a website, so many are REAL
+      firms whose descriptor name should be RECOVERED from the cached HTML (e.g. "Attorney At Law" @
+      markjameslaw.com → "Mark James Law"; "The Maine Criminal Defense Group" @ notguiltyattorneys.com)
+      or KEPT when domain-consistent. Blind-NULLing would destroy real names.
+  - **REQUEST → @Mastermind + @Websites (the idiomatic shared-util the task calls for):** the right fix
+    for Part 2 is to factor @Websites' name-quality decision into **one shared `normalize/firm_name.py`**
+    exposing e.g. `is_low_quality_firm_name(name, *, host=None)` (generic OR descriptor-without-domain,
+    rescued by `&`/entity-suffix/domain-consistency) — imported by website extraction, this cleanup, AND
+    Canonizer's name+city+state floor. That's a **shared-file change → @Mastermind integrates to `main`**,
+    and @Websites validates it against the flagged samples above (esp. the short-name false-positives).
+    The NEEDS-REVIEW recovery (real name from cache) then runs through that util.
+  - **What I'd apply ON CONFIRM (held now):** (1) FindLaw parser fix + DELETE 4,668 attorney rows; (2)
+    SAFE-NULL the 171 unambiguous generics; (3) NEEDS-REVIEW (76) via the shared util once it lands
+    (recover-or-keep, NULL only if truly unrecoverable). All `make_engine` + chunked + idempotent,
+    strict per-source scope. **@Mastermind — confirm the numbers + the shared-util plan and I execute.**
 - _(add entries here)_
