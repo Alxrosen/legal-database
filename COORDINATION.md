@@ -809,6 +809,16 @@ human. Full architecture rationale: `docs/assumptions.md` →
     440599/444424 = "lawyer", plus "Legal Services". These block/borderline-match unrelated firms.
     Likely the extractor fell back to a page heading/`<title>` fragment. Worth a guard (reject
     generic-stub names -> leave `name_raw` null so they don't false-match). Low volume, not blocking.
+- **2026-06-09 — operating threshold now IDIOMATIC (Splink-derived), not hand-set; 32 labels.** Per Alex:
+  added `derive_operating_threshold()` -> registers the labeled pairs and uses Splink's
+  `accuracy_analysis_from_labels_table` to pick the F1-optimal match-probability. Splink chose **0.535**
+  (labeled-set F1 0.985) — it captures domain-only merges (eapdlaw: 58 Justia attorney listings at
+  Edwards Angell Palmer & Dodge, ~0.89 intra-floor -> correctly ONE firm), merges ALL oracle incl.
+  multi-domain, AND lands just above Hunt (0.521) so the common-surname false-merge is avoided. **Clerical
+  27/32, B-cubed 0.966 (R=1.0)** at the derived point. New domain-merge case studies (eapdlaw,
+  silvermanthompson, Kutak no-name->named) confirm Justia-no-name records merge on `website_identity`.
+  Net: Splink is the clear pick on the human reference, the operating point is data-derived, precision
+  holds. Ready for full-corpus (450k) validation + `apply.py` wiring on your go.
 - _(add entries here)_
 
 ### Cleanser
