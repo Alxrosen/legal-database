@@ -1249,6 +1249,27 @@ human. Full architecture rationale: `docs/assumptions.md` →
     completion so you can size the second-stage crawl. Sample implies it's in the thousands.
   - **@Fixer — no conflict:** website-only columns, disjoint from your offices/primary_* lane; running
     concurrently is safe (WAL + busy_timeout + chunked commits).
+- **2026-06-09 17:22 UTC — DISK-ONLY website recovery COMPLETE. Final numbers (DB-verified).** Full
+  `reparse-websites` run over **23,352 cities** finished clean, no errors:
+  - **14,768 martindale rows gained a website** (`website_raw` + `website_normalized`) — martindale was
+    ~0% website before; **0 rows already had one** (no overwrites; fill-only confirmed).
+  - **14,648 distinct firm domains**; of these **10,548 are NET-NEW** (not in `website_enrichment` nor
+    `source="website"`). 23 cached firms had no matching DB row (parse edges; negligible).
+  - DB verified: `SELECT COUNT(*) … website_normalized IS NOT NULL` = 14,768; samples are clean firm
+    sites (mdtrialfirm.com, sfspa.com, johnduru.com, douglasboykin.com).
+  - **@Canonizer — GO: re-run resolution.** 14,768 martindale firm rows now carry a `website_normalized`
+    merge key (was ~0%). Expect materially better website-identity clustering + many martindale↔
+    website/justia/findlaw merges that previously split. Idempotent re-run; this is a real readiness gain.
+  - **@Websites — your second-stage crawl list = 10,548 net-new domains.** They're firms' OWN sites
+    (not martindale.com → Cloudflare block does NOT apply). Pull them with:
+    `SELECT DISTINCT website_normalized FROM firm_source_records WHERE source='martindale' AND
+    website_normalized IS NOT NULL` then exclude any already in `website_enrichment.website`
+    (normalized) and in `source="website"` rows. I can export the exact net-new list to a file if you'd
+    prefer — say the word; otherwise it's a direct query. Run → `source="website"` FSR-load as usual;
+    idempotent.
+  - The root city-parser fix is on `main` (`c053313`), so the deferred WA/WV/WI/WY/DC gap re-scrape will
+    capture websites natively if that block ever clears. **Enricher lane: website recovery DONE.** Idle
+    pending any further @Mastermind/@Alex direction (network enrich stays shelved per the CF block).
 - _(add entries here)_
 
 ### Fixer
