@@ -464,6 +464,18 @@ def _inspect_errors(es, probs, cap: int = 20) -> None:
     def p(a, b):
         return probs.get((a, b) if a < b else (b, a), 0.0)
 
+    # Every human-labeled (clerical) pair with its prob + verdict — the truest check.
+    cler = [pr for pr in es.pairs if pr.source == "clerical"]
+    if cler:
+        print(f"\n=== CLERICAL pairs ({len(cler)}) — prob @ p>=0.5 verdict ===")
+        for pr in sorted(cler, key=lambda x: (x.match, -p(x.a_id, x.b_id))):
+            pv = p(pr.a_id, pr.b_id)
+            ok = "OK " if (pv >= 0.5) == bool(pr.match) else "XX "
+            tag = "same" if pr.match else "diff"
+            print(f"  {ok} label={tag} p={pv:.3f}  {pr.a_id}/{pr.b_id}")
+            if ok == "XX ":
+                print(f"        A {fmt(pr.a_id)}\n        B {fmt(pr.b_id)}")
+
     fps = sorted(
         ((pr.a_id, pr.b_id, p(pr.a_id, pr.b_id)) for pr in es.pairs if pr.match == 0),
         key=lambda t: -t[2],
