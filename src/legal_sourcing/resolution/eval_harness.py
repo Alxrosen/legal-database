@@ -180,6 +180,28 @@ def _ordered(a: int, b: int) -> tuple[int, int]:
     return (a, b) if a < b else (b, a)
 
 
+# Multi-domain de-bias: a near-unique non-website corroborator (an exact shared
+# phone) PLUS a near-identical name is decisive same-firm evidence even when the
+# two records sit on DIFFERENT identity domains (the firm simply has >1 domain).
+# Verified by inspection of Splink's "false positives" — every such pair was one
+# firm. Without this, the website-anchored labeler scores correct multi-domain
+# merges as errors. Lead-gen pairs (shared phone, DIFFERENT names) fail the name
+# test, so they correctly stay negatives.
+_MULTIDOMAIN_NAME_SIM = 92.0
+
+
+def _multidomain_same_firm(a: FirmSourceRecord, b: FirmSourceRecord) -> bool:
+    pa, pb = (a.phone_normalized or "").strip(), (b.phone_normalized or "").strip()
+    if not pa or pa != pb:
+        return False
+    na, nb = (a.name_normalized or "").strip(), (b.name_normalized or "").strip()
+    if not na or not nb:
+        return False
+    from rapidfuzz import fuzz
+
+    return fuzz.token_set_ratio(na, nb) >= _MULTIDOMAIN_NAME_SIM
+
+
 # ---------------------------------------------------------------------------
 # Build the labeled evaluation set
 # ---------------------------------------------------------------------------
@@ -319,6 +341,7 @@ def build_eval_set(
         by_firm[fid].append(rid)
 
     pairs: dict[tuple[int, int], LabeledPair] = {}
+    md_merges: list[tuple[str, str]] = []
 
     # 1) Candidate pairs from bespoke blocking, labeled where both sides labelable.
     candidate_keys: set[tuple[int, int]] = set()
@@ -327,9 +350,35 @@ def build_eval_set(
         fa, fb = truth_by_id.get(a), truth_by_id.get(b)
         if fa is None or fb is None:
             continue  # un-labelable -> clerical territory, not scored here
-        match = 1 if fa == fb else 0
-        src = "candidate_pos" if match else "candidate_neg"
-        pairs[(a, b)] = LabeledPair(a, b, match, src)
+        if fa == fb:
+            pairs[(a, b)] = LabeledPair(a, b, 1, "candidate_pos")
+        elif _multidomain_same_firm(records[a], records[b]):
+            # DE-BIAS: different identity domains but same phone + near-identical
+            # name == ONE multi-domain firm (verified by inspection: e.g.
+            # franktwaterslaw.com/fortmohavelaw.com). The website-anchored labeler
+            # would wrongly call this a NEGATIVE and penalize a correct merge.
+            pairs[(a, b)] = LabeledPair(a, b, 1, "multidomain_pos")
+            md_merges.append((fa, fb))
+        else:
+            pairs[(a, b)] = LabeledPair(a, b, 0, "candidate_neg")
+
+    # De-bias clean-up: union the multi-domain firm-ids so B-cubed credits the
+    # merge too (one remap pass; union-find over the firm-id graph).
+    if md_merges:
+        uf: dict[str, str] = {}
+
+        def _find(x: str) -> str:
+            uf.setdefault(x, x)
+            while uf[x] != x:
+                uf[x] = uf[uf[x]]
+                x = uf[x]
+            return x
+
+        for x, y in md_merges:
+            uf[_find(x)] = _find(y)
+        for rid, fid in list(truth_by_id.items()):
+            if fid in uf:
+                truth_by_id[rid] = _find(fid)
 
     # 2) Synthesized truth positives (sampled spanning set per firm) to measure
     #    recall beyond what blocking proposed.

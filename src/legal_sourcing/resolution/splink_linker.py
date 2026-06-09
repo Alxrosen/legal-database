@@ -300,6 +300,41 @@ def _eval_config(es, df, label: str, variant: str, prob_two_random, helpers) -> 
         print(f"    {disp:22s} {n:3d} recs -> {nc} clusters (intra-prob med={meds[disp]:.3f})")
 
 
+def _inspect_errors(es, probs, cap: int = 20) -> None:
+    """Print the pairs where Splink (default lambda) disagrees with the eval
+    LABELS — to judge whether 'false positives' are real errors or the biased
+    auto-labeler penalizing correct multi-domain merges."""
+    rec = es.records
+
+    def fmt(rid: int) -> str:
+        r = rec[rid]
+        return (
+            f"[{r.source[:4]}] {r.name_raw or '(no name)'!r:40.40} "
+            f"web={r.website_normalized or '-':24.24} ph={r.phone_normalized or '-':13} "
+            f"{r.primary_city or '-'},{r.primary_state or '-'}"
+        )
+
+    def p(a, b):
+        return probs.get((a, b) if a < b else (b, a), 0.0)
+
+    fps = sorted(
+        ((pr.a_id, pr.b_id, p(pr.a_id, pr.b_id)) for pr in es.pairs if pr.match == 0),
+        key=lambda t: -t[2],
+    )
+    fps = [t for t in fps if t[2] >= 0.5]
+    print(f"\n=== FALSE POSITIVES (label=different, Splink>=0.5): {len(fps)} ===")
+    for a, b, pr in fps[:cap]:
+        print(f"  p={pr:.3f}\n    A {fmt(a)}\n    B {fmt(b)}")
+    fns = sorted(
+        ((pr.a_id, pr.b_id, p(pr.a_id, pr.b_id)) for pr in es.pairs if pr.match == 1),
+        key=lambda t: t[2],
+    )
+    fns = [t for t in fns if t[2] < 0.5]
+    print(f"\n=== FALSE NEGATIVES (label=same, Splink<0.5): {len(fns)} ===")
+    for a, b, pr in fns[:cap]:
+        print(f"  p={pr:.3f}\n    A {fmt(a)}\n    B {fmt(b)}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -308,6 +343,7 @@ def main() -> int:
     pt.add_argument("--variants", default=",".join(_TUNE_VARIANTS))
     pp = sub.add_parser("prior", help="Sweep the prior lambda on the base variant (the key lever).")
     pp.add_argument("--lambdas", default="estimate,1e-4,1e-3,1e-2,5e-2")
+    sub.add_parser("errors", help="Inspect Splink's FP/FN pairs vs the eval labels.")
     args = ap.parse_args()
 
     from legal_sourcing.resolution.eval_harness import (
@@ -342,6 +378,10 @@ def main() -> int:
             for tok in args.lambdas.split(","):
                 lam = tok if tok == "estimate" else float(tok)
                 _eval_config(es, df, f"lambda={tok}", "base", lam, helpers)
+        elif args.cmd == "errors":
+            linker = train_linker(df, "base", DEFAULT_PROB_TWO_RANDOM)
+            probs, _ = predict_pairs(linker)
+            _inspect_errors(es, probs)
         else:
             variants = args.variants.split(",") if args.cmd == "tune" else ["base"]
             for variant in variants:

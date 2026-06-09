@@ -14,6 +14,7 @@ from legal_sourcing.resolution.eval_harness import (
     LabeledPair,
     _domain_to_oracle_firm,
     _load_clerical_labels,
+    _multidomain_same_firm,
     _ordered,
     bcubed,
     bespoke_score_fn,
@@ -151,3 +152,26 @@ def test_load_clerical_labels_parses_and_orders(tmp_path):
 
 def test_load_clerical_labels_missing_file():
     assert _load_clerical_labels("does/not/exist.csv") == []
+
+
+# ---- multi-domain de-bias ----------------------------------------------
+
+
+def test_multidomain_same_firm_shared_phone_and_name():
+    # Same firm, two domains, same phone -> de-bias to a positive.
+    a = _rec(name_normalized="frank t waters law", phone_normalized="+19284355047")
+    b = _rec(name_normalized="law offices of frank t waters", phone_normalized="+19284355047")
+    assert _multidomain_same_firm(a, b) is True
+
+
+def test_multidomain_same_firm_rejects_leadgen():
+    # Shared phone but DIFFERENT names == lead-gen / different firms -> stays negative.
+    a = _rec(name_normalized="smith injury law", phone_normalized="+17623800028")
+    b = _rec(name_normalized="jones bankruptcy group", phone_normalized="+17623800028")
+    assert _multidomain_same_firm(a, b) is False
+
+
+def test_multidomain_same_firm_requires_shared_phone():
+    a = _rec(name_normalized="acme law", phone_normalized="+16025551234")
+    b = _rec(name_normalized="acme law", phone_normalized="+16025559999")
+    assert _multidomain_same_firm(a, b) is False
