@@ -180,7 +180,7 @@ def _unreachable_row(website: str, *, http_status: int | None = None) -> dict[st
 
 
 def crawl_firm(
-    scraper: FirmWebsiteScraper, website: str, *, max_sub_pages: int = 5
+    scraper: FirmWebsiteScraper, website: str, *, max_sub_pages: int = 6
 ) -> dict[str, Any]:
     bucket = _bucket(website)
     home_path: Path | None = None
@@ -214,6 +214,7 @@ def crawl_firm(
     disc = discover_internal_pages(home_html, resolved_url or base or "")
     to_fetch: list[tuple[str, str]] = (
         [("attorneys", u) for u in disc["attorneys"][:3]]
+        + [("offices", u) for u in disc.get("offices", [])[:1]]
         + [("team", u) for u in disc["team"][:1]]
         + [("about", u) for u in disc["about"][:1]]
     )[:max_sub_pages]

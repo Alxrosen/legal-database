@@ -615,6 +615,51 @@ def test_extract_firm_name_discovers_from_logo_alt_and_dotted_suffix():
         assert extract_firm_name([("home", og)], base_url="https://aandnlaw.com") == (None, None), junk
 
 
+def test_extract_offices_full_state_names():
+    # Merchant & Gould /offices/ style: addresses use FULL state names, not 2-letter
+    # codes -> must still parse, normalized to the 2-letter form.
+    html = (
+        "<html><body>"
+        "<div>Atlanta 191 Peachtree Suite 3800 Atlanta, Georgia 30303</div>"
+        "<div>Denver 1125 17th St Suite 2100 Denver, Colorado 80202</div>"
+        "<div>Minneapolis 150 South Fifth Street Suite 2200 Minneapolis, Minnesota 55402</div>"
+        "</body></html>"
+    )
+    cnt, addrs = extract_offices(html)
+    assert cnt == 3
+    assert {a["city"] for a in addrs} == {"Atlanta", "Denver", "Minneapolis"}
+    assert {a["state"] for a in addrs} == {"GA", "CO", "MN"}  # full names -> 2-letter
+    # the 2-letter form still works (and a lowercase word is NOT read as a state)
+    assert extract_offices("<p>Phoenix, AZ 85016</p>")[1][0]["state"] == "AZ"
+
+
+def test_extract_site_unions_offices_from_offices_page():
+    # The office list lives on a dedicated /offices/ page (the nav hides it behind a
+    # button), and the home footer has no address — all offices must still be captured.
+    home = (
+        "<html><head><title>Merchant &amp; Gould P.C.</title></head>"
+        "<body><p>An intellectual property law firm.</p></body></html>"
+    )
+    offices = (
+        "<html><body>"
+        "<div>Boston 125 High Street Suite 2300 Boston, Massachusetts 02109</div>"
+        "<div>New York 500 Fifth Avenue Suite 4100 New York, New York 10110</div>"
+        "</body></html>"
+    )
+    site = extract_site([("home", home), ("offices", offices)], base_url="https://merchantgould.com")
+    assert site.office_count == 2
+    assert {o["city"] for o in site.office_addresses} == {"Boston", "New York"}
+
+
+def test_discover_internal_pages_finds_offices_page():
+    home = (
+        '<html><body><a href="/offices/">Our Offices</a>'
+        '<a href="/attorneys/">Attorneys</a></body></html>'
+    )
+    disc = discover_internal_pages(home, "https://x.com")
+    assert any(u.endswith("/offices") for u in disc["offices"])
+
+
 def test_extract_contacts():
     # TEPLG team page: the 3 attorneys become contacts with titles; staff
     # (paralegal/assistant/coordinator) are excluded, same as the headcount.

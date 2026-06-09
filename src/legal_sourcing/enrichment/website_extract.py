@@ -153,7 +153,29 @@ _OFFICE_COUNT = re.compile(r"(?<![\d.\-])([1-9]\d{0,2})\s*\+?\s*(offices?|locati
 _YEARS = re.compile(r"(\d{1,3})\s*\+?\s*(?:years?|yrs?)\b", re.I)
 _FOUNDED = re.compile(r"(?:founded|established|since|serving\D{0,20}since)\D{0,12}(\d{4})", re.I)
 _PHONE = re.compile(r"\(?\b\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}\b")
-_CITY_STATE_ZIP = re.compile(r"([A-Za-z][A-Za-z.\s]{1,38}?),\s*([A-Z]{2})\s+(\d{5})(?:-\d{4})?")
+# Full US state names -> 2-letter, so an address written "Atlanta, Georgia 30303"
+# (full-name state, common on a firm's /offices/ page) parses like "Atlanta, GA
+# 30303". DC included.
+_STATE_NAMES: dict[str, str] = {
+    "alabama": "AL", "alaska": "AK", "arizona": "AZ", "arkansas": "AR", "california": "CA",
+    "colorado": "CO", "connecticut": "CT", "delaware": "DE", "florida": "FL", "georgia": "GA",
+    "hawaii": "HI", "idaho": "ID", "illinois": "IL", "indiana": "IN", "iowa": "IA", "kansas": "KS",
+    "kentucky": "KY", "louisiana": "LA", "maine": "ME", "maryland": "MD", "massachusetts": "MA",
+    "michigan": "MI", "minnesota": "MN", "mississippi": "MS", "missouri": "MO", "montana": "MT",
+    "nebraska": "NE", "nevada": "NV", "new hampshire": "NH", "new jersey": "NJ", "new mexico": "NM",
+    "new york": "NY", "north carolina": "NC", "north dakota": "ND", "ohio": "OH", "oklahoma": "OK",
+    "oregon": "OR", "pennsylvania": "PA", "rhode island": "RI", "south carolina": "SC",
+    "south dakota": "SD", "tennessee": "TN", "texas": "TX", "utah": "UT", "vermont": "VT",
+    "virginia": "VA", "washington": "WA", "west virginia": "WV", "wisconsin": "WI",
+    "wyoming": "WY", "district of columbia": "DC",
+}
+_STATE_NAME_ALT = "|".join(re.escape(s) for s in sorted(_STATE_NAMES, key=len, reverse=True))
+# "City, ST 12345" OR "City, Full State Name 12345". The 2-letter form stays
+# case-sensitive (so "in"/"is" aren't read as states); full names are matched
+# case-insensitively via the scoped (?i:) group.
+_CITY_STATE_ZIP = re.compile(
+    rf"([A-Za-z][A-Za-z.\s]{{1,38}}?),\s*([A-Z]{{2}}|(?i:{_STATE_NAME_ALT}))\s+(\d{{5}})(?:-\d{{4}})?"
+)
 # Street-suffix / unit / compound-directional tokens that must NOT be read as
 # part of a city when walking back through flat footer text ("...Inverness
 # Drive East Englewood, CO" -> "Englewood", not "Drive East Englewood"). Excludes
@@ -771,7 +793,8 @@ def extract_offices(html: str | bytes) -> tuple[int | None, list[dict[str, str]]
             else:
                 break
         city = " ".join(city_words[-3:])
-        state, postal = m.group(2), m.group(3)
+        state = _STATE_NAMES.get(m.group(2).lower(), m.group(2).upper())
+        postal = m.group(3)
         key = (city.lower(), state, postal)
         if not city or key in seen:
             continue
@@ -785,6 +808,26 @@ def extract_offices(html: str | bytes) -> tuple[int | None, list[dict[str, str]]
         if mo:
             office_count = int(mo.group(1))
     return office_count, addrs
+
+
+def _collect_offices(htmls: list[str | bytes]) -> tuple[int | None, list[dict[str, str]]]:
+    """Union offices across the home footer AND any dedicated /offices//locations/
+    page (a JS nav may hide the link, but the page itself is server-rendered, e.g.
+    Merchant & Gould's 8 offices). Dedup by (city, state, postal); fall back to a
+    stated "N offices" count only when no address parsed on any page."""
+    seen: set[tuple[str, str, str]] = set()
+    addrs: list[dict[str, str]] = []
+    stated: int | None = None
+    for h in htmls:
+        oc, page_addrs = extract_offices(h)
+        for d in page_addrs:
+            k = (d["city"].lower(), d["state"], d["postal_code"])
+            if k not in seen:
+                seen.add(k)
+                addrs.append(d)
+        if not page_addrs and oc and stated is None:
+            stated = oc
+    return (len(addrs) or stated), addrs
 
 
 def extract_years(text: str, *, now_year: int | None = None) -> tuple[int | None, bool]:
@@ -1440,11 +1483,13 @@ _NAV_KEYWORDS: dict[str, tuple[str, ...]] = {
         "professionals",
         "our attorney",
     ),
+    "offices": ("offices", "our offices", "locations", "our locations", "office locations"),
 }
 _KNOWN_PATHS: dict[str, tuple[str, ...]] = {
     "about": ("/about", "/about-us", "/our-firm", "/firm", "/the-firm"),
     "team": ("/our-team", "/team", "/our-people", "/people"),
     "attorneys": ("/attorneys", "/our-attorneys", "/lawyers", "/our-attorney", "/attorney"),
+    "offices": ("/offices", "/locations", "/our-offices", "/office-locations", "/our-locations"),
 }
 # Pages that are NOT firm-identity/headcount content (skip when discovering).
 _SKIP_PATH = re.compile(
@@ -1467,7 +1512,7 @@ def discover_internal_pages(
     """
     tree = _tree(home_html)
     host = _host(base_url)
-    out: dict[str, list[str]] = {"about": [], "team": [], "attorneys": []}
+    out: dict[str, list[str]] = {"about": [], "team": [], "attorneys": [], "offices": []}
     seen: set[str] = set()
 
     def _add(role: str, url: str) -> None:
@@ -1532,7 +1577,11 @@ def extract_site(
     is_law_related = any(r.is_law_related for r in rels)
     relevance_terms = sorted({t for r in rels for t in r.terms})
     headcount, staff = extract_headcount(pages, base_url)
-    office_count, addresses = extract_offices(home_html)
+    # Offices live in the home footer OR on a dedicated /offices//locations/ page
+    # (the nav link may be JS-revealed, but the page itself is server-rendered).
+    office_count, addresses = _collect_offices(
+        [home_html, *(h for r, h in pages if r in ("offices", "locations"))]
+    )
     years, years_min = extract_years(all_text, now_year=now_year)
     practice_areas, practice_areas_raw, practice_areas_unmatched = extract_practice_areas(
         pages, base_url=base_url
