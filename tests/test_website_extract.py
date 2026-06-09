@@ -589,6 +589,24 @@ def test_extract_firm_name_rejects_descriptor_lists_and_nonfirm_titles():
         assert extract_firm_name([("home", og)]) == (None, None), jn
 
 
+def test_extract_firm_name_keeps_domain_matching_descriptive_brand():
+    # A practice/geo descriptor that ECHOES the firm's own domain is its chosen brand
+    # and must NOT be erroneously rejected; the same phrase on an unrelated firm's
+    # domain is a generic SEO descriptor and IS dropped.
+    desc = "Georgia Nursing Home Abuse Lawyers"
+    og = f'<html><head><meta property="og:site_name" content="{desc}"></head><body></body></html>'
+    assert extract_firm_name([("home", og)], base_url="https://smithlegalgroup.com") == (None, None)
+    assert (
+        extract_firm_name([("home", og)], base_url="https://georgianursinghomeabuselawyers.com")[0]
+        == desc
+    )
+    cfl = '<html><head><meta property="og:site_name" content="Carolina Family Law"></head><body></body></html>'
+    assert (
+        extract_firm_name([("home", cfl)], base_url="https://carolinafamilylaw.com")[0]
+        == "Carolina Family Law"
+    )
+
+
 def test_extract_firm_name_discovers_from_logo_alt_and_dotted_suffix():
     # The real name lives only in the logo alt-text and echoes the domain (no entity
     # suffix) — recovered where <title> is a descriptor (the discovery half).

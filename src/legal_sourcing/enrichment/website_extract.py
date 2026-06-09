@@ -1033,14 +1033,12 @@ _GEO_TERMS: frozenset[str] = frozenset(
 
 
 def _is_generic_firm_name(name: str) -> bool:
-    """True when `name` is a generic descriptor, not a firm's identity: a known
-    non-firm/placeholder title (Wix / domain-parking / template / spam), nothing
-    distinctive left after dropping generic words ("Law Firm", "Legal Services"), or
-    a practice-area descriptor — either a single phrase ("Personal Injury Law Firm",
-    "Immigration Law Firm") or a multi-word list of practice areas ("Divorce Family
-    Law", "Wills Trusts Estates"). City descriptors ("Phoenix Law Firm") are NOT
-    flagged here — the entity-suffix / domain-consistency ranking in
-    extract_firm_name demotes those instead.
+    """True when `name` is UNCONDITIONALLY not a firm identity: a known
+    non-firm/placeholder title (Wix / domain-parking / template / spam / "for sale"),
+    a URL, or nothing distinctive left after dropping generic words ("Law Firm",
+    "Legal Services"). Practice-area / geographic DESCRIPTORS are handled separately
+    by _is_descriptor_name (which the caller keeps when they match the firm's own
+    domain), so a valid descriptive brand is never erroneously discarded here.
     """
     low = " ".join((name or "").lower().split())
     low_nodigit = re.sub(r"\s*\d+$", "", low)  # "mysite 1" -> "mysite"
@@ -1053,19 +1051,29 @@ def _is_generic_firm_name(name: str) -> bool:
         return True  # site-builder / domain-parking / placeholder pages
     if re.search(r"\.(?:com|net|org|biz|info|law)\b", low):
         return True  # the candidate is a domain / URL, not a firm name
+    return not _firm_name_core(name)  # nothing distinctive left ("Law Firm")
+
+
+def _is_descriptor_name(name: str) -> bool:
+    """A practice-area / geographic DESCRIPTOR rather than a firm identity:
+    a single practice phrase ("Personal Injury Law Firm", "Immigration Law Firm"), a
+    multi-word list of practice areas ("Divorce Family Law", "Wills Trusts Estates"),
+    or "{Geography} {practice area}" ("Georgia Nursing Home Abuse Lawyers"). The
+    caller KEEPS such a name when it echoes the firm's own domain (its chosen brand,
+    e.g. "Carolina Family Law" on carolinafamilylaw.com) and drops it otherwise (a
+    generic SEO descriptor not tied to this firm) — so a valid descriptive brand is
+    never erroneously discarded.
+    """
     core = _firm_name_core(name)
     if not core:
-        return True
+        return False
     tax = get_taxonomy()
     if tax.match(" ".join(core)) is not None:
         return True
-    # A multi-word name whose every distinctive token is itself a practice area is a
-    # descriptor list ("Divorce Family Law", "Accident Injury Attorneys"), not a name.
     if len(core) >= 2 and all(tax.match(t) for t in core):
         return True
-    # "{Geography} {practice area(s)}" is a location SEO descriptor, not a name
-    # ("Georgia Nursing Home Abuse Lawyers"). Requires BOTH a geo token and a
-    # practice-area remainder, so a bare place / surname ("Texas Law") is NOT flagged.
+    # "{Geography} {practice}" — requires BOTH a geo token and a practice-area
+    # remainder, so a bare place / surname ("Texas Law") is NOT flagged.
     non_geo = [t for t in core if t not in _GEO_TERMS]
     if non_geo and len(non_geo) < len(core):
         return tax.match(" ".join(non_geo)) is not None or all(tax.match(t) for t in non_geo)
@@ -1173,6 +1181,11 @@ def extract_firm_name(
             # no suffix but matches aeedlaw.com; a descriptor like "Phoenix Law Firm"
             # on cfmlaw.com has neither, so it's dropped.
             if require_marker and not (entity or weak_marker or dc):
+                continue
+            # A practice/geo DESCRIPTOR ("Personal Injury Law Firm", "Georgia Nursing
+            # Home Abuse Lawyers") is kept only when it echoes the firm's own domain
+            # (its chosen brand); otherwise it's an SEO descriptor, not this firm's name.
+            if _is_descriptor_name(c) and not dc:
                 continue
             nn = normalize_firm_name(c)
             if not (nn and nn.normalized):
