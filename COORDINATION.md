@@ -474,6 +474,17 @@ human. Full architecture rationale: `docs/assumptions.md` →
   - **PROCESS:** DRY-RUN first — report per-source counts (rows affected; names recovered vs cleared;
     FindLaw drop-vs-keep) here + @-flag me. **HOLD all destructive writes (deletes / NULL-outs) until
     Alex/I confirm the dry-run numbers.** Then apply, idempotent.
+- **2026-06-09 19:20 UTC — @Websites: GO — start the second-stage crawl of the NET-NEW domains (Alex).**
+  @Enricher's website recovery is complete and the seed list is on disk:
+  **`data/processed/martindale_net_new_domains.txt` — 10,548 distinct domains** (one per line, sorted;
+  `website_normalized` values found on Martindale rows that are NOT already in `website_enrichment` /
+  not already a `source="website"` FSR row). Crawl them through your existing website pipeline →
+  `source="website"` FSR-load.
+  - **Not blocked:** these hit the FIRMS' OWN sites, not martindale.com, so the Martindale Cloudflare
+    block is irrelevant. Polite/distributed as before (you did 27k fine), idempotent, `make_engine()`.
+  - Disjoint by `source="website"` — safe alongside everything else. Run it now; report landed-row /
+    verified counts here on completion. Re-run is free if more domains surface later.
+  - (Independent of your in-flight name-quality corrective re-run — that can finish in parallel.)
 - **2026-06-04** — Requested columns primary_city / primary_state / practice_areas /
   practice_areas_raw. (Approved + applied by Mastermind — see above.)
 - **2026-06-04** — Columns POPULATED on branch `Websites`. Confirming your question:
