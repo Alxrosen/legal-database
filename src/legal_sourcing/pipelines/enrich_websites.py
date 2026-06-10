@@ -271,6 +271,34 @@ def websites_to_enrich(engine, *, limit: int | None = None) -> list[str]:
     return out
 
 
+def websites_from_file(engine, path: str, *, limit: int | None = None) -> list[str]:
+    """Crawl-list from a seed file (one bare domain per line) — e.g. the net-new
+    domains @Enricher surfaced (COORDINATION 2026-06-09). Resumable + safe: dedups
+    and skips domains already enriched, aggregators, and email-as-website junk, so a
+    re-run only fetches what's left."""
+    seeds = [
+        ln.strip().lower()
+        for ln in Path(path).read_text(encoding="utf-8").splitlines()
+        if ln.strip() and not ln.lstrip().startswith("#")
+    ]
+    with Session(engine) as s:
+        done = set(
+            s.scalars(
+                select(WebsiteEnrichment.website).where(WebsiteEnrichment.enriched_at.isnot(None))
+            ).all()
+        )
+    out: list[str] = []
+    seen: set[str] = set()
+    for w in seeds:
+        if not w or w in seen or w in done or "@" in w or is_aggregator_domain(w):
+            continue
+        seen.add(w)
+        out.append(w)
+        if limit and len(out) >= limit:
+            break
+    return out
+
+
 def _flush(engine, rows: list[dict[str, Any]]) -> int:
     """Bulk upsert a batch (single writer). Retries on transient SQLite lock."""
     if not rows:
@@ -352,11 +380,19 @@ def run_pilot(*, websites: list[str] | None, limit: int, workers: int) -> None:
     print(f"\nWrote {len(websites)} rows to website_enrichment.")
 
 
-def run(*, limit: int | None, workers: int, flush_every: int) -> None:
+def run(
+    *, limit: int | None, workers: int, flush_every: int, websites_file: str | None = None
+) -> None:
     configure_logging()
     engine = make_engine()
-    websites = websites_to_enrich(engine, limit=limit)
-    log.info("enrich.run_start", to_enrich=len(websites), workers=workers)
+    if websites_file:
+        websites = websites_from_file(engine, websites_file, limit=limit)
+        log.info(
+            "enrich.run_start", seed_file=websites_file, to_enrich=len(websites), workers=workers
+        )
+    else:
+        websites = websites_to_enrich(engine, limit=limit)
+        log.info("enrich.run_start", to_enrich=len(websites), workers=workers)
     _crawl_all(websites, workers=workers, flush_every=flush_every)
     log.info("enrich.run_done", count=len(websites))
     print(f"Enriched {len(websites)} websites.")
@@ -675,6 +711,12 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=30, help="cap number of firms")
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--flush-every", type=int, default=50)
+    ap.add_argument(
+        "--websites-file",
+        type=str,
+        default=None,
+        help="(run) seed file of bare domains, one per line (e.g. the net-new list)",
+    )
     args = ap.parse_args()
     if args.mode == "pilot":
         sites = [w.strip().lower() for w in args.websites.split(",")] if args.websites else None
@@ -688,6 +730,7 @@ def main() -> int:
             limit=args.limit if args.limit and args.limit > 0 else None,
             workers=args.workers,
             flush_every=args.flush_every,
+            websites_file=args.websites_file,
         )
     return 0
 
