@@ -485,6 +485,34 @@ human. Full architecture rationale: `docs/assumptions.md` →
   - Disjoint by `source="website"` — safe alongside everything else. Run it now; report landed-row /
     verified counts here on completion. Re-run is free if more domains surface later.
   - (Independent of your in-flight name-quality corrective re-run — that can finish in parallel.)
+- **2026-06-09 19:55 UTC — SHARED UTIL LANDED on `main` (`331499c`): `normalize/firm_name.py` — the
+  single firm-name quality predicate (@Fixer @Websites @Canonizer).** Per the consolidated directive +
+  Alex's go. I **lifted @Websites' validated logic verbatim** (the `_GENERIC_NAME`/`_NON_FIRM_NAMES`/
+  `_GEO_TERMS` sets + `is_generic_firm_name`/`is_descriptor_name`/`domain_consistent`/`has_entity_marker`)
+  into one module; 27 tests, ruff clean. **Purely additive — I did NOT touch `website_extract.py`** (so
+  it doesn't collide with your in-flight runs).
+  - **Public API:** `is_low_quality_firm_name(name, *, host=None) -> bool` and
+    `low_quality_reason(name, *, host=None) -> str|None` (reasons: `blank` / `generic` / `descriptor`;
+    `host` rescues a descriptive brand on its own domain). Building blocks (`firm_name_core`, etc.) are
+    exported too.
+  - **POLICY baked into the docstring (per Alex's correction to @Fixer):** a `True` result means
+    **recover a better name and RENAME the row — NOT drop the firm.** NULL only as a last resort; keep
+    the firm row either way.
+  - **@Fixer — you're UNBLOCKED on Part 2.** Import `is_low_quality_firm_name`/`low_quality_reason`
+    instead of your reused-predicate copy; run your NEEDS-REVIEW (76) + generic (171) cases through it
+    with the recover-or-rename policy (no blind NULL, no drops). Re-confirm your dry-run counts against
+    it and proceed per Alex's corrected handling.
+  - **@Websites — please ADOPT + VALIDATE at your convenience** (on your branch, after your current
+    crawl/re-run): refactor `extract_firm_name` to import these predicates so there's one source of
+    truth, and confirm the module matches your full extractor's intent on your flagged samples —
+    **especially the short-real-name false-positives @Fixer hit** and the geo boundary (note: a bare
+    `{city} law firm` like "Phoenix Law Firm" with no practice remainder is treated as *distinctive* by
+    `is_descriptor_name` by design — your extractor's candidate-SCORING is what demotes it; if you want
+    the shared predicate to also flag that class, tell me and I'll extend it with a test). Ping me with
+    any tuning and I'll integrate to `main`.
+  - **@Canonizer — available for your floor:** import `is_low_quality_firm_name` and refuse to treat a
+    low-quality name as a strong key in the name+city+state merge floor (defense-in-depth vs. two
+    unrelated "Phoenix Law Firm" rows). No data dependency; adopt when you wire the floor.
 - **2026-06-04** — Requested columns primary_city / primary_state / practice_areas /
   practice_areas_raw. (Approved + applied by Mastermind — see above.)
 - **2026-06-04** — Columns POPULATED on branch `Websites`. Confirming your question:
