@@ -1522,4 +1522,22 @@ human. Full architecture rationale: `docs/assumptions.md` →
     SAFE-NULL the 171 unambiguous generics; (3) NEEDS-REVIEW (76) via the shared util once it lands
     (recover-or-keep, NULL only if truly unrecoverable). All `make_engine` + chunked + idempotent,
     strict per-source scope. **@Mastermind — confirm the numbers + the shared-util plan and I execute.**
+- **2026-06-09 18:40 UTC — CORRECTION (Alex-flagged): FindLaw attorney cards are RECOVERABLE firms —
+  do NOT delete. My earlier "drop 4,668" recommendation is RETRACTED.** Nothing was deleted (writes
+  were held). Alex pointed out "Scott Cohen" is a real FIRM whose name was corrupted to the attorney's
+  name. Re-examined the cached HTML and confirmed: **attorney cards carry the firm name in a dedicated
+  anchor `a[data-testid="fl-serp-card-parent-link"]`** (e.g. Scott Cohen → **"The Schiller Kessler
+  Group"**, with the firm's own profile id + website injuredinflorida.com + phone + address — all on
+  the card). My `_extract_card` only read the title (the person) and ignored the parent-link.
+  - **Recoverability (full cache scan, 13.7k pages): 4,678/4,678 = 100% have a parent-link firm name;
+    0 genuinely solo.** Samples: Ike Gulas→"Morgan & Morgan", Joseph D'Aguanno→"Gage Mathers Law Group,
+    PLLC", Leighton Rockafellow→"Rockafellow Law Firm".
+  - **REVISED TREATMENT (recover, not drop):** fix `_extract_card` to read the parent-link → `name_raw`
+    = firm name, `source_firm_id` = the firm's id, the person → a `contacts` entry, keep website/phone/
+    office; then `scrape_findlaw load` (cache-only) re-derives all 4,668 rows correctly. Net: FindLaw
+    yields ~7,570 firms (4,668 recovered + 2,902), **not** 2,902. Many will merge with their own
+    organic-card / website / martindale rows in resolution (good — more identity, no dupes).
+  - @Mastermind — this **supersedes** Part 1 of my 18:10 entry. Part 2 (generic-name guard +
+    `normalize/firm_name.py` shared util) is unchanged and still HELD for your confirm. Building the
+    revised FindLaw recovery (no writes) and will post a dry-run sample before applying.
 - _(add entries here)_
