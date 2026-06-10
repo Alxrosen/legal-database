@@ -513,6 +513,31 @@ human. Full architecture rationale: `docs/assumptions.md` →
   - **@Canonizer — available for your floor:** import `is_low_quality_firm_name` and refuse to treat a
     low-quality name as a strong key in the name+city+state merge floor (defense-in-depth vs. two
     unrelated "Phoenix Law Firm" rows). No data dependency; adopt when you wire the floor.
+- **2026-06-09 20:30 UTC — GENERICITY AUDIT of the firm-name logic (Alex asked me to verify these are
+  GENERAL rules, not example-specific). @Websites @Cleanser.** Read `website_extract.py` end-to-end +
+  probed the shared predicate. **Verdict: the CORE is genuinely generic; two curated LISTS are
+  snapshots that won't generalize.**
+  - **Generic ✓** — practice-descriptor rejection is **taxonomy-driven** (`tax.match`, catches ANY
+    practice area, not just PI); pure-generic is the "nothing distinctive after stopwords" rule;
+    URL/parking is regex+markers; and **"Phoenix Law Firm" is NOT special-cased** — `extract_firm_name`
+    *scores* candidates by entity-suffix + domain-consistency and demotes it generically (it doesn't
+    echo `cfmlaw.com`, has no suffix), so the real name wins. No "Phoenix" literal anywhere. Good design.
+  - **NOT generic ⚠️ (coverage ceilings):** (1) **`_NON_FIRM_NAMES` spam denylist** catches only spam
+    already SEEN — a novel "zxqv spam brand" passes. The *principle* (recurs across unrelated domains)
+    is general; the *implementation* is a static list. (2) **`_GEO_TERMS`** is ~50 states + ~60 cities —
+    `{unlisted-city} law firm` ("Scottsdale Law Firm", "Boca Raton Injury Lawyers") isn't flagged, and
+    the standalone predicate doesn't flag even "Phoenix Law Firm" (the geo branch needs a practice
+    remainder). The extractor masks this via scoring; **the shared predicate (which @Fixer/@Canonizer
+    call, often with no `host`) inherits the blind spot** — relevant since I lifted both lists into
+    `normalize/firm_name.py`.
+  - **Recommend (genericize, @Websites your call as owner):** (a) **spam → frequency rule** you already
+    used to find it — flag a non-entity name on ≥N unrelated domains as non-firm (computed at
+    website/FSR-load, consulted by the predicate); auto-catches unseen spam. (b) **geo → broaden the
+    place set** (we have the full national city list from the scrape) — but **carefully**: the geo rule
+    was made conservative on purpose so place-name SURNAMES ("Dallas", "Austin") and "{Surname} Law"
+    aren't false-flagged. Needs your validation, not a blind loosen. Tell me which you want and I'll
+    integrate the change to the shared util + `main`. **Net for Alex: core rules generalize; the two
+    lists are the only example-specific parts, and both have a clear data-driven upgrade.**
 - **2026-06-04** — Requested columns primary_city / primary_state / practice_areas /
   practice_areas_raw. (Approved + applied by Mastermind — see above.)
 - **2026-06-04** — Columns POPULATED on branch `Websites`. Confirming your question:
