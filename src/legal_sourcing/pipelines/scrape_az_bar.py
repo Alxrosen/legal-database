@@ -241,9 +241,17 @@ def aggregate_by_firm(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
         else:
             # Unaffiliated attorney: do NOT collapse with other
             # unaffiliated attorneys. Key on the first contact's
-            # EntityNumber so each solo attorney is their own row.
+            # source-side identity — AZ Bar carries entity_number,
+            # FindLaw carries source_attorney_id. The id(r) fallback is
+            # last-resort only: it is a per-process memory address, so a
+            # row keyed on it gets a NEW source_firm_id every run and
+            # re-inserts forever instead of upserting.
             contacts = r.get("contacts") or []
-            en = contacts[0].get("entity_number") if contacts else None
+            en = (
+                (contacts[0].get("entity_number") or contacts[0].get("source_attorney_id"))
+                if contacts
+                else None
+            )
             key = ("__solo__", en if en is not None else id(r))
 
         if key not in groups:
@@ -263,7 +271,19 @@ def aggregate_by_firm(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
 
         agg = groups[key]
-        agg["contacts"].extend(r.get("contacts", []))
+        # Dedupe contacts on their source-side identity (entity_number /
+        # source_attorney_id, falling back to the raw name): FindLaw emits the
+        # SAME attorney card once per practice-area page within a city, so a
+        # blind extend would bloat contacts and inflate attorney_count.
+        seen_contacts = {
+            c.get("entity_number") or c.get("source_attorney_id") or c.get("name_raw")
+            for c in agg["contacts"]
+        }
+        for c in r.get("contacts", []):
+            ck = c.get("entity_number") or c.get("source_attorney_id") or c.get("name_raw")
+            if ck is None or ck not in seen_contacts:
+                agg["contacts"].append(c)
+                seen_contacts.add(ck)
         # Dedupe offices by normalized street.
         seen_streets = {(o.get("normalized") or {}).get("street") for o in agg["offices"]}
         for o in r.get("offices", []):

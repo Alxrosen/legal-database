@@ -1,22 +1,38 @@
 """FindLaw SRP (search results page) parser.
 
-FindLaw cards are **firm-level** (unlike AZ Bar / Martindale which
-emit one card per attorney). Each `div.fl-serp-card.organic` is one
-firm listing under a (practice-area, state, city) URL. The firm
-typically appears under multiple practice areas — aggregation by
-`(name_normalized, primary_office_street_normalized)` collapses
+FindLaw SRPs interleave TWO card types under the same
+`.fl-serp-card.organic` class (both firm-shaped for our pipeline):
+
+  * **firm cards** — `class="fl-serp-card organic"`, `aria-label="law
+    firm"`, `data-testid="organic-card-N"`. The card title IS the firm
+    name.
+  * **attorney cards** — `class="fl-serp-card attorney organic"`,
+    `aria-label="attorney"`, `data-testid="attorney-card-N"`. The card
+    title is a PERSON; the firm they belong to is a separate anchor,
+    `a[data-testid="fl-serp-card-parent-link"]`. Historically this
+    parser took the title as `name_raw`, which stored ~4.7k attorneys
+    AS firms ("Scott Cohen" instead of "The Schiller Kessler Group").
+    Now the parent-link supplies `name_raw` and the person becomes a
+    `contacts` entry — the same firm-row-per-attorney-card shape the
+    Martindale city parser emits. A parent-less attorney card (solo /
+    unaffiliated) gets `name_raw=None` so aggregation keys it as its
+    own unnamed row rather than fabricating a person-named firm.
+
+The firm typically appears under multiple practice areas — aggregation
+by `(name_normalized, primary_office_street_normalized)` collapses
 those into one FirmSourceRecord with a union of practice-area slugs.
 
 This parser emits firm-shaped dicts. Each one has:
-  * name_raw       — from the card title
+  * name_raw       — the FIRM name (card title for firm cards,
+                     parent-link for attorney cards)
   * website_raw    — from a[data-testid="website-button-link"]
   * phone_raw      — from a[data-testid="phone-button-link"] (or tel:)
   * offices        — single office parsed from .fl-serp-card-location
-  * contacts       — empty (FindLaw SRPs do not expose individual
-                     attorneys)
+  * contacts       — the card's attorney (attorney cards only)
   * practice_areas_raw — the FindLaw practice-area slug from the
                      source URL (pipeline supplies it)
-  * additional_data — source_firm_id_findlaw + card_text +
+  * additional_data — card_type + source_firm_id_findlaw (+ the
+                     attorney id/url on attorney cards) + card_text +
                      practice_area / state / city slugs.
 
 Normalization (the `*_normalized` columns and practice-area matching)
@@ -75,6 +91,17 @@ def _normalize_phone_tel(href: str | None) -> str | None:
     return s or None
 
 
+def _profile_id(url: str | None) -> str | None:
+    """The trailing slug id of a FindLaw profile URL, e.g.
+    "mezrano-law-firm-NDkwMzUzOF8x" -> "NDkwMzUzOF8x"."""
+    parsed = safe_urlparse(url) if url else None
+    if parsed is None:
+        return None
+    last_seg = parsed.path.rstrip("/").rsplit("/", 1)[-1]
+    m = _TITLE_ID_RE.search(last_seg)
+    return m.group(1) if m else None
+
+
 def _extract_card(card_node) -> dict[str, Any] | None:
     """Convert one `fl-serp-card.organic` node into a firm-shaped dict.
 
@@ -84,21 +111,37 @@ def _extract_card(card_node) -> dict[str, Any] | None:
     title_a = card_node.css_first('a.fl-serp-card-title, a[data-testid="serp-card-title-link"]')
     if title_a is None:
         return None
-    name = title_a.text(strip=True) or None
-    if not name:
+    title_text = title_a.text(strip=True) or None
+    if not title_text:
         return None
-    profile_url = title_a.attributes.get("href")
+    title_url = title_a.attributes.get("href")
 
-    # Firm id is the trailing path segment after the last hyphen, e.g.
-    # "mezrano-law-firm-NDkwMzUzOF8x" -> "NDkwMzUzOF8x".
-    source_firm_id_findlaw: str | None = None
-    _parsed = safe_urlparse(profile_url) if profile_url else None
-    if _parsed is not None:
-        path = _parsed.path.rstrip("/")
-        last_seg = path.rsplit("/", 1)[-1]
-        m = _TITLE_ID_RE.search(last_seg)
-        if m:
-            source_firm_id_findlaw = m.group(1)
+    # Card type: attorney cards carry the `attorney` class token /
+    # aria-label="attorney" / data-testid="attorney-card-N"; firm cards
+    # are aria-label="law firm" / data-testid="organic-card-N".
+    cls_tokens = (card_node.attributes.get("class") or "").split()
+    aria = (card_node.attributes.get("aria-label") or "").strip().lower()
+    testid = card_node.attributes.get("data-testid") or ""
+    is_attorney = (
+        "attorney" in cls_tokens or aria == "attorney" or testid.startswith("attorney-card")
+    )
+
+    attorney_name: str | None = None
+    attorney_profile_url: str | None = None
+    if is_attorney:
+        # The title is a PERSON. The firm is the parent-link anchor; a
+        # parent-less card is a solo/unaffiliated attorney -> no firm name
+        # (never store the person as the firm).
+        attorney_name = title_text
+        attorney_profile_url = title_url
+        parent_a = card_node.css_first('a[data-testid="fl-serp-card-parent-link"]')
+        name = (parent_a.text(strip=True) or None) if parent_a is not None else None
+        profile_url = (parent_a.attributes.get("href") if parent_a is not None else None) or None
+    else:
+        name = title_text
+        profile_url = title_url
+
+    source_firm_id_findlaw = _profile_id(profile_url)
 
     card_text_node = card_node.css_first('div.fl-serp-card-text, [data-testid="serp-card-text"]')
     card_text = card_text_node.text(strip=True) if card_text_node is not None else None
@@ -132,6 +175,7 @@ def _extract_card(card_node) -> dict[str, Any] | None:
             office["phone_raw"] = phone
 
     additional: dict[str, Any] = {
+        "card_type": "attorney" if is_attorney else "firm",
         "card_text": card_text,
         "data_testid": card_node.attributes.get("data-testid"),
     }
@@ -144,6 +188,22 @@ def _extract_card(card_node) -> dict[str, Any] | None:
     if location_text:
         additional["location_text_raw"] = location_text
 
+    # The card's attorney (attorney cards only) — same contact shape as
+    # the Martindale city parser.
+    contacts: list[dict[str, Any]] = []
+    if is_attorney and attorney_name:
+        contact: dict[str, Any] = {
+            "name_raw": attorney_name,
+            "title": None,
+            "phone_raw": phone,
+            "source_attorney_id": _profile_id(attorney_profile_url),
+            "source_attorney_url": attorney_profile_url,
+        }
+        contacts.append(contact)
+        additional["attorney_profile_url"] = attorney_profile_url
+        if contact["source_attorney_id"]:
+            additional["source_attorney_id_findlaw"] = contact["source_attorney_id"]
+
     return {
         "name_raw": name,
         "deactivation_status": None,
@@ -152,7 +212,7 @@ def _extract_card(card_node) -> dict[str, Any] | None:
         "year_founded": None,
         "attorney_count": None,
         "source_last_updated_at": None,
-        "contacts": [],  # SRP cards don't expose individual attorneys
+        "contacts": contacts,
         "offices": [office] if office else [],
         # The practice-area slug is supplied by the pipeline because
         # the parser only sees one page at a time.

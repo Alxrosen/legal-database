@@ -240,9 +240,20 @@ them in `normalize_record` so they match Martindale's "Phoenix".
   burst=1, single-threaded. Treat any 403/429/503 OR 200 with
   "cf-mitigated"/"Just a moment" body as fatal — do NOT retry. See
   `scrapers.findlaw.FindLawCloudflareChallenge`.
-- **FindLaw cards are firm-level** (no individual attorneys per
-  card). Same firm appears under multiple practice-area URLs —
-  dedup by `(name_normalized, primary_street_normalized)`.
+- **FindLaw SRPs interleave TWO card types** under the same
+  `.fl-serp-card.organic` class: firm cards (`aria-label="law firm"`,
+  title = firm name) and ATTORNEY cards (`aria-label="attorney"`,
+  title = a PERSON; the firm is the
+  `a[data-testid="fl-serp-card-parent-link"]` anchor). The parser
+  emits firm-shaped dicts for both — attorney cards take `name_raw`
+  from the parent-link with the person as a `contacts` entry (the
+  pre-2026-06-09 parser stored the person AS the firm; those rows
+  were renamed in place via `scripts/fix_findlaw_attorney_cards.py`,
+  which keeps their legacy person-derived `source_firm_id` — so a
+  future `scrape_findlaw load` would re-insert them under firm-keyed
+  ids; reconcile the legacy rows first). Same firm appears under
+  multiple practice-area URLs — dedup by
+  `(name_normalized, primary_street_normalized)`.
 - **Practice-area slugs differ across sources.** Martindale's
   `practice_areas_raw` items are free-text ("Civil Litigation");
   FindLaw's are URL slugs ("motor-vehicle-accidents-plaintiff");

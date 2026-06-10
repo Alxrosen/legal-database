@@ -215,3 +215,80 @@ def test_alabaster_recon_fixture_round_trip_card_count():
     assert first["title_text"] == "Mezrano Law Firm"
     assert first["website_url"] == "https://www.mezrano.com/"
     assert first["phone"] == "+12054627409"
+
+
+# ---- attorney cards (title = PERSON; firm = parent-link) ----------------
+
+
+ATTORNEY_CARD_HTML = """
+<div class="fl-serp-card attorney organic" aria-label="attorney" data-testid="attorney-card-18">
+  <h2><a class="fl-serp-card-title directory_profile"
+         href="https://lawyers.findlaw.com/florida/davie/scott-cohen-NTM4NzYyOF8x/"
+         data-testid="serp-card-title-link">Scott Cohen</a></h2>
+  <a class="fl-list-item-link directory_profile"
+     data-testid="fl-serp-card-parent-link"
+     href="https://lawyers.findlaw.com/florida/davie/the-schiller-kessler-group-NDE0OTYwOF8x/">The Schiller Kessler Group</a>
+  <div class="fl-serp-card-text" data-testid="serp-card-text">
+    Workers' Compensation Lawyers Serving Port Saint Lucie, FL (Davie)
+  </div>
+  <div class="fl-serp-card-location"><span>4640 South University Drive, Davie, FL 33328</span></div>
+  <div class="fl-serp-card-buttons">
+    <a data-testid="website-button-link" href="https://www.injuredinflorida.com/personal-injury-lawyer/davie-fl/" rel="nofollow">Visit Website</a>
+    <a data-testid="phone-button-link" href="tel:+19544882962">954-488-2962</a>
+  </div>
+</div>
+"""
+
+
+def test_extract_card_attorney_recovers_parent_firm():
+    """The Scott Cohen regression: the card title is a PERSON; the firm
+    name must come from the parent-link, and the person becomes a
+    contact (never the firm name)."""
+    card = HTMLParser(ATTORNEY_CARD_HTML).css_first(".fl-serp-card.organic")
+    rec = _extract_card(card)
+    assert rec is not None
+    assert rec["name_raw"] == "The Schiller Kessler Group"
+    assert len(rec["contacts"]) == 1
+    contact = rec["contacts"][0]
+    assert contact["name_raw"] == "Scott Cohen"
+    assert contact["source_attorney_id"] == "NTM4NzYyOF8x"
+    ad = rec["additional_data"]
+    assert ad["card_type"] == "attorney"
+    assert ad["source_firm_id_findlaw"] == "NDE0OTYwOF8x"  # the FIRM's id
+    assert ad["source_attorney_id_findlaw"] == "NTM4NzYyOF8x"
+    assert ad["firm_profile_url"].endswith("the-schiller-kessler-group-NDE0OTYwOF8x/")
+    assert ad["attorney_profile_url"].endswith("scott-cohen-NTM4NzYyOF8x/")
+    # Website / phone / office still captured from the card.
+    assert rec["website_raw"].startswith("https://www.injuredinflorida.com/")
+    assert rec["phone_raw"] == "+19544882962"
+    assert rec["offices"][0]["city_raw"] == "Davie"
+    assert rec["offices"][0]["state_raw"] == "FL"
+
+
+def test_extract_card_attorney_without_parent_is_unnamed():
+    """A parent-less attorney card (solo / unaffiliated) must NOT store
+    the person as the firm name — name_raw stays None."""
+    html = ATTORNEY_CARD_HTML.replace('data-testid="fl-serp-card-parent-link"', 'data-testid="x"')
+    card = HTMLParser(html).css_first(".fl-serp-card.organic")
+    rec = _extract_card(card)
+    assert rec is not None
+    assert rec["name_raw"] is None
+    assert rec["contacts"][0]["name_raw"] == "Scott Cohen"
+    assert rec["additional_data"]["card_type"] == "attorney"
+
+
+def test_extract_card_firm_card_type_tagged():
+    """Firm cards keep the title as the name and carry card_type='firm'."""
+    html = """
+    <div class="fl-serp-card organic" aria-label="law firm" data-testid="organic-card-1">
+      <h2><a class="fl-serp-card-title"
+             href="https://lawyers.findlaw.com/florida/davie/the-schiller-kessler-group-NDE0OTYwOF8x/"
+             data-testid="serp-card-title-link">The Schiller Kessler Group</a></h2>
+    </div>
+    """
+    card = HTMLParser(html).css_first(".fl-serp-card.organic")
+    rec = _extract_card(card)
+    assert rec is not None
+    assert rec["name_raw"] == "The Schiller Kessler Group"
+    assert rec["contacts"] == []
+    assert rec["additional_data"]["card_type"] == "firm"
