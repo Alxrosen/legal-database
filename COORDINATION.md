@@ -1549,4 +1549,44 @@ human. Full architecture rationale: `docs/assumptions.md` →
   - @Mastermind — this **supersedes** Part 1 of my 18:10 entry. Part 2 (generic-name guard +
     `normalize/firm_name.py` shared util) is unchanged and still HELD for your confirm. Building the
     revised FindLaw recovery (no writes) and will post a dry-run sample before applying.
+- **2026-06-10 — TASK 2 COMPLETE: FindLaw firm-name recovery + generic-name guard APPLIED**
+  (code on `main` `189ce78`; Alex's go via "start up with Task 2"; util adoption per @Mastermind 19:55).
+  All writes were renames/tags — **zero rows deleted, name_raw preserved on every non-findlaw row.**
+  - **Part 1 — FindLaw attorney-cards: 4,668/4,668 renamed in place from cache, 0 unmatched.** Parser
+    now reads the firm from `a[data-testid="fl-serp-card-parent-link"]` (person → `contacts`;
+    `card_type` recorded); `scripts/fix_findlaw_attorney_cards.py` recovered the legacy rows (audit
+    trail in `additional_data.attorney_card_recovery`; idempotent). Verified: findlaw still 7,570 rows;
+    0 rows named "Scott Cohen"; the two Alex-flagged rows are **two different Scott Cohens** —
+    id=130789 → "The Schiller Kessler Group" (FL), id=136718 → "Cohen Injury Law, P.C." (GA) — matching
+    @Canonizer's eval label ("Scott Cohen pair = different people"). FindLaw is now fully firm-named.
+  - **Part 2 — generic-name guard: 131 merge keys cleared** (martindale 94, az_bar 37, findlaw 0) via
+    shared `normalize/firm_name.py` + caller-side rescues. Treatment = clear `name_normalized` + tag
+    `additional_data.name_quality`; `name_raw` untouched (verbatim source evidence; recovery-by-merge
+    via the website source at fusion).
+  - **Adversarial verification (3-agent workflow) before applying — it caught real problems:** parser
+    PASS (0 violations across 4,034 cards, all 18 states; firm-card no-regression 30/30); the
+    treatment list initially **FAILED at ~12-20% false positives** (digit/initials/URL-form brands:
+    "The H Law Group", "The 928 Law Firm", "D2 Injury Law", "J.K. Lawyers", "Otto.Law", "MAS Law") →
+    refined to a **distinctive-content criterion** (digits, non-filler initials, domain-echo/prefix/
+    acronym rescues; bare entity suffix is NOT identity — "A Law Firm, P.C." stays flagged) → flags
+    222→131, findlaw flags 9→0, backstop 36/36, residual FP ~2% ("Laws"/"Wills" surname collisions).
+  - **@Mastermind — shared-util tuning proposals** (my validated caller-side versions are in
+    `scripts/fix_generic_names.py`, lift at will): (1) count digit/single-letter/dotted-initials tokens
+    as distinctive (the util's `firm_name_core` drops them → real brands flag "generic"); (2) give the
+    generic branch the host/entity rescue the descriptor branch has; (3) exempt URL-form names that
+    echo the row's OWN domain ("Otto.Law" on otto.law); (4) extend domain-echo with prefix/acronym
+    matching ("Best Law Firm"/bestlawaz.com, "Business Law Center"/blc-plc.com); (5) export
+    `_NAME_STOPWORDS` publicly (I import it privately).
+  - **Shared-pipeline hardening (in `scrape_az_bar.py` — flagging the shared-file touch):**
+    `aggregate_by_firm` solo-key now falls back to `source_attorney_id` (was `id(r)` — a memory
+    address, so future findlaw runs would re-INSERT solo rows forever) + contacts dedup by source
+    identity (findlaw repeats the same attorney card per practice-area page → count bloat). az_bar
+    behavior unchanged (entity_number always present). 389 tests green.
+  - **Two standing WARNINGS (also in AGENTS.md):** (a) a future `scrape_findlaw load` would re-insert
+    the renamed legacy rows under new firm-keyed `source_firm_id`s — reconcile legacy rows first;
+    (b) any martindale `load`/`enrich` clobbers `name_normalized` + `additional_data` wholesale →
+    **re-run `fix_generic_names.py --apply` after** (idempotent, ~1 min). Durable fix = fold the guard
+    into `normalize_record` at ingest — @Mastermind's call.
+  - **@Canonizer — findlaw is now fully named** (was 62% person-named) and 131 junk merge keys are
+    disarmed; fold into your next provisional run.
 - _(add entries here)_
