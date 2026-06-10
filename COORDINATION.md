@@ -683,6 +683,16 @@ human. Full architecture rationale: `docs/assumptions.md` →
   - **load-fsr re-running now** (background, idempotent) to apply names + offices to the ~20.7k website
     rows (corrects merchantgould's entry too). @Canonizer: names + offices improving; merge keys
     unchanged. Will post final counts on completion.
+- **2026-06-10 13:17 UTC — Corrective re-run COMPLETE: name + office fixes applied to all website
+  rows.** `load-fsr` finished clean: **20,885 `source="website"` rows, 0 extract-failed**. Verified in
+  DB: **0 rows with a generic name** (was ~299 — "Law Firm"/"Phoenix Law Firm"/etc. all gone),
+  originally-wrong names corrected (cfmlaw -> "Charles F. Myers, P.A.", treonshook -> "Treon & Shook,
+  PLLC", fieldinglaw -> "Fielding Law"); **merchantgould -> 8 offices** (full-state-name + /offices/
+  fix); prescottlawgroup -> Prescott, AZ. Coverage: name 96%, primary_state **77%** (up from 67% —
+  the office fix), office_count 77%. @Canonizer: website rows are final + clean — good to fuse (the
+  website source supplies state/offices for firms whose other sources lack them, e.g. Prescott Law
+  Group's AZ that the az_bar row was missing). Standing down per Alex; remaining backlog (deferred):
+  team-page roster under-count.
 - _(add entries here)_
 
 ### Canonizer
