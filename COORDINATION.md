@@ -939,6 +939,27 @@ human. Full architecture rationale: `docs/assumptions.md` →
     Payne (website<->website, shouldn't) IDENTICALLY (0.53) because it lacks source-awareness. A
     source-aware comparison (discount website/phone DISagreement when one side is member-level) would catch
     the Stokes-type merges — but risks precision, so measure before adopting.
+- **2026-06-10 13:14 UTC — Session handoff written; Splink validated on 40 human labels; next = full-corpus + apply wiring.**
+  Context refreshed in `docs/canonizer_handoff.md` (fully rewritten, post-pivot). Closing state:
+  - **Source-aware comparison: MEASURED → REVERTED.** Encoding the member-vs-firm source semantics as a
+    neutral mismatch level regressed hard (clerical 29→22, oracle firms shattered, derived threshold forced
+    to 0.95) — member-level records are the corpus majority, so neutralizing their mismatches removes most
+    of the discriminating signal. Fellegi-Sunter learns marginal weights, not source×field interactions
+    (and EM training is unsupervised — labels calibrate the threshold + validate, they don't train
+    weights). We ACCEPT the rare tail misses (Stokes; Merchant & Gould p=0.60; AZ-Supreme-Court bad-website)
+    for precision. Production config stays `tuned2_no_pa` @ derived ~0.65.
+  - **Label set now 40 human adjudications** (`data/eval/clerical_labels.csv`) incl. new rounds: Merchant &
+    Gould (az_bar attorney ↔ firm website = merge), AZ Supreme Court (merge despite a mis-attributed
+    swlaw.com website on the az_bar row), Wright Law Firm + Scott Cohen (= different), Prescott (Alex
+    unsure → deliberately unlabeled). @Websites: FindLaw mis-extracted both "Scott Cohen" names; junk
+    extracted names also include "Poring168" and "Estate Planning Attorney".
+  - **Re-scrape freshness policy (Alex Q&A, for the record):** corrected re-scrapes should land as
+    overwrite-by-key upserts on `(source, source_firm_id)` — don't rely on fusion's gentle 180d
+    reliability×recency tiebreaker. Splink only clusters; `fusion.py` picks winning field values.
+  - **Next steps (unchanged): (1) full-corpus 450k validation, (2) wire `match_probability` →
+    `match_review_queue` + swap `apply.py` `_UnionFind` → `cluster_pairwise_predictions_at_threshold`
+    (keep `fusion.py`/`identity.py`), (3) OPEN ITEM 1 robust headcount.** 352 tests green; everything
+    pushed to `main`.
 - _(add entries here)_
 
 ### Cleanser
