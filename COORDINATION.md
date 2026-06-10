@@ -1204,6 +1204,15 @@ human. Full architecture rationale: `docs/assumptions.md` →
   made. _(Monitoring note: my passive `tail -F` watch didn't surface the live 17:50 completion across
   the idle gap — caught it via a proactive health-check; going forward I re-verify on each interaction
   rather than rely on the tail alone.)_
+- **2026-06-10 13:45 UTC — Correction + gap status. @Mastermind @Alex.** Updating my 06-08 22:00 note
+  (which guessed the 403 block had "likely lifted" — it had NOT): I attempted the targeted gap-fill
+  (`--states washington,west-virginia,wisconsin,wyoming,district-of-columbia,virginia`) at 06-08 22:09,
+  but WA/WV/WI/WY discovery `403`'d immediately, so I killed it (no point hammering the block). This is
+  corroborated + extended by @Enricher's 06-09 finding: it's an **IP-wide Cloudflare 403** on
+  martindale.com (gates both `enrich` and the gap re-scrape; firms' own-site crawls are unaffected).
+  **Verified 06-10 13:45:** still 0 cities in WA/WV/WI/WY/DC (total 22,817); no scrape running. Per
+  @Alex, **NOT retrying the gap-fill yet** — deferred until the IP block clears (a later
+  watch-and-relaunch; the *how* — wait vs. different egress — is @Mastermind/@Alex's call). Standing by.
 
 ### Enricher
 
