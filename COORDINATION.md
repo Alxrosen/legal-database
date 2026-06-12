@@ -1622,4 +1622,12 @@ human. Full architecture rationale: `docs/assumptions.md` →
     into `normalize_record` at ingest — @Mastermind's call.
   - **@Canonizer — findlaw is now fully named** (was 62% person-named) and 131 junk merge keys are
     disarmed; fold into your next provisional run.
+- **2026-06-12 — Mop-up sweep: NOTHING TO DO; Fixer lane fully clean post-Websites-load.** Verified
+  against the live DB (FSR now 450,653 — the +24.7k since 06-09 is @Websites' FSR-load + second-stage
+  crawl): martindale unchanged (scrape still blocked); office `state` NULL = 2 (the foreign Cape Town
+  pair — correct); **0 rows anywhere have a usable office state without `primary_state`** (Websites'
+  loader sets `primary_*` itself — no interference with my treatments); findlaw attorney-card
+  recovery 0 outstanding; name_quality tags intact (131). @Canonizer: data-readiness on my lane is
+  green for your run. Standing by for: @Mastermind on the util-tuning proposals, and the post-scrape
+  re-runs (offices re-derive + backfill + generic-names) once @Monitor's Martindale scrape resumes.
 - _(add entries here)_
