@@ -538,6 +538,39 @@ human. Full architecture rationale: `docs/assumptions.md` →
     aren't false-flagged. Needs your validation, not a blind loosen. Tell me which you want and I'll
     integrate the change to the shared util + `main`. **Net for Alex: core rules generalize; the two
     lists are the only example-specific parts, and both have a clear data-driven upgrade.**
+- **2026-06-12 — SHARED UTIL UPDATED (`b85c90e`): @Fixer's five tuning proposals are folded into
+  `normalize/firm_name.py` (@Fixer @Websites @Canonizer — pull `main`).** Reviewed Fixer's Task-2
+  work (FindLaw recovery + generic-name guard) and lifted its adversarially-validated caller-side
+  rescues from `scripts/fix_generic_names.py` into the util, so ALL consumers now get them by default:
+  1. **`firm_name_core` counts digit / non-filler-initials / dotted-initials tokens as identity**
+     ("The 928 Law Firm", "D2 Injury Law", "J.K. Lawyers", "The H Law Group" no longer flag generic;
+     filler "a"/"i" still don't count, so "A Law Firm, P.C." stays flagged).
+  2. **New `host_echoes(name, host)`** — stem containment ("MAS Law"/mas.law), ≥6-char shared prefix
+     ("Best Law Firm"/bestlawaz.com), acronym ("Business Law Center"/blc-plc.com, "The Estate Planning
+     Law Group"/teplg.com). `domain_consistent` unchanged.
+  3. **`low_quality_reason` restructured with ordered, validated branches:** hard junk (placeholder/
+     parking/denylist) is NEVER rescued (HugeDomains can't sneak through via a distinctive stem);
+     "&" names are always identity (J&Y, F&B, M&H); **URL-form names with a distinctive stem are
+     identities** ("Otto.Law", "BrentCorwin.com", "Chewy.com"); the **empty-core branch now gets the
+     own-domain rescue** (host echo) — but a bare entity suffix is NOT identity; descriptor rescue
+     (own-domain or entity suffix) unchanged.
+  4. **`NAME_STOPWORDS` is now public** (drop the `_NAME_STOPWORDS` private import).
+  - **Verified:** Fixer's full 36-case backstop is now a parametrized test in `tests/test_firm_name.py`
+    (66 util tests); `scripts/fix_generic_names.py --backstop` still passes 36/36 unmodified; **full
+    suite 428 green, ruff clean.** One deliberate semantic change vs. the original util: a URL-form
+    name with a distinctive stem ("bestlawyer.net") is now KEPT (per Fixer's validation these are real
+    brands) — placeholder/parking domains still flag via the denylist branch.
+  - **@Fixer** — your caller-side `_extended_identity`/`_host_echoes`/URL-stem rescues in
+    `fix_generic_names.py` are now redundant no-ops (the util returns None before they fire); simplify
+    `_flag` to the bare `low_quality_reason` call at your leisure (script behavior is identical either
+    way). Your two standing warnings remain tracked: the durable fix (fold the guard into
+    `normalize_record` at ingest) is MINE and queued; re-run `fix_generic_names.py --apply` stays the
+    rule after any martindale `load`/`enrich`.
+  - **@Websites** — adoption note unchanged (refactor `extract_firm_name` to import the shared
+    predicates when convenient); the digit/initials handling now matches your extractor's intent on
+    brands your candidate-scoring already kept. **@Canonizer** — the merge-floor guard
+    (`is_low_quality_firm_name`) is now strictly better: fewer false flags on digit/initials brands
+    means fewer real names excluded from your name+city+state floor.
 - **2026-06-04** — Requested columns primary_city / primary_state / practice_areas /
   practice_areas_raw. (Approved + applied by Mastermind — see above.)
 - **2026-06-04** — Columns POPULATED on branch `Websites`. Confirming your question:
