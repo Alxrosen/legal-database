@@ -17,6 +17,15 @@ POLICY NOTE: a ``True`` result means "this name is not a reliable identity — f
 better one and RENAME the row" (recover from another signal: cached HTML, domain echo,
 logo alt-text). NULL the name only as a last resort, and KEEP the firm row either way.
 A low-quality name is never, by itself, a reason to drop a firm.
+
+TUNED (2026-06-12) with the cleanup agent's adversarially-validated rescues (its
+caller-side originals lived in ``scripts/fix_generic_names.py``; folded in here so all
+consumers get them): digit/initials tokens count as identity in ``firm_name_core``
+("The 928 Law Firm", "J.K. Lawyers"); ``host_echoes`` extends domain matching with
+containment/prefix/acronym ("Best Law Firm" on bestlawaz.com, "Business Law Center" on
+blc-plc.com); URL-form names with a distinctive stem are identities ("Otto.Law",
+"BrentCorwin.com"); the empty-core branch gets the own-domain rescue; "&" names are
+always identity; ``NAME_STOPWORDS`` is public.
 """
 
 from __future__ import annotations
@@ -269,14 +278,47 @@ _GEO_TERMS: frozenset[str] = frozenset(
 )
 
 
+# Public alias — consumers (e.g. the cross-source cleanup) need the stopword set to
+# build their own candidate scoring without re-declaring it.
+NAME_STOPWORDS: frozenset[str] = _NAME_STOPWORDS
+
+# Single letters that are filler rather than identity ("A Law Firm", "I"); any OTHER
+# lone letter ("The H Law Group") reads as an initials brand.
+_FILLER_LETTERS: frozenset[str] = frozenset({"a", "i"})
+
+# Site-builder / domain-parking / placeholder markers — never an identity, no rescue.
+_PLACEHOLDER_SUBSTR: tuple[str, ...] = (
+    "template",
+    "hugedomains",
+    "godaddy",
+    "for sale",
+    "coming soon",
+    "under construction",
+)
+
+# A name written as a bare domain ("BrentCorwin.com", "Otto.Law"). Such a name IS an
+# identity when its stem is distinctive — see low_quality_reason.
+_URL_FORM = re.compile(r"\.(?:com|net|org|biz|info|law)\b")
+
+
 def firm_name_core(name: str) -> list[str]:
-    """Distinctive (identity-bearing) tokens of a name — alphabetic tokens with the
-    generic legal / structural / qualifier words removed."""
-    return [
-        t
-        for t in re.findall(r"[a-z]+", (name or "").lower())
-        if len(t) > 1 and t not in _NAME_STOPWORDS
-    ]
+    """Distinctive (identity-bearing) tokens of a name — alphanumeric tokens with the
+    generic legal / structural / qualifier words removed. Counts digit tokens ("928",
+    "D2", "5280"), non-filler lone initials ("The H Law Group"), and dotted initials
+    collapsed into a token ("J.K." -> "jk") as identity — real brands use all three
+    (validated against the cross-source cleanup's adversarial review, which found
+    digit/initials brands false-flagging at 12-20% under the alphabetic-only rule)."""
+    out: list[str] = []
+    collapsed = (name or "").lower().replace(".", "")
+    for t in re.findall(r"[a-z0-9]+", collapsed):
+        if any(ch.isdigit() for ch in t):
+            out.append(t)  # digit brand token ("928", "d2", "the702firm")
+        elif len(t) == 1:
+            if t not in _FILLER_LETTERS:
+                out.append(t)  # initials brand ("The H Law Group")
+        elif t not in _NAME_STOPWORDS:
+            out.append(t)
+    return out
 
 
 def is_generic_firm_name(name: str | None) -> bool:
@@ -291,20 +333,12 @@ def is_generic_firm_name(name: str | None) -> bool:
     low_nodigit = re.sub(r"\s*\d+$", "", low)  # "mysite 1" -> "mysite"
     if low in _GENERIC_NAME or low_nodigit in _GENERIC_NAME or low in _NON_FIRM_NAMES:
         return True
-    if any(
-        s in low
-        for s in (
-            "template",
-            "hugedomains",
-            "godaddy",
-            "for sale",
-            "coming soon",
-            "under construction",
-        )
-    ):
+    if any(s in low for s in _PLACEHOLDER_SUBSTR):
         return True  # site-builder / domain-parking / placeholder pages
-    if re.search(r"\.(?:com|net|org|biz|info|law)\b", low):
-        return True  # the candidate is a domain / URL, not a firm name
+    if _URL_FORM.search(low):
+        # NB: low_quality_reason() un-flags a URL-form name whose stem is distinctive
+        # ("Otto.Law", "BrentCorwin.com") — those are real brands, not junk.
+        return True
     return not firm_name_core(name or "")  # nothing distinctive left ("Law Firm")
 
 
@@ -348,22 +382,75 @@ def has_entity_marker(name: str) -> bool:
     return any(mk in p for mk in _ENTITY_SUFFIX_MARK for p in padded)
 
 
+def host_echoes(name: str, host: str | None) -> bool:
+    """The row's own domain echoes the name — the name is the firm's chosen brand.
+    Catches what `domain_consistent` (a >=4-char core token in the stem) misses:
+    stem containment ("MAS Law" / mas.law), a long shared prefix ("Best Law Firm" /
+    bestlawaz.com), and acronym domains ("Business Law Center" / blc-plc.com)."""
+    if not host:
+        return False
+    stem = host.split(".")[0].replace("-", "")
+    if len(stem) < 3:
+        return False
+    name_stem = re.sub(r"[^a-z0-9]", "", (name or "").lower())
+    if not name_stem:
+        return False
+    if stem in name_stem or name_stem in stem:
+        return True
+    common = 0
+    for a, b in zip(name_stem, stem, strict=False):
+        if a != b:
+            break
+        common += 1
+    if common >= 6:
+        return True
+    words = re.findall(r"[a-z0-9]+", (name or "").lower())
+    acronym = "".join(w[0] for w in words)
+    return len(acronym) >= 3 and acronym in stem
+
+
 def low_quality_reason(name: str | None, *, host: str | None = None) -> str | None:
     """Return a short reason string if `name` is a low-quality firm identity, else None.
 
-    `host` (the firm's website host, when known) rescues a descriptive BRAND on its own
-    domain. Reasons: ``"blank"``, ``"generic"`` (placeholder/URL/nothing distinctive),
+    `host` (the firm's website host, when known) rescues a brand on its own domain.
+    Reasons: ``"blank"``, ``"generic"`` (placeholder/denylist/nothing distinctive),
     ``"descriptor"`` (practice/geo descriptor not tied to this firm). See the module
     docstring for the rename-not-drop policy.
+
+    Branch order matters (each rule below is validated by the cross-source cleanup's
+    36-case backstop): hard junk (placeholder/denylist) is NEVER rescued; "&" names are
+    multi-party structure and always identity; a URL-form name is an identity iff its
+    stem is distinctive or echoes the row's own domain ("Otto.Law" on otto.law); an
+    empty-core name is rescued only by its own domain ("Best Law Firm" on
+    bestlawaz.com — but a bare entity suffix is NOT identity: "A Law Firm, P.C." stays
+    flagged); a descriptor is rescued by its own domain or an entity suffix.
     """
     if name is None or not " ".join(name.split()):
         return "blank"
-    if is_generic_firm_name(name):
+    low = " ".join(name.lower().split())
+    low_nodigit = re.sub(r"\s*\d+$", "", low)  # "mysite 1" -> "mysite"
+    # 1) Hard junk — placeholder / parking / denylisted non-firm titles. No rescue:
+    #    "HugeDomains.com" must stay flagged no matter how distinctive its stem reads.
+    if low in _GENERIC_NAME or low_nodigit in _GENERIC_NAME or low in _NON_FIRM_NAMES:
         return "generic"
+    if any(s in low for s in _PLACEHOLDER_SUBSTR):
+        return "generic"
+    # 2) Multi-party "&" structure is identity ("J&Y Law", "F&B Law Firm, P.C.").
+    if "&" in name:
+        return None
+    core = firm_name_core(name)
+    own_domain = host_echoes(name, host) or domain_consistent(name, host)
+    # 3) URL-form name: a real brand iff the stem is distinctive or matches the host.
+    if _URL_FORM.search(low):
+        return None if (core or own_domain) else "generic"
+    # 4) Nothing distinctive left ("Law Firm", "A Law Firm, P.C."): only the firm's own
+    #    domain can rescue it — an entity suffix alone is not identity.
+    if not core:
+        return None if own_domain else "generic"
+    # 5) Practice/geo descriptor: kept when it is the firm's own brand or a registered
+    #    entity name ("Personal Injury Law Firm, PLLC").
     if is_descriptor_name(name):
-        if (host and domain_consistent(name, host)) or has_entity_marker(name):
-            return None  # rescued: the firm's own brand / a real entity name
-        return "descriptor"
+        return None if (own_domain or has_entity_marker(name)) else "descriptor"
     return None
 
 
