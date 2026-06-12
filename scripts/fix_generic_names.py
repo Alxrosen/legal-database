@@ -15,25 +15,19 @@ row), the treatment here is deliberately minimal and non-destructive:
   * ``additional_data.name_quality`` records the reason — auditable + reversible
     (re-deriving name_normalized from name_raw is one re-normalize away).
 
-Caller-side rescues (on top of the util's host/entity rescue of descriptors) —
-tuned against an adversarial review of ALL flagged names, which found the raw
-util flags real digit/initials/URL-form brands at a ~12-20% rate. The governing
-criterion: **clear the merge key only when the name carries ZERO distinctive
-content.** Concretely a flagged name is rescued when:
-
-  * it contains ``&`` ("J&Y Law", "F&B Law Firm, P.C." — multi-party structure);
-  * it has distinctive content the util's alphabetic core missed — digit tokens
-    ("The 928 Law Firm", "D2 Injury Law", "5280 Law Group", "615 Lawyer"),
-    non-stopword initials incl. dotted ("The H Law Group", "J.K. Lawyers",
-    "S.M.F. Law"), or a distinctive stem inside a URL-form name ("Otto.Law",
-    "BrentCorwin.com" — the util's ``.com/.law`` rule treats these as URLs);
-  * its own domain echoes it — stem containment ("MAS Law" on mas.law), a long
-    common prefix ("Best Law Firm" on bestlawaz.com), or an acronym domain
-    ("Business Law Center" on blc-plc.com).
-
-A bare entity suffix is deliberately NOT a rescue ("A Law Firm, P.C." stays
-flagged: "a law firm" is exactly the merge key this script exists to disarm).
-These rescues are proposed upstream to Mastermind for the shared util.
+The flag decision is the shared util's ``low_quality_reason`` verbatim. The
+governing criterion — **clear the merge key only when the name carries ZERO
+distinctive content** — was tuned here against an adversarial review of ALL
+flagged names (the original util flagged real digit/initials/URL-form brands at
+a ~12-20% rate) and the resulting rescues were then folded INTO the util
+(`b85c90e`): digit/initials tokens count as identity ("The 928 Law Firm",
+"J.K. Lawyers", "The H Law Group"), "&" names are identity, URL-form names with
+a distinctive stem are identity ("Otto.Law", "BrentCorwin.com"), and a firm's
+own domain rescues via containment/prefix/acronym echo ("MAS Law"/mas.law,
+"Best Law Firm"/bestlawaz.com, "Business Law Center"/blc-plc.com). A bare
+entity suffix is deliberately NOT identity ("A Law Firm, P.C." stays flagged:
+"a law firm" is exactly the merge key this script exists to disarm). The
+BACKSTOP_CASES below are the validated contract (mirrored as util tests).
 
 Modes:
   --backstop   Curated cases: junk flags, real-firm rescues.
@@ -50,7 +44,6 @@ idempotent).
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 from pathlib import Path
 from urllib.parse import urlparse
@@ -64,12 +57,7 @@ from sqlalchemy.orm.attributes import flag_modified  # noqa: E402
 
 from legal_sourcing.db import make_engine  # noqa: E402
 from legal_sourcing.models import FirmSourceRecord  # noqa: E402
-from legal_sourcing.normalize.firm_name import (  # noqa: E402
-    _NAME_STOPWORDS,  # proposed for public export — see COORDINATION
-    domain_consistent,
-    firm_name_core,
-    low_quality_reason,
-)
+from legal_sourcing.normalize.firm_name import low_quality_reason  # noqa: E402
 
 SOURCES = ("martindale", "az_bar", "findlaw")
 
@@ -122,79 +110,16 @@ BACKSTOP_CASES: list[tuple[str, str | None, str | None]] = [
     ("Business Law Center", None, "descriptor"),
 ]
 
-# Single letters that are filler rather than identity ("A Law Firm"); any other
-# lone letter ("The H Law Group") reads as an initials brand.
-_FILLER_LETTERS = frozenset({"a", "i"})
-
-
-def _extended_identity(name: str) -> bool:
-    """Identity-bearing signal the util's alphabetic core misses: digit tokens
-    ("928", "D2", "5280") and initials, dotted or bare ("J.K." -> "jk", "The H
-    Law Group"). Deliberately does NOT count plain descriptive words — a
-    descriptor like "Alabama Personal Injury Law Firm" has core tokens but no
-    identity, so the descriptor branch must not rescue on the core alone."""
-    core_tokens = set(firm_name_core(name))
-    # Collapse dotted initials ("J.K." -> "jk", "P.C." -> "pc") so initials
-    # fuse into a checkable token and entity suffixes hit the stopword list.
-    collapsed = (name or "").lower().replace(".", "")
-    for t in re.findall(r"[a-z0-9]+", collapsed):
-        if any(ch.isdigit() for ch in t):
-            return True
-        if t in _NAME_STOPWORDS:
-            continue
-        if len(t) == 1:
-            if t not in _FILLER_LETTERS:
-                return True  # a lone non-filler letter ("The H Law Group")
-        elif t not in core_tokens:
-            return True  # a token that only exists via dot-collapsing ("jk")
-    return False
-
-
-def _host_echoes(name: str, host: str | None) -> bool:
-    """The row's own domain echoes the name — the name is the firm's chosen
-    brand. Catches what domain_consistent (>=4-char core token) misses: stem
-    containment ("MAS Law" / mas.law), a long shared prefix ("Best Law Firm" /
-    bestlawaz.com), and acronym domains ("Business Law Center" / blc-plc.com)."""
-    if not host:
-        return False
-    stem = host.split(".")[0].replace("-", "")
-    if len(stem) < 3:
-        return False
-    name_stem = re.sub(r"[^a-z0-9]", "", (name or "").lower())
-    if not name_stem:
-        return False
-    if stem in name_stem or name_stem in stem:
-        return True
-    common = 0
-    for a, b in zip(name_stem, stem, strict=False):
-        if a != b:
-            break
-        common += 1
-    if common >= 6:
-        return True
-    words = re.findall(r"[a-z0-9]+", (name or "").lower())
-    acronym = "".join(w[0] for w in words)
-    return len(acronym) >= 3 and acronym in stem
-
 
 def _flag(name: str, host: str | None) -> str | None:
     """The treatment decision for one stored name. None = leave untouched.
 
-    Policy: clear the merge key ONLY when the name carries zero distinctive
-    content (or is an unrescued practice/geo descriptor with no domain echo).
+    This is the shared util verbatim — the distinctive-content rescues this
+    script originally carried caller-side (digit/initials identity, host-echo,
+    URL-stem, "&" structure) were folded into ``low_quality_reason`` itself
+    (`b85c90e`); BACKSTOP_CASES pins that contract from the consumer side.
     """
-    if "&" in name:
-        return None  # multi-party structure — distinctive
-    reason = low_quality_reason(name, host=host)
-    if reason is None:
-        return None
-    if _host_echoes(name, host) or domain_consistent(name, host):
-        return None  # the row's own domain confirms the brand
-    if _extended_identity(name):
-        return None  # digit / initials brand the util's core missed ("D2 Injury Law")
-    if reason == "generic" and firm_name_core(name):
-        return None  # URL-form name with a distinctive stem ("BrentCorwin.com")
-    return reason
+    return low_quality_reason(name, host=host)
 
 
 def _host_of(url: str | None) -> str | None:
