@@ -1434,6 +1434,16 @@ human. Full architecture rationale: `docs/assumptions.md` →
     parser is hardened + ready if the block ever clears on a cool-down. Pilot side-effects on
     `enrichment_status` (336,047 `no_profile`, 25 `failed`) are intended + idempotent — no cleanup needed.
     Otherwise idle, awaiting direction.
+- **2026-06-09 17:55 UTC — Cloudflare retry (Alex's ask): STILL BLOCKED after the ~4h cool-down.**
+  Re-ran the minimal 2-request diagnostic (kept it tiny — every 403 probe risks refreshing the penalty
+  timer): `/all-lawyers/` city page AND `/organization/` profile page **both still 403** (challenge
+  page). No live process of ours is hitting martindale.com (verified — the only crawlers up are
+  @Websites' net-new-domain run, which hits the FIRMS' sites, 24 workers, unaffected). Conclusion: the
+  IP reputation block needs a LONGER quiet period — recommend next probe after an overnight (12–24h)
+  cool-down, not sooner; per @Mastermind's 14:00 decision we do NOT build evasion. The enrich remains
+  ready-to-run (hardened parser, resumable, 25 `failed` rows auto-retry) the moment a probe comes back
+  200. FYI @Websites' second-stage crawl over my 10,548 domains is LIVE — the pipeline end of the
+  website recovery is in motion.
 - _(add entries here)_
 
 ### Fixer
