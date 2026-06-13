@@ -33,6 +33,7 @@ from sqlalchemy.orm import Session
 
 from legal_sourcing.db import make_engine
 from legal_sourcing.models import FirmSourceRecord
+from legal_sourcing.normalize.firm_name import firm_name_core
 from legal_sourcing.resolution.identity import is_identity_website
 
 # US Census DIVISION per state (finer than the 4 regions) — proximity proxy for
@@ -150,10 +151,17 @@ def extract_frame(session: Session, ids: list[int] | None = None) -> pd.DataFram
         dom = (web or "").strip().lower() or None
         st = (state or "").strip().upper() or None
         pa = sorted({p for p in (pareas or []) if p}) or None  # None when empty -> null level
+        nm = (name or "").strip().lower() or None
+        # Distinctive-core blocking key (shared normalize/firm_name util): strips
+        # generic tokens so "law office of r thomas allen" keys on "r thomas al".
+        # At full corpus the RAW prefix-10 block explodes ('law office' bucket =
+        # 24,482 rows -> ~300M pairs); the core key measures ~1.1M pairs total.
+        core = " ".join(firm_name_core(nm)) if nm else ""
         recs.append(
             {
                 "unique_id": id_,
-                "name_normalized": (name or "").strip().lower() or None,
+                "name_normalized": nm,
+                "name_core_key": core[:10] or None,
                 "phone_normalized": (phone or "").strip() or None,
                 "website_identity": dom if (dom and is_identity_website(dom)) else None,
                 "primary_city": (city or "").strip().lower() or None,
@@ -173,18 +181,20 @@ def extract_frame(session: Session, ids: list[int] | None = None) -> pd.DataFram
 
 # EM-training blocks: the near-identifiers. Kept tight so EM stays fast and each
 # block has enough match signal to estimate m. (name varies within each, so its m
-# is estimable.)
+# is estimable.) name_core_key+state replaces the raw name-prefix+state key — same
+# intent, but generic-token-free so 'law office…' buckets don't blow up at 450k.
 _EM_BLOCKING = [
     block_on("phone_normalized"),
     block_on("website_identity"),
-    block_on("substr(name_normalized, 1, 8)", "primary_state"),
+    block_on("name_core_key", "primary_state"),
 ]
-# PREDICTION blocks add a fuzzy name-prefix key WITHOUT state (Alex 2026-06-09) so
+# PREDICTION blocks add the distinctive-core key WITHOUT state (Alex 2026-06-09) so
 # a distinctively-named firm's offices across DIFFERENT states/sources become
 # candidate pairs (West Coast Trial Lawyers NV<->CA; Silverman NJ<->NY) even with
 # no shared phone/website. Term-frequency on name then keeps precision: a rare
-# prefix merges, a common one ("law office") gets ~no weight despite blocking.
-_PREDICTION_BLOCKING = [*_EM_BLOCKING, block_on("substr(name_normalized, 1, 10)")]
+# core merges, a common one gets ~no weight despite blocking. Measured at full
+# corpus: ~1.1M pairs (vs ~300M for the raw prefix-10 it replaces).
+_PREDICTION_BLOCKING = [*_EM_BLOCKING, block_on("name_core_key")]
 
 
 def _comparisons(variant: str) -> list:
@@ -420,19 +430,34 @@ def _splink_score_fn(probs: dict[tuple[int, int], float]):
     return fn
 
 
+def _oracle_members_by_domain(es) -> dict[str, list[int]]:
+    """Oracle firm key -> member record ids, found by IDENTITY DOMAIN. Robust to
+    the eval-harness multidomain de-bias, which can union ``oracle:<key>`` under a
+    different truth-cluster root (so looking up the literal key under-counts)."""
+    from collections import defaultdict
+
+    from legal_sourcing.resolution.eval_harness import ORACLE_FIRMS, identity_domain
+
+    dom2key = {d: f.key for f in ORACLE_FIRMS for d in f.domains}
+    out: dict[str, list[int]] = defaultdict(list)
+    for rid, rec in es.records.items():
+        d = identity_domain(rec)
+        if d and d in dom2key:
+            out[dom2key[d]].append(rid)
+    return out
+
+
 def _oracle_integrity(es, pred: dict[int, str]) -> list[tuple[str, int, int]]:
     """Per oracle firm: (display, n_records, n_predicted_clusters). 1 cluster = OK
     (multi-domain firms must merge into 1 — exactly where BESPOKE fails)."""
-    from collections import Counter, defaultdict
+    from collections import Counter
 
     from legal_sourcing.resolution.eval_harness import ORACLE_FIRMS
 
-    members: dict[str, list[int]] = defaultdict(list)
-    for rid, fid in es.truth_by_id.items():
-        members[fid].append(rid)
+    by_key = _oracle_members_by_domain(es)
     out = []
     for f in ORACLE_FIRMS:
-        ids_f = members.get(f"oracle:{f.key}", [])
+        ids_f = by_key.get(f.key, [])
         nclusters = len(Counter(pred.get(i) for i in ids_f)) if ids_f else 0
         out.append((f.display, len(ids_f), nclusters))
     return out
@@ -448,17 +473,14 @@ def _clerical_accuracy(es, score_fn, threshold: float) -> tuple[int, int]:
 def _intra_firm_prob_median(es, probs: dict[tuple[int, int], float]) -> dict[str, float]:
     """Median pairwise match-prob WITHIN each oracle firm — diagnoses whether a
     split is a SCORING problem (low intra-prob) or a THRESHOLD problem."""
-    from collections import defaultdict
     from statistics import median
 
     from legal_sourcing.resolution.eval_harness import ORACLE_FIRMS
 
-    members: dict[str, list[int]] = defaultdict(list)
-    for rid, fid in es.truth_by_id.items():
-        members[fid].append(rid)
+    by_key = _oracle_members_by_domain(es)
     out: dict[str, float] = {}
     for f in ORACLE_FIRMS:
-        ids_f = sorted(members.get(f"oracle:{f.key}", []))
+        ids_f = sorted(by_key.get(f.key, []))
         ps = [
             probs.get((ids_f[i], ids_f[j]), 0.0)
             for i in range(len(ids_f))
@@ -507,24 +529,37 @@ def _threshold_cols(tbl):
     return pcol, prec, rec, f1col
 
 
-def derive_operating_threshold(linker: Linker, es) -> tuple[float, float | None]:
-    """Data-derived operating point. NOT blind max-F1 (which a clean DB shouldn't
-    use — false merges irreversibly conflate two real firms): we take the
-    HIGHEST-recall threshold that still holds **precision >= 0.98**, so the point is
-    precision-favoring yet still captures the confident low-corroboration merges
-    (domain-only/multi-office sit at ~0.89, well above the chosen point)."""
-    try:
-        tbl = _accuracy_table(linker, es)
-    except Exception as exc:  # resilient if the API shifts
-        logging.getLogger(__name__).warning("threshold derivation failed: %s", exc)
-        return 0.85, None
-    pcol, prec, rec, f1col = _threshold_cols(tbl)
-    if not all((pcol, prec, f1col)):
-        logging.getLogger(__name__).warning("accuracy table cols: %s", list(tbl.columns))
-        return 0.85, None
-    ok = tbl[tbl[prec] >= 0.98]
-    row = ok.loc[ok[rec].idxmax()] if len(ok) else tbl.loc[tbl[f1col].idxmax()]
-    return float(row[pcol]), float(row[f1col])
+_THRESHOLD_SWEEP = [0.5, 0.6, 0.65, 0.7, 0.8, 0.9, 0.95, 0.99]
+
+
+def threshold_sweep(linker: Linker, pred, es) -> list[tuple[float, float, float, float]]:
+    """For each candidate clustering threshold: (threshold, Bcubed-P, Bcubed-R,
+    Bcubed-F1) on the actual clusters. This is the CLUSTER-level metric — the one
+    that reflects real over-merging, unlike pairwise accuracy_analysis (which is
+    blind to negatives blocking never proposed, so it degenerates to 0.0 once
+    blocking tightens)."""
+    from legal_sourcing.resolution.eval_harness import bcubed
+
+    out = []
+    for th in _THRESHOLD_SWEEP:
+        lab = cluster_labels(linker, pred, th)
+        p, r, f1 = bcubed(es.truth_by_id, lab)
+        out.append((th, p, r, f1))
+    return out
+
+
+def derive_operating_threshold(
+    linker: Linker, pred, es, target_precision: float = 0.97
+) -> tuple[float, float | None]:
+    """Data-derived CLUSTERING threshold, precision-favoring. Picks the
+    highest-recall threshold whose **B-cubed cluster precision >= target** (a false
+    merge irreversibly conflates two real firms, so we favor precision); falls back
+    to best B-cubed F1 if none clears the bar. Derived from cluster metrics — NOT
+    pairwise accuracy_analysis, which is blind to unblocked negatives."""
+    sweep = threshold_sweep(linker, pred, es)
+    ok = [c for c in sweep if c[1] >= target_precision]
+    pick = max(ok, key=lambda c: c[2]) if ok else max(sweep, key=lambda c: c[3])
+    return pick[0], pick[3]
 
 
 def _eval_config(es, df, label: str, variant: str, prob_two_random, helpers) -> None:
@@ -538,8 +573,8 @@ def _eval_config(es, df, label: str, variant: str, prob_two_random, helpers) -> 
         f"  pairwise best F1={sbest.f1:.3f} @ p>={sbest.threshold / 100:.2f} "
         f"(P={sbest.precision:.3f} R={sbest.recall:.3f})"
     )
-    # Idiomatic, data-derived operating threshold (Splink chooses it).
-    thr, thr_f1 = derive_operating_threshold(linker, es)
+    # Idiomatic, data-derived operating threshold (cluster-metric, precision-favoring).
+    thr, thr_f1 = derive_operating_threshold(linker, pred, es)
     lab = cluster_labels(linker, pred, thr)
     p, r, f1 = bcubed(es.truth_by_id, lab)
     cc, ct = _clerical_accuracy(es, ssc, thr * 100)
