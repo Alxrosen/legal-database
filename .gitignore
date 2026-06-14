@@ -47,3 +47,6 @@ logs/
 # Notebooks (committed selectively — keep this strict for now)
 notebooks/*
 !notebooks/.gitkeep
+
+# Canonization dry-run artifacts (regenerable; clusters.csv is ~450k rows)
+data/dry_run/
