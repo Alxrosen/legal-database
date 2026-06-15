@@ -33,6 +33,16 @@ class WebsiteEnrichment(Base, TimestampMixin):
     # The match key: normalized bare-domain (e.g. "smithlaw.com"). Unique.
     website: Mapped[str] = mapped_column(String(512), nullable=False, unique=True, index=True)
     resolved_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+
+    # Bare domain the site actually resolves to after following HTTP redirects
+    # (the registered-domain form of `resolved_url`). Equals `website` when there
+    # is no cross-domain redirect; differs when the domain redirects elsewhere
+    # (e.g. "shermanhoward.com" -> "taftlaw.com" after Sherman & Howard was
+    # acquired by Taft). NULL = not resolved yet. Populated by
+    # pipelines/resolve_redirects.py; the resolution layer uses it to tell a true
+    # rebrand/alias from a mis-attributed website (a record carrying another
+    # firm's domain).
+    redirect_domain: Mapped[str | None] = mapped_column(String(512), nullable=True, index=True)
     platform: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     # Pages crawled this run: list of {"role": str, "url": str}.

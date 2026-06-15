@@ -40,6 +40,7 @@ from legal_sourcing.models import FirmSourceRecord
 from legal_sourcing.normalize.firm_name import firm_name_core
 from legal_sourcing.resolution.apply import _UnionFind
 from legal_sourcing.resolution.eval_harness import CLERICAL_LABELS_PATH, _load_clerical_labels
+from legal_sourcing.resolution.must_link import build_redirect_map, website_must_link_edges
 from legal_sourcing.resolution.splink_linker import (
     DEFAULT_PROB_TWO_RANDOM,
     DEFAULT_VARIANT,
@@ -150,10 +151,14 @@ def backstop_kept_edges(
     return kept, gp, gw
 
 
-def compute_backstop_clusters(session, threshold: float = 0.5) -> dict[int, list[int]]:
+def compute_backstop_clusters(
+    session, threshold: float = 0.5, *, must_link: bool = False
+) -> dict[int, list[int]]:
     """The production clustering: extract -> train -> predict -> BACKSTOP edge
-    filter -> connected components. Returns {root_id: [member record ids]} over
-    ALL records (singletons included). Used by the canonical write in apply.py."""
+    filter (+ optional website MUST-LINK recall pass) -> connected components.
+    Returns {root_id: [member record ids]} over ALL records (singletons included).
+    Used by the canonical write in apply.py. ``must_link`` is opt-in (default off)
+    so the canonical write is unchanged until the recall pass is signed off."""
     df = extract_frame(session)
     linker = train_linker(df, DEFAULT_VARIANT, DEFAULT_PROB_TWO_RANDOM)
     pred = linker.inference.predict(threshold_match_probability=threshold)
@@ -161,6 +166,9 @@ def compute_backstop_clusters(session, threshold: float = 0.5) -> dict[int, list
     edges_pdf = edges_pdf[edges_pdf["match_probability"] >= threshold]
     all_edges = [(int(a), int(b)) for a, b, _ in edges_pdf.itertuples(index=False)]
     kept, _, _ = backstop_kept_edges(df, all_edges)
+    if must_link:
+        ml_edges, _, _ = website_must_link_edges(df, build_redirect_map(session))
+        kept = kept + ml_edges
     return _uf_components(kept, [int(x) for x in df["unique_id"]])
 
 
@@ -288,11 +296,30 @@ def run(threshold: float, out_dir: str, sample_n: int = 12) -> dict:
         root_base = {i: r for r, mem in comps_base.items() for i in mem}
         root_bs = {i: r for r, mem in comps_bs.items() for i in mem}
 
+        # --- MUST-LINK recall pass (FN under-merges): ADD edges where records share
+        # their firm's OWN identity domain (redirect-aware) but split because names
+        # differ. Generic-domain gated (Gate A) + mis-attribution guarded (Gate B). -
+        print("must-link: website recall pass (shared identity domain, redirect-aware) ...")
+        redirect_map = build_redirect_map(session)
+        ml_edges, ml_stats, ml_groups = website_must_link_edges(df, redirect_map)
+        comps_ml = _uf_components(kept + ml_edges, all_ids)
+        root_ml = {i: r for r, mem in comps_ml.items() for i in mem}
+        ml_sizes = [len(v) for v in comps_ml.values()]
+
         # --- LABEL REGRESSION: the known-answer merge/not-merge list -------------
         # The "backstop" in the test-set sense: every labeled pair must come out
-        # right. Compare Splink-alone (root_base) vs Splink+edge-filter (root_bs).
+        # right. Compare Splink-alone (root_base) vs +edge-filter (root_bs) vs
+        # +must-link (root_ml).
         labels = _load_clerical_labels(CLERICAL_LABELS_PATH)
-        reg = {"total": 0, "base_ok": 0, "bs_ok": 0, "bs_fail": [], "base_fail": []}
+        reg = {
+            "total": 0,
+            "base_ok": 0,
+            "bs_ok": 0,
+            "ml_ok": 0,
+            "bs_fail": [],
+            "base_fail": [],
+            "ml_fail": [],
+        }
         present_ids = set(all_ids)
         for a, b, lab in labels:
             if a not in present_ids or b not in present_ids:
@@ -308,6 +335,11 @@ def run(threshold: float, out_dir: str, sample_n: int = 12) -> dict:
                 reg["bs_ok"] += 1
             else:
                 reg["bs_fail"].append((a, b, lab, bs_merged))
+            ml_merged = root_ml.get(a) == root_ml.get(b)
+            if ml_merged == bool(lab):
+                reg["ml_ok"] += 1
+            else:
+                reg["ml_fail"].append((a, b, lab, ml_merged))
         base_sizes = [len(v) for v in comps_base.values()]
         bs_sizes = [len(v) for v in comps_bs.values()]
 
@@ -504,6 +536,103 @@ def run(threshold: float, out_dir: str, sample_n: int = 12) -> dict:
             "clusters_gt50_base": _tailcount(base_sizes, 50),
             "clusters_gt50_bs": _tailcount(bs_sizes, 50),
         }
+
+        # --- MUST-LINK: recovery + guards ----------------------------------------
+        recovered = sum(
+            1
+            for g in ml_groups.values()
+            if len({root_bs.get(i) for i in g["members"]}) > 1
+            and len({root_ml.get(i) for i in g["members"]}) == 1
+        )
+        still_split = sum(
+            1 for g in ml_groups.values() if len({root_ml.get(i) for i in g["members"]}) > 1
+        )
+        print("\n================ MUST-LINK: website recall pass (FN recovery) ================")
+        print(
+            f"  cross-domain redirects known: {len(redirect_map):,} "
+            f"(e.g. shermanhoward.com -> {redirect_map.get('shermanhoward.com', '?')})"
+        )
+        print(
+            f"  domains linked: {ml_stats.get('domains_linked', 0):,}  "
+            f"edges added: {ml_stats.get('edges', 0):,}  "
+            f"records pulled in: {ml_stats.get('records_linked', 0):,}"
+        )
+        print(
+            f"  Gate A generic domains skipped: {ml_stats.get('generic_domains_skipped', 0):,}  "
+            f"Gate B mis-attribution excluded: {ml_stats.get('misattribution_excluded', 0):,}"
+        )
+        print(
+            f"  FN under-merges RECOVERED (domain split -> 1 firm): {recovered:,}  "
+            f"(still split: {still_split:,})"
+        )
+        print(
+            f"  cluster size impact: max {max(bs_sizes):,} -> {max(ml_sizes):,}  "
+            f"clusters>50 {_tailcount(bs_sizes, 50):,} -> {_tailcount(ml_sizes, 50):,}"
+        )
+        print(
+            f"  LABEL REGRESSION +must-link: {reg['ml_ok']}/{reg['total']} "
+            f"(backstop-alone {reg['bs_ok']}/{reg['total']})"
+        )
+        if reg["ml_fail"]:
+            print("    must-link regressions/misses (a/b want got):")
+            for a, b, lab, merged in reg["ml_fail"]:
+                print(
+                    f"      {a}/{b} want={'merge' if lab else 'split'} "
+                    f"got={'merge' if merged else 'split'}"
+                )
+        print("  TARGETED DOMAIN CHECKS (members: bs_comps -> ml_comps; FNs want ->1):")
+        for dom in ("hbsslaw.com", "knchlaw.com", "bbglaw.com", "gdflaw.com", "zellaw.com", "rlb.com"):
+            g = ml_groups.get(dom)
+            if not g:
+                print(f"    {dom:24s}  (not present / no non-generic group)")
+                continue
+            mem = g["members"]
+            bs_c = len({root_bs.get(i) for i in mem})
+            ml_c = len({root_ml.get(i) for i in mem})
+            print(
+                f"    {dom:24s}  {len(mem):3d} recs: {bs_c} -> {ml_c} comps; "
+                f"excluded(mis-attr)={len(g['excluded'])}"
+            )
+
+        # verification sample: newly-merged groups + any with mis-attribution exclusions
+        def _dom_blob(dom: str) -> dict:
+            g = ml_groups[dom]
+            f = _members_fields(session, g["members"])
+            return {
+                "domain": dom,
+                "redirect_to": redirect_map.get(dom),
+                "bs_components": len({root_bs.get(i) for i in g["members"]}),
+                "ml_components": len({root_ml.get(i) for i in g["members"]}),
+                "excluded_misattribution": [f.get(i, {"id": i}) for i in g["excluded"]],
+                "members": [f[i] for i in g["members"] if i in f][:30],
+            }
+
+        recovered_doms = [
+            d
+            for d, g in ml_groups.items()
+            if len({root_bs.get(i) for i in g["members"]}) > 1
+            and len({root_ml.get(i) for i in g["members"]}) == 1
+        ][:25]
+        excluded_doms = [d for d, g in ml_groups.items() if g["excluded"]][:15]
+        mustlink_sample = {
+            "recovered": [_dom_blob(d) for d in recovered_doms],
+            "with_exclusions": [_dom_blob(d) for d in excluded_doms],
+        }
+        with open(os.path.join(out_dir, "mustlink_sample.json"), "w", encoding="utf-8") as fh:
+            json.dump(mustlink_sample, fh, indent=2)
+
+        summary["must_link"] = {
+            "redirects_known": len(redirect_map),
+            "domains_linked": ml_stats.get("domains_linked", 0),
+            "edges_added": ml_stats.get("edges", 0),
+            "records_linked": ml_stats.get("records_linked", 0),
+            "generic_skipped": ml_stats.get("generic_domains_skipped", 0),
+            "misattribution_excluded": ml_stats.get("misattribution_excluded", 0),
+            "fn_recovered": recovered,
+            "max_size_ml": max(ml_sizes),
+            "label_ml_ok": reg["ml_ok"],
+        }
+
         print(
             f"\n  verification sample: {len(verification)} clusters across "
             f"{ {k: len(v) for k, v in picks.items()} } -> {out_dir}/verification_sample.json"

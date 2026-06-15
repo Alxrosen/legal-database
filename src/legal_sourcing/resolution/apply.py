@@ -296,15 +296,22 @@ def main() -> int:
         "the match_review_queue. Computes clusters then writes canonical firms.",
     )
     parser.add_argument("--threshold", type=float, default=0.5, help="Splink clustering threshold.")
+    parser.add_argument(
+        "--must-link",
+        action="store_true",
+        help="With --splink: also run the website MUST-LINK recall pass (recovers "
+        "shared-identity-domain false negatives; mis-attribution + generic-domain guarded).",
+    )
     args = parser.parse_args()
 
     if args.splink:
         # Lazy import so core apply stays splink-free unless this path is used.
         from legal_sourcing.resolution.dry_run import compute_backstop_clusters
 
-        print(f"computing Splink + backstop clusters (threshold {args.threshold}) ...")
+        ml = " + must-link" if args.must_link else ""
+        print(f"computing Splink + backstop{ml} clusters (threshold {args.threshold}) ...")
         with Session(make_engine()) as s:
-            components = compute_backstop_clusters(s, args.threshold)
+            components = compute_backstop_clusters(s, args.threshold, must_link=args.must_link)
         counts = apply_clusters(components, skip_unidentified=not args.keep_unidentified)
         firms_created = counts["multi_member_firms"] + counts["singletons"]
         print(
