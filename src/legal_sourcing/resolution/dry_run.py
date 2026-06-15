@@ -37,7 +37,9 @@ from sqlalchemy.orm import Session
 
 from legal_sourcing.db import make_engine
 from legal_sourcing.models import FirmSourceRecord
+from legal_sourcing.normalize.firm_name import firm_name_core
 from legal_sourcing.resolution.apply import _UnionFind
+from legal_sourcing.resolution.eval_harness import CLERICAL_LABELS_PATH, _load_clerical_labels
 from legal_sourcing.resolution.splink_linker import (
     DEFAULT_PROB_TWO_RANDOM,
     DEFAULT_VARIANT,
@@ -45,8 +47,13 @@ from legal_sourcing.resolution.splink_linker import (
     train_linker,
 )
 
-# Backstop knobs (reported, not yet enforced — this is a dry run).
+# Backstop knobs.
 GENERIC_VALUE_MIN_DISTINCT = 5  # a phone/website on > this many distinct names = generic
+# A name token is DISTINCTIVE if it appears in <= this many distinct firm cores.
+# Brand tokens (zurich, claimshero, weintraub) are rare; common first/surnames
+# (michael, smith, christopher, law, group) are not. Two records sharing a
+# distinctive token may merge on name alone; sharing only common tokens may not.
+RARE_TOKEN_MAX_FIRMS = 40
 SWEEP = [0.5, 0.65, 0.8, 0.9, 0.95, 0.99]
 
 
@@ -214,28 +221,69 @@ def run(threshold: float, out_dir: str, sample_n: int = 12) -> dict:
                 bridges_by_cluster[str(cid_of.get(uid_l))] += 1
 
         # --- 4b) BACKSTOP: pre-cluster edge filter -------------------------------
-        # Keep an edge only if the pair shares a NON-GENERIC strong identifier
-        # (phone or identity-website). Verified root-cause fix: every over-merge
-        # rests on a weak/generic link (common name; a phone/domain shared across
-        # many firms), every correct cluster on its own phone/website.
-        print("backstop: edge filter (shared non-generic phone/website) ...")
+        # Keep an edge iff the pair shares a NON-GENERIC strong identifier (phone /
+        # identity-website) OR a DISTINCTIVE (rare) name token. Verified: over-merges
+        # rest on a weak/generic link (a common name like "michael"/"smith", or a
+        # phone/domain shared across many firms); legitimate low-corroboration merges
+        # share a rare brand token (zurich, claimshero) or their own phone/website.
+        print("backstop: edge filter (shared non-generic strong id OR rare name token) ...")
         edges_pdf = pred.as_pandas_dataframe()[["unique_id_l", "unique_id_r", "match_probability"]]
         edges_pdf = edges_pdf[edges_pdf["match_probability"] >= threshold]
         all_edges = [(int(a), int(b)) for a, b, _ in edges_pdf.itertuples(index=False)]
         gp, gw = _generic_value_sets(df, GENERIC_VALUE_MIN_DISTINCT)
         rec_ph = dict(zip(df["unique_id"], df["phone_normalized"], strict=False))
         rec_web = dict(zip(df["unique_id"], df["website_identity"], strict=False))
+        # core tokens per record + token document-frequency (distinct firm cores)
+        rec_tokens = {
+            int(i): tuple(firm_name_core(n)) if isinstance(n, str) and n else ()
+            for i, n in zip(df["unique_id"], df["name_normalized"], strict=False)
+        }
+        # token document-frequency = # of DISTINCT firm cores a token appears in
+        # (dedup by the full token tuple so "michael j whelan"/"michael j ekdahl"
+        # count separately -> "michael"/"j" come out common, "zurich" rare).
+        tok_df: Counter = Counter()
+        seen_cores: set = set()
+        for toks in rec_tokens.values():
+            if not toks or toks in seen_cores:
+                continue
+            seen_cores.add(toks)
+            for t in set(toks):
+                tok_df[t] += 1
+        rare = {t for t, n in tok_df.items() if n <= RARE_TOKEN_MAX_FIRMS}
         kept = []
         for a, b in all_edges:
             pa, pb = rec_ph.get(a), rec_ph.get(b)
             wa, wb = rec_web.get(a), rec_web.get(b)
-            if (pa and pa == pb and pa not in gp) or (wa and wa == wb and wa not in gw):
+            strong = (pa and pa == pb and pa not in gp) or (wa and wa == wb and wa not in gw)
+            shared_rare = bool((set(rec_tokens.get(a, ())) & set(rec_tokens.get(b, ()))) & rare)
+            if strong or shared_rare:
                 kept.append((a, b))
         all_ids = [int(x) for x in df["unique_id"]]
         comps_base = _uf_components(all_edges, all_ids)
         comps_bs = _uf_components(kept, all_ids)
         root_base = {i: r for r, mem in comps_base.items() for i in mem}
         root_bs = {i: r for r, mem in comps_bs.items() for i in mem}
+
+        # --- LABEL REGRESSION: the known-answer merge/not-merge list -------------
+        # The "backstop" in the test-set sense: every labeled pair must come out
+        # right. Compare Splink-alone (root_base) vs Splink+edge-filter (root_bs).
+        labels = _load_clerical_labels(CLERICAL_LABELS_PATH)
+        reg = {"total": 0, "base_ok": 0, "bs_ok": 0, "bs_fail": [], "base_fail": []}
+        present_ids = set(all_ids)
+        for a, b, lab in labels:
+            if a not in present_ids or b not in present_ids:
+                continue
+            reg["total"] += 1
+            base_merged = root_base.get(a) == root_base.get(b)
+            bs_merged = root_bs.get(a) == root_bs.get(b)
+            if base_merged == bool(lab):
+                reg["base_ok"] += 1
+            else:
+                reg["base_fail"].append((a, b, lab, base_merged))
+            if bs_merged == bool(lab):
+                reg["bs_ok"] += 1
+            else:
+                reg["bs_fail"].append((a, b, lab, bs_merged))
         base_sizes = [len(v) for v in comps_base.values()]
         bs_sizes = [len(v) for v in comps_bs.values()]
 
@@ -406,6 +454,21 @@ def run(threshold: float, out_dir: str, sample_n: int = 12) -> dict:
         print("  SHATTER (common-name hairballs; n_recs: base_comps -> bs_comps, want many):")
         for tok, (n, b, a) in shatter.items():
             print(f"    {tok:16s} {n:4d} recs: {b} -> {a}")
+        print(
+            f"\n  LABEL REGRESSION ({reg['total']} known-answer pairs): "
+            f"Splink-alone {reg['base_ok']}/{reg['total']}  ->  Splink+backstop {reg['bs_ok']}/{reg['total']}"
+        )
+        if reg["bs_fail"]:
+            print("    backstop still-wrong pairs (a/b label got):")
+            for a, b, lab, merged in reg["bs_fail"]:
+                print(
+                    f"      {a}/{b} want={'merge' if lab else 'split'} got={'merge' if merged else 'split'}"
+                )
+        summary["label_regression"] = {
+            "total": reg["total"],
+            "base_ok": reg["base_ok"],
+            "bs_ok": reg["bs_ok"],
+        }
         summary["backstop"] = {
             "generic_phones": len(gp),
             "generic_websites": len(gw),
