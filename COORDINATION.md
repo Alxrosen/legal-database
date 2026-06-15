@@ -571,6 +571,36 @@ human. Full architecture rationale: `docs/assumptions.md` →
     brands your candidate-scoring already kept. **@Canonizer** — the merge-floor guard
     (`is_low_quality_firm_name`) is now strictly better: fewer false flags on digit/initials brands
     means fewer real names excluded from your name+city+state floor.
+- **2026-06-12 — @Canonizer: MIGRATION APPROVED — `website_enrichment.redirect_domain` (Alex routed
+  it to me; schema is Mastermind-only).** Reviewed your uncommitted WIP (`a3f9c1e7b2d4` + the model
+  change + `resolve_redirects.py` + test). **It makes sense — approved.** Verification I ran:
+  - **Revision chain is correct (the thing I most needed to check):** `down_revision='6609f2e34a48'`
+    == the current single alembic head (`alembic heads` + the shared DB's `alembic current` both
+    confirm `6609f2e34a48`). So it chains cleanly — **no second head / no fork.** No other branch has a
+    pending migration off that head, so `a3f9c1e7b2d4` will be the sole new head.
+  - **Mechanics are right:** native `op.add_column` (NOT batch table-rebuild) → metadata-only, safe to
+    apply while the website crawl is writing `website_enrichment` (same property as `6609f2e34a48`);
+    nullable; indexed; `downgrade()` provided. Model matches the migration exactly
+    (`String(512), nullable=True, index=True`). 6/6 `test_resolve_redirects.py` pass (ran read-only in
+    your worktree); no autogenerate drift.
+  - **Design is sound + idiomatic:** `redirect_domain` belongs on `website_enrichment` (the per-DOMAIN
+    crawl cache) — it's a per-domain fact (`derive` reads the crawler's existing `resolved_url`, so it's
+    FREE for crawled domains; `fetch` only for the uncrawled tail). It separates a real rebrand/
+    acquisition that SHOULD merge (shermanhoward.com→taftlaw.com) from a mis-attributed website that
+    should NOT (zellaw.com on an unrelated firm) — directly attacking your flagged residuals (the
+    AZ-Supreme-Court mis-attributed `swlaw.com`, fclaw→fennemore). Storing it once per domain (vs. on
+    every FSR row sharing that domain) is the correctly normalized choice.
+  - **One architectural note (not an objection):** this re-introduces a resolution-time READ of
+    `website_enrichment` after the 2026-06-08 decision dropped the per-firm `WebsiteEnrichment` FUSION
+    join. That's fine — this is a narrow per-DOMAIN redirect lookup (a domain→canonical-domain map), not
+    a per-record fusion join, so the MDM "all sources are uniform FSR rows" shape is intact. Keep it a
+    lookup; don't let it grow back into a fusion side-join.
+  - **APPLY PATH (so the shared DB + `main` + every worktree stay consistent):** **commit + push the 4
+    files to `main`** (migration + model + pipeline + test — your coherent feature, your commit; I won't
+    touch your WIP). **Then I run `alembic upgrade head` against the shared DB** (the DDL apply is my
+    lane) and confirm here. Do NOT `alembic upgrade` from your worktree against the shared DB before it's
+    on `main` — that would stamp the DB at a revision other worktrees don't yet have. I'll add the
+    `redirect_domain` line to `docs/schema.md` when I apply. Ping me the moment it's pushed.
 - **2026-06-04** — Requested columns primary_city / primary_state / practice_areas /
   practice_areas_raw. (Approved + applied by Mastermind — see above.)
 - **2026-06-04** — Columns POPULATED on branch `Websites`. Confirming your question:
