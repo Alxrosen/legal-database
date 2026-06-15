@@ -113,6 +113,57 @@ def _uf_components(edges: list[tuple[int, int]], all_ids: list[int]) -> dict[int
     return uf.components(all_ids)
 
 
+def backstop_kept_edges(
+    df: pd.DataFrame, all_edges: list[tuple[int, int]]
+) -> tuple[list, set, set]:
+    """THE BACKSTOP. Keep an edge iff the pair shares a NON-GENERIC strong
+    identifier (phone / identity-website) OR a DISTINCTIVE (rare) name token.
+    Returns (kept_edges, generic_phones, generic_websites). Shared by the dry-run
+    and the canonical write so both use identical filtering."""
+    gp, gw = _generic_value_sets(df, GENERIC_VALUE_MIN_DISTINCT)
+    rec_ph = dict(zip(df["unique_id"], df["phone_normalized"], strict=False))
+    rec_web = dict(zip(df["unique_id"], df["website_identity"], strict=False))
+    rec_tokens = {
+        int(i): tuple(firm_name_core(n)) if isinstance(n, str) and n else ()
+        for i, n in zip(df["unique_id"], df["name_normalized"], strict=False)
+    }
+    # token document-frequency = # of DISTINCT firm cores a token appears in (dedup
+    # by full token tuple so "michael j whelan"/"michael j ekdahl" count separately
+    # -> "michael"/"j" come out common, brand tokens like "zurich" rare).
+    tok_df: Counter = Counter()
+    seen_cores: set = set()
+    for toks in rec_tokens.values():
+        if not toks or toks in seen_cores:
+            continue
+        seen_cores.add(toks)
+        for t in set(toks):
+            tok_df[t] += 1
+    rare = {t for t, n in tok_df.items() if n <= RARE_TOKEN_MAX_FIRMS}
+    kept = []
+    for a, b in all_edges:
+        pa, pb = rec_ph.get(a), rec_ph.get(b)
+        wa, wb = rec_web.get(a), rec_web.get(b)
+        strong = (pa and pa == pb and pa not in gp) or (wa and wa == wb and wa not in gw)
+        shared_rare = bool((set(rec_tokens.get(a, ())) & set(rec_tokens.get(b, ()))) & rare)
+        if strong or shared_rare:
+            kept.append((a, b))
+    return kept, gp, gw
+
+
+def compute_backstop_clusters(session, threshold: float = 0.5) -> dict[int, list[int]]:
+    """The production clustering: extract -> train -> predict -> BACKSTOP edge
+    filter -> connected components. Returns {root_id: [member record ids]} over
+    ALL records (singletons included). Used by the canonical write in apply.py."""
+    df = extract_frame(session)
+    linker = train_linker(df, DEFAULT_VARIANT, DEFAULT_PROB_TWO_RANDOM)
+    pred = linker.inference.predict(threshold_match_probability=threshold)
+    edges_pdf = pred.as_pandas_dataframe()[["unique_id_l", "unique_id_r", "match_probability"]]
+    edges_pdf = edges_pdf[edges_pdf["match_probability"] >= threshold]
+    all_edges = [(int(a), int(b)) for a, b, _ in edges_pdf.itertuples(index=False)]
+    kept, _, _ = backstop_kept_edges(df, all_edges)
+    return _uf_components(kept, [int(x) for x in df["unique_id"]])
+
+
 def _size_bands(sizes) -> Counter:
     out: Counter = Counter()
     for s in sizes:
@@ -230,34 +281,7 @@ def run(threshold: float, out_dir: str, sample_n: int = 12) -> dict:
         edges_pdf = pred.as_pandas_dataframe()[["unique_id_l", "unique_id_r", "match_probability"]]
         edges_pdf = edges_pdf[edges_pdf["match_probability"] >= threshold]
         all_edges = [(int(a), int(b)) for a, b, _ in edges_pdf.itertuples(index=False)]
-        gp, gw = _generic_value_sets(df, GENERIC_VALUE_MIN_DISTINCT)
-        rec_ph = dict(zip(df["unique_id"], df["phone_normalized"], strict=False))
-        rec_web = dict(zip(df["unique_id"], df["website_identity"], strict=False))
-        # core tokens per record + token document-frequency (distinct firm cores)
-        rec_tokens = {
-            int(i): tuple(firm_name_core(n)) if isinstance(n, str) and n else ()
-            for i, n in zip(df["unique_id"], df["name_normalized"], strict=False)
-        }
-        # token document-frequency = # of DISTINCT firm cores a token appears in
-        # (dedup by the full token tuple so "michael j whelan"/"michael j ekdahl"
-        # count separately -> "michael"/"j" come out common, "zurich" rare).
-        tok_df: Counter = Counter()
-        seen_cores: set = set()
-        for toks in rec_tokens.values():
-            if not toks or toks in seen_cores:
-                continue
-            seen_cores.add(toks)
-            for t in set(toks):
-                tok_df[t] += 1
-        rare = {t for t, n in tok_df.items() if n <= RARE_TOKEN_MAX_FIRMS}
-        kept = []
-        for a, b in all_edges:
-            pa, pb = rec_ph.get(a), rec_ph.get(b)
-            wa, wb = rec_web.get(a), rec_web.get(b)
-            strong = (pa and pa == pb and pa not in gp) or (wa and wa == wb and wa not in gw)
-            shared_rare = bool((set(rec_tokens.get(a, ())) & set(rec_tokens.get(b, ()))) & rare)
-            if strong or shared_rare:
-                kept.append((a, b))
+        kept, gp, gw = backstop_kept_edges(df, all_edges)
         all_ids = [int(x) for x in df["unique_id"]]
         comps_base = _uf_components(all_edges, all_ids)
         comps_bs = _uf_components(kept, all_ids)
@@ -291,9 +315,10 @@ def run(threshold: float, out_dir: str, sample_n: int = 12) -> dict:
             return len({root.get(i) for i in ids})
 
         # preservation: known-good single-firm website groups must stay 1 component
+        rec_web = dict(zip(df["unique_id"], df["website_identity"], strict=False))
         preserve = {}
         for dom in ("forthepeople.com", "kutakrock.com", "hollandhart.com", "swlaw.com"):
-            ids = [i for i, w in rec_web.items() if w == dom]
+            ids = [int(i) for i, w in rec_web.items() if w == dom]
             if ids:
                 preserve[dom] = (
                     len(ids),

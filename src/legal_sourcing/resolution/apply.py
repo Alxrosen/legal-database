@@ -130,6 +130,86 @@ def _is_identified(rec: FirmSourceRecord) -> bool:
 # Main apply
 
 
+def _materialize_firms(
+    session: Session,
+    components: dict[int, list[int]],
+    counts: dict[str, int],
+    *,
+    skip_unidentified: bool,
+) -> dict[int, Firm]:
+    """Fuse each component into a canonical Firm + write its links. Mutates
+    ``counts`` (singletons / multi_member_firms / skipped_unidentified / links).
+    Returns root -> Firm. Shared by both the queue-based and cluster-based apply."""
+    member_records = {r.id: r for r in session.scalars(select(FirmSourceRecord)).all()}
+    enrichment_by_website = {e.website: e for e in session.scalars(select(WebsiteEnrichment)).all()}
+
+    firm_by_root: dict[int, Firm] = {}
+    for root, member_ids in components.items():
+        members = [member_records[i] for i in member_ids]
+        if len(members) == 1:
+            if skip_unidentified and not _is_identified(members[0]):
+                counts["skipped_unidentified"] += 1
+                continue
+            counts["singletons"] += 1
+        else:
+            counts["multi_member_firms"] += 1
+        enrichment = _enrichment_for(members, enrichment_by_website)
+        result = fuse_cluster(members, enrichment)
+        firm = Firm(
+            name=result.name,
+            name_normalized=result.name_normalized,
+            website=result.website,
+            website_normalized=result.website_normalized,
+            phone=result.phone,
+            phone_normalized=result.phone_normalized,
+            year_founded=result.year_founded,
+            attorney_count=result.attorney_count,
+            field_provenance=result.field_provenance,
+        )
+        session.add(firm)
+        firm_by_root[root] = firm
+    session.flush()  # populate firm.id values
+
+    for root, member_ids in components.items():
+        firm = firm_by_root.get(root)
+        if firm is None:
+            continue
+        for rid in member_ids:
+            session.add(
+                FirmSourceRecordLink(firm_id=firm.id, firm_source_record_id=rid, link_method="auto")
+            )
+            counts["links"] += 1
+    session.flush()
+    return firm_by_root
+
+
+def apply_clusters(
+    components: dict[int, list[int]], *, skip_unidentified: bool = True
+) -> dict[str, int]:
+    """Build the canonical Firm + Link tables from an EXTERNALLY-computed clustering
+    (record id -> component), e.g. the Splink + backstop pipeline
+    (``dry_run.compute_backstop_clusters``). Clearing keeps it idempotent; source
+    rows are never touched. This is the canonical write for the Splink pivot —
+    ``fuse_cluster`` (survivorship) and ``identity.py`` are unchanged."""
+    configure_logging()
+    engine = make_engine()
+    counts = {
+        "components": len(components),
+        "singletons": 0,
+        "multi_member_firms": 0,
+        "skipped_unidentified": 0,
+        "links": 0,
+    }
+    with Session(engine) as session:
+        n_links = session.execute(delete(FirmSourceRecordLink)).rowcount
+        n_firms = session.execute(delete(Firm)).rowcount
+        log.info("apply.cleared", firms=n_firms, links=n_links)
+        _materialize_firms(session, components, counts, skip_unidentified=skip_unidentified)
+        session.commit()
+        log.info("apply.clusters.done", **counts)
+    return counts
+
+
 def apply_decisions(
     *,
     statuses: tuple[str, ...] = ("auto_approved", "approved"),
@@ -177,62 +257,16 @@ def apply_decisions(
         counts["components"] = len(components)
         log.info("apply.components", count=len(components), total_records=len(all_ids))
 
-        # 4) Build Firm + Links per component, fusing with the truth-discovery
-        # vote. Preload all WebsiteEnrichment rows for the per-cluster join.
-        member_records = {r.id: r for r in session.scalars(select(FirmSourceRecord)).all()}
-        enrichment_by_website = {
-            e.website: e for e in session.scalars(select(WebsiteEnrichment)).all()
-        }
-
-        firm_by_root: dict[int, Firm] = {}
-        for root, member_ids in components.items():
-            members = [member_records[i] for i in member_ids]
-            if len(members) == 1:
-                if skip_unidentified and not _is_identified(members[0]):
-                    counts["skipped_unidentified"] += 1
-                    continue
-                counts["singletons"] += 1
-            else:
-                counts["multi_member_firms"] += 1
-            enrichment = _enrichment_for(members, enrichment_by_website)
-            result = fuse_cluster(members, enrichment)
-            firm = Firm(
-                name=result.name,
-                name_normalized=result.name_normalized,
-                website=result.website,
-                website_normalized=result.website_normalized,
-                phone=result.phone,
-                phone_normalized=result.phone_normalized,
-                year_founded=result.year_founded,
-                attorney_count=result.attorney_count,
-                field_provenance=result.field_provenance,
-            )
-            session.add(firm)
-            firm_by_root[root] = firm
-        session.flush()  # populate firm.id values
-
-        # 5) Insert FirmSourceRecordLink rows (skipping any unmaterialized
-        # unidentified-singleton components).
-        for root, member_ids in components.items():
-            firm = firm_by_root.get(root)
-            if firm is None:
-                continue
-            for rid in member_ids:
-                session.add(
-                    FirmSourceRecordLink(
-                        firm_id=firm.id,
-                        firm_source_record_id=rid,
-                        link_method="auto",
-                    )
-                )
-                counts["links"] += 1
-        session.flush()
+        # 4-5) Fuse + write firms/links.
+        firm_by_root = _materialize_firms(
+            session, components, counts, skip_unidentified=skip_unidentified
+        )
 
         # 6) Stamp MatchReviewQueue.resulting_firm_id for approved rows.
         for m in approved:
             root_a = uf.find(m.source_record_a_id)
             root_b = uf.find(m.source_record_b_id)
-            if root_a == root_b:
+            if root_a == root_b and root_a in firm_by_root:
                 m.resulting_firm_id = firm_by_root[root_a].id
                 counts["queue_rows_linked"] += 1
         session.commit()
@@ -255,7 +289,35 @@ def main() -> int:
         help="Also materialize singleton firms with no name/phone/website "
         "(skipped by default as they can't be a usable firm).",
     )
+    parser.add_argument(
+        "--splink",
+        action="store_true",
+        help="Use the Splink + backstop clustering (the pivot engine) instead of "
+        "the match_review_queue. Computes clusters then writes canonical firms.",
+    )
+    parser.add_argument("--threshold", type=float, default=0.5, help="Splink clustering threshold.")
     args = parser.parse_args()
+
+    if args.splink:
+        # Lazy import so core apply stays splink-free unless this path is used.
+        from legal_sourcing.resolution.dry_run import compute_backstop_clusters
+
+        print(f"computing Splink + backstop clusters (threshold {args.threshold}) ...")
+        with Session(make_engine()) as s:
+            components = compute_backstop_clusters(s, args.threshold)
+        counts = apply_clusters(components, skip_unidentified=not args.keep_unidentified)
+        firms_created = counts["multi_member_firms"] + counts["singletons"]
+        print(
+            f"Canonical DB created (Splink + backstop):\n"
+            f"  source records clustered : {counts['components']:,}\n"
+            f"  canonical firms created  : {firms_created:,}\n"
+            f"    multi-member           : {counts['multi_member_firms']:,}\n"
+            f"    singletons             : {counts['singletons']:,}\n"
+            f"  skipped (unidentified)   : {counts['skipped_unidentified']:,}\n"
+            f"  firm_source_record_links : {counts['links']:,}"
+        )
+        return 0
+
     statuses: tuple[str, ...] = (
         ("approved",) if args.include_pending_approved_only else ("auto_approved", "approved")
     )
