@@ -409,6 +409,40 @@ def fuse_year_founded(
     return None
 
 
+def fuse_location(members: list[FirmSourceRecord], now: datetime) -> FieldChoice | None:
+    """Canonical (city, state): weighted vote on the (primary_city, primary_state)
+    PAIR so the two stay consistent — the most-supported office (usually HQ) for a
+    multi-office firm. State anchors the pair (records without a state don't vote);
+    city may be None."""
+    claims: list[tuple[Any, FirmSourceRecord]] = []
+    for m in members:
+        state = (getattr(m, "primary_state", None) or "").strip().upper()
+        if not state:
+            continue
+        city = (getattr(m, "primary_city", None) or "").strip() or None
+        claims.append(((city, state), m))
+    return _exact_weighted_vote(claims, now, method="location_vote")
+
+
+def fuse_practice_areas(
+    members: list[FirmSourceRecord], enrichment: WebsiteEnrichment | None
+) -> list[str] | None:
+    """Canonical practice areas: the UNION of canonical PracticeArea slugs across
+    the cluster (members' ``practice_areas_matched`` + the website enrichment's
+    ``practice_areas``). Practice areas are additive — a firm covers all of them —
+    so we union rather than vote."""
+    areas: set[str] = set()
+    for m in members:
+        for p in getattr(m, "practice_areas_matched", None) or []:
+            if p:
+                areas.add(p)
+    if enrichment is not None:
+        for p in getattr(enrichment, "practice_areas", None) or []:
+            if p:
+                areas.add(p)
+    return sorted(areas) or None
+
+
 # ---------------------------------------------------------------------------
 # Cluster-level fusion
 
@@ -425,6 +459,9 @@ class FusionResult:
     phone_normalized: str | None
     year_founded: int | None
     attorney_count: int | None
+    city: str | None
+    state: str | None
+    practice_areas: list[str] | None
     field_provenance: dict[str, Any]
     member_ids: list[int]
     notes: list[str]
@@ -457,6 +494,8 @@ def fuse_cluster(
     website_c = fuse_website(members, now)
     acount_c = fuse_attorney_count(members, enrichment, now)
     year_c = fuse_year_founded(members, enrichment, now)
+    location_c = fuse_location(members, now)
+    practice_areas = fuse_practice_areas(members, enrichment)
 
     provenance: dict[str, Any] = {}
     notes: list[str] = []
@@ -466,9 +505,18 @@ def fuse_cluster(
         ("website", website_c),
         ("attorney_count", acount_c),
         ("year_founded", year_c),
+        ("location", location_c),
     ):
         if choice is not None:
             provenance[field_name] = _provenance_entry(choice, now)
+    if practice_areas:
+        provenance["practice_areas"] = {
+            "value": practice_areas,
+            "source": "cluster_union",
+            "method": "union",
+            "count": len(practice_areas),
+            "written_at": now.isoformat(),
+        }
 
     if acount_c is not None and acount_c.extra.get("is_min"):
         notes.append("attorney_count is a lower bound (distinct attorneys seen)")
@@ -486,6 +534,9 @@ def fuse_cluster(
         phone_normalized=(phone_c.value if phone_c else None),
         year_founded=(year_c.value if year_c else None),
         attorney_count=(acount_c.value if acount_c else None),
+        city=(location_c.value[0] if location_c else None),
+        state=(location_c.value[1] if location_c else None),
+        practice_areas=practice_areas,
         field_provenance=provenance,
         member_ids=[m.id for m in members],
         notes=notes,

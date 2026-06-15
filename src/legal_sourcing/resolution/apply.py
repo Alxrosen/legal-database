@@ -164,6 +164,9 @@ def _materialize_firms(
             phone_normalized=result.phone_normalized,
             year_founded=result.year_founded,
             attorney_count=result.attorney_count,
+            city=result.city,
+            state=result.state,
+            practice_areas=result.practice_areas,
             field_provenance=result.field_provenance,
         )
         session.add(firm)
