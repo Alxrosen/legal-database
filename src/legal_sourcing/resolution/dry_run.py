@@ -37,6 +37,7 @@ from sqlalchemy.orm import Session
 
 from legal_sourcing.db import make_engine
 from legal_sourcing.models import FirmSourceRecord
+from legal_sourcing.resolution.apply import _UnionFind
 from legal_sourcing.resolution.splink_linker import (
     DEFAULT_PROB_TWO_RANDOM,
     DEFAULT_VARIANT,
@@ -81,6 +82,49 @@ def _cluster_to_members(clusters_df: pd.DataFrame) -> dict[str, list[int]]:
     for uid, cid in clusters_df[["unique_id", "cluster_id"]].itertuples(index=False):
         by[str(cid)].append(int(uid))
     return by
+
+
+def _generic_value_sets(df: pd.DataFrame, k: int) -> tuple[set, set]:
+    """Phones / identity-websites that appear on > k DISTINCT firm name-cores —
+    i.e. shared across many firms (lead-gen lines, .gov domains, marketing
+    platforms). Blank-name records (NaN core) don't count as distinct firms, so a
+    firm's own domain on 50 blank Justia rows + 1 named row stays NON-generic."""
+    gp, gw = set(), set()
+    for col, out in (("phone_normalized", gp), ("website_identity", gw)):
+        sub = df[df[col].notna()][[col, "name_core_key"]]
+        freq = sub.groupby(col)["name_core_key"].nunique()  # nunique ignores NaN
+        out.update(freq[freq > k].index.tolist())
+    return gp, gw
+
+
+def _uf_components(edges: list[tuple[int, int]], all_ids: list[int]) -> dict[int, list[int]]:
+    uf = _UnionFind()
+    for i in all_ids:
+        uf.find(i)
+    for a, b in edges:
+        uf.union(a, b)
+    return uf.components(all_ids)
+
+
+def _size_bands(sizes) -> Counter:
+    out: Counter = Counter()
+    for s in sizes:
+        out[
+            "1"
+            if s == 1
+            else "2"
+            if s == 2
+            else "3-5"
+            if s <= 5
+            else "6-10"
+            if s <= 10
+            else "11-25"
+            if s <= 25
+            else "26-50"
+            if s <= 50
+            else "50+"
+        ] += 1
+    return out
 
 
 def run(threshold: float, out_dir: str, sample_n: int = 12) -> dict:
@@ -169,8 +213,59 @@ def run(threshold: float, out_dir: str, sample_n: int = 12) -> dict:
             for uid_l in bridges[lcol]:
                 bridges_by_cluster[str(cid_of.get(uid_l))] += 1
 
-        # --- 5) backstop signals -------------------------------------------------
-        # generic shared values: phone/website on > N distinct names across corpus
+        # --- 4b) BACKSTOP: pre-cluster edge filter -------------------------------
+        # Keep an edge only if the pair shares a NON-GENERIC strong identifier
+        # (phone or identity-website). Verified root-cause fix: every over-merge
+        # rests on a weak/generic link (common name; a phone/domain shared across
+        # many firms), every correct cluster on its own phone/website.
+        print("backstop: edge filter (shared non-generic phone/website) ...")
+        edges_pdf = pred.as_pandas_dataframe()[["unique_id_l", "unique_id_r", "match_probability"]]
+        edges_pdf = edges_pdf[edges_pdf["match_probability"] >= threshold]
+        all_edges = [(int(a), int(b)) for a, b, _ in edges_pdf.itertuples(index=False)]
+        gp, gw = _generic_value_sets(df, GENERIC_VALUE_MIN_DISTINCT)
+        rec_ph = dict(zip(df["unique_id"], df["phone_normalized"], strict=False))
+        rec_web = dict(zip(df["unique_id"], df["website_identity"], strict=False))
+        kept = []
+        for a, b in all_edges:
+            pa, pb = rec_ph.get(a), rec_ph.get(b)
+            wa, wb = rec_web.get(a), rec_web.get(b)
+            if (pa and pa == pb and pa not in gp) or (wa and wa == wb and wa not in gw):
+                kept.append((a, b))
+        all_ids = [int(x) for x in df["unique_id"]]
+        comps_base = _uf_components(all_edges, all_ids)
+        comps_bs = _uf_components(kept, all_ids)
+        root_base = {i: r for r, mem in comps_base.items() for i in mem}
+        root_bs = {i: r for r, mem in comps_bs.items() for i in mem}
+        base_sizes = [len(v) for v in comps_base.values()]
+        bs_sizes = [len(v) for v in comps_bs.values()]
+
+        def _n_components(ids, root):
+            return len({root.get(i) for i in ids})
+
+        # preservation: known-good single-firm website groups must stay 1 component
+        preserve = {}
+        for dom in ("forthepeople.com", "kutakrock.com", "hollandhart.com", "swlaw.com"):
+            ids = [i for i, w in rec_web.items() if w == dom]
+            if ids:
+                preserve[dom] = (
+                    len(ids),
+                    _n_components(ids, root_base),
+                    _n_components(ids, root_bs),
+                )
+        # shatter: common-name hairball records must split into many components
+        shatter = {}
+        for tok in ("christopher", "michael j", "smith law"):
+            ids = [
+                int(r.unique_id)
+                for r in df[df["name_normalized"].fillna("").str.startswith(tok)].itertuples()
+            ]
+            if ids:
+                shatter[tok] = (
+                    len(ids),
+                    _n_components(ids, root_base),
+                    _n_components(ids, root_bs),
+                )
+
         gv = {}
         for col in ("phone_normalized", "website_identity"):
             sub = df[df[col].notna()][[col, "name_normalized"]]
@@ -278,10 +373,49 @@ def run(threshold: float, out_dir: str, sample_n: int = 12) -> dict:
         print(f"  MONOTONIC sweep invariant: {'PASS' if mono_ok else '*** FAIL ***'}")
         print("\n  threshold sweep:")
         print(sweep.to_string(index=False))
-        print("\n  generic shared values (backstop — top, distinct firm-names sharing a value):")
+        print("\n  generic shared values (top, distinct firm-names sharing a value):")
         for col, d in gv.items():
             top = list(d.items())[:5]
             print(f"    {col}: {top}")
+
+        # --- BACKSTOP before/after -------------------------------------------
+        def _tailcount(sz, n):
+            return sum(1 for s in sz if s > n)
+
+        print("\n================ BACKSTOP: edge filter (non-generic strong id) ================")
+        print(f"  generic values suppressed: {len(gp)} phones, {len(gw)} websites")
+        print(
+            f"  edges >= {threshold}: {len(all_edges):,} -> kept {len(kept):,} "
+            f"({len(all_edges) - len(kept):,} dropped, name/city/generic-only)"
+        )
+        print(f"  max cluster size:   {max(base_sizes):>6,}  ->  {max(bs_sizes):>6,}")
+        print(
+            f"  clusters > 25:      {_tailcount(base_sizes, 25):>6,}  ->  {_tailcount(bs_sizes, 25):>6,}"
+        )
+        print(
+            f"  clusters > 50:      {_tailcount(base_sizes, 50):>6,}  ->  {_tailcount(bs_sizes, 50):>6,}"
+        )
+        print(
+            f"  multi-member:       {sum(1 for s in base_sizes if s > 1):>6,}  ->  "
+            f"{sum(1 for s in bs_sizes if s > 1):>6,}"
+        )
+        print("  PRESERVE (known one-firm website groups; n_recs: base_comps -> bs_comps, want 1):")
+        for dom, (n, b, a) in preserve.items():
+            flag = "OK" if a == 1 else "** SPLIT **"
+            print(f"    {dom:20s} {n:4d} recs: {b} -> {a}  {flag}")
+        print("  SHATTER (common-name hairballs; n_recs: base_comps -> bs_comps, want many):")
+        for tok, (n, b, a) in shatter.items():
+            print(f"    {tok:16s} {n:4d} recs: {b} -> {a}")
+        summary["backstop"] = {
+            "generic_phones": len(gp),
+            "generic_websites": len(gw),
+            "edges": len(all_edges),
+            "edges_kept": len(kept),
+            "max_size_base": max(base_sizes),
+            "max_size_bs": max(bs_sizes),
+            "clusters_gt50_base": _tailcount(base_sizes, 50),
+            "clusters_gt50_bs": _tailcount(bs_sizes, 50),
+        }
         print(
             f"\n  verification sample: {len(verification)} clusters across "
             f"{ {k: len(v) for k, v in picks.items()} } -> {out_dir}/verification_sample.json"
