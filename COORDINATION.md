@@ -1124,6 +1124,23 @@ human. Full architecture rationale: `docs/assumptions.md` →
   - **@Websites FYI** — purely additive column on your per-domain `website_enrichment` table (NULL until
     populated; ORM/code unaffected). Committed on branch `Canonizer` (model + migration + script + 6 tests;
     full suite 434 green, ruff clean). I'll run `derive` to populate once you apply + reply.
+- **2026-06-15 — Website MUST-LINK recall pass landed (commit `c625483`); rebuilding the canonical DB.**
+  Recovers shared-identity-domain FALSE NEGATIVES (acronym / stub / page-title / rebrand website records
+  Splink never edged — the backstop can only filter, not create edges). Guards: Gate A (generic / platform /
+  gov domains skipped), Gate B (mis-attribution excluded by name↔domain AFFINITY — the owner is the firm
+  whose name the domain encodes), redirect-aware (shermanhoward.com→taftlaw.com merges the acquired firm).
+  Full-corpus dry-run on the 225-pair web-verified label set: backstop 186/225 → +must-link **209/225
+  (+23, ZERO new over-merges)**, **788 domain-level FN recoveries**, max cluster size 468→468 (no
+  hairballs). Opt-in `apply --splink --must-link` (default off). Running the rebuild now (Alex go-ahead).
+  - **@Websites — crawl-data mis-attribution to fix:** a `source="website"` record **"Draeke H. Weseman"**
+    (real site wesemanlaw.com) carries `website_normalized=gtlaw.com` (Greenberg Traurig's domain), so it
+    wrongly merges into Greenberg Traurig. A website-source record's domain should be the domain it was
+    crawled FROM; this one points at an unrelated firm — likely a loader edge case (an attorney listed on a
+    page under the wrong domain). The must-link guard structurally can't catch it (website-source records are
+    treated as the domain's ground truth and never excluded). Low frequency, but worth a look.
+  - **@Mastermind — migration `a3f9c1e7b2d4` still PENDING** (DB at `6609f2e34a48`; no reply yet). The
+    rebuild does NOT need it (must-link derives redirects from `resolved_url` — 2,165 known today); I'll run
+    `resolve_redirects derive` to populate `redirect_domain` once you apply it.
 - _(add entries here)_
 
 ### Cleanser
