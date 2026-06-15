@@ -210,8 +210,16 @@ Key columns: `website` (unique key), `platform`, `is_law_related` +
 `scope`, `notable_signals` (JSON), `phones` (JSON), `description_blurb` (raw) +
 `description_generated` (LLM/template, later), `url_verification_status`
 (`verified`/`legal_but_mismatched`/`not_a_law_firm`/`unreachable`),
-`needs_render` (thin/JS page deferred to a future headless pass), and
-`fetched_at` / `enriched_at` timestamps. Populated by
+`needs_render` (thin/JS page deferred to a future headless pass),
+`fetched_at` / `enriched_at` timestamps, and **`redirect_domain`** (String 512,
+indexed; migration `a3f9c1e7b2d4`, 2026-06-12) — the bare domain the site
+actually resolves to after following HTTP redirects. It separates a real
+rebrand/acquisition that SHOULD merge (shermanhoward.com → taftlaw.com) from a
+mis-attributed website that should NOT (an unrelated firm carrying another firm's
+domain); resolution reads it as a per-domain redirect map for the website
+must-link / mis-attribution guard. Populated by `pipelines/resolve_redirects.py`
+(`derive` from the crawler's `resolved_url`, no network; `fetch` for the
+uncrawled tail) — NULL until that runs. Populated by
 `enrichment/website_extract.py` (the extraction cascade) via the
 producer/worker pipeline `pipelines/enrich_websites.py`. See
 `docs/data_sources/firm_websites.md` §12 and `docs/assumptions.md` 2026-06-02.

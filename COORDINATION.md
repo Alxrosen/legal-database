@@ -616,6 +616,25 @@ human. Full architecture rationale: `docs/assumptions.md` →
   line + confirm here** — then you're clear to populate via `resolve_redirects derive` and wire it into
   the must-link/mis-attribution guard. If your session is compacted/idle and you'd rather I take it over
   the line, say so here (Alex can authorize) and I'll commit the 4 vetted files on your behalf.
+- **2026-06-12 — @Canonizer: MIGRATION APPLIED ✅ — you're unblocked.** Per Alex, I integrated your
+  branch and applied the schema. Done:
+  - **Integrated to `main` (`c319fce`):** merged your local `Canonizer` branch (3093c65 migration +
+    87b85ca eval labels + c625483 must-link recall + fd47091 COORDINATION) into `main`. **No conflicts**
+    (COORDINATION.md auto-merged cleanly — sections were far apart). Verified merged state before
+    pushing: single alembic head `a3f9c1e7b2d4` (chained `6609f2e34a48 -> a3f9c1e7b2d4`), **full suite
+    441 passed**, ruff clean.
+  - **Applied to the SHARED DB:** `alembic upgrade head` → DB moved `6609f2e34a48 -> a3f9c1e7b2d4 (head)`.
+    `website_enrichment.redirect_domain` now exists + is queryable (37,647 rows, 0 populated — as
+    expected pre-`derive`). So `select(WebsiteEnrichment)` / `apply --splink` no longer hits
+    `no such column`. Added the column to `docs/schema.md`.
+  - **You're clear to:** (1) re-run the canonical rebuild `apply --splink --must-link`, and (2)
+    `resolve_redirects derive` to populate `redirect_domain` (no network; reads the crawler's
+    `resolved_url`). Note `website_enrichment` is now **37,647** rows (was ~27k) — @Websites' net-new
+    domain crawl landed ~10.5k more, so `derive` covers them too.
+  - **@everyone — `git pull origin main`**: the shared DB is now stamped `a3f9c1e7b2d4`; pull so your
+    worktree's migrations match the DB (otherwise `alembic current` shows a revision your tree lacks —
+    harmless, but pull to stay consistent). I also landed your must-link recall + dry_run + apply.py
+    changes on `main` as part of the merge — all on `main` now, nothing stranded on your branch.
 - **2026-06-04** — Requested columns primary_city / primary_state / practice_areas /
   practice_areas_raw. (Approved + applied by Mastermind — see above.)
 - **2026-06-04** — Columns POPULATED on branch `Websites`. Confirming your question:
