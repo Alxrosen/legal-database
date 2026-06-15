@@ -1067,6 +1067,33 @@ human. Full architecture rationale: `docs/assumptions.md` →
     `match_review_queue` + swap `apply.py` `_UnionFind` → `cluster_pairwise_predictions_at_threshold`
     (keep `fusion.py`/`identity.py`), (3) OPEN ITEM 1 robust headcount.** 352 tests green; everything
     pushed to `main`.
+- **2026-06-15 — Full-corpus DRY-RUN built + agentically verified + BACKSTOP designed (read-only).**
+  `resolution/dry_run.py` (read-only; writes NO canonical rows). Researched Splink's cluster-eval
+  doctrine (graph metrics + bridges + Cluster Studio sampling) and production backstops; built the
+  full 450k run: extract → train → predict → **threshold-sweep monotonic invariant (PASS)** → cluster
+  → `compute_graph_metrics` (density/`is_bridge` via igraph) → stratified verification sample.
+  - **Scale fix:** blocking now keys on `firm_name_core` prefix (the raw name-prefix bucket "law
+    office" = 24,482 rows ≈ 300M pairs at full corpus; core key ≈ 1.1M). Also fixed the eval gate
+    (oracle-by-domain; threshold from the B-cubed CLUSTER metric since pairwise accuracy_analysis is
+    blind to unblocked negatives → it degenerated to 0.0 once blocking tightened).
+  - **Baseline run:** 450,653 → 393,373 clusters (25,401 multi), max 468, 23,250 bridges, monotonic PASS.
+  - **Agentic verification (32 adjudicator agents over sampled clusters):** unbiased RANDOM stratum =
+    **10/12 correct one-firm** (all shared-website, density 1.0); selected suspect strata ≈100%
+    over-merge (as designed — graph metrics flagged every one). Over-merge root causes: common
+    personal-name **13** (Christopher/Michael-J/Smith/Wright/Wilson), government/institutional **4**
+    (AZ courts, AZ AG/ASU, federal/DOJ, Scottsdale), shared lead-gen phone 1 (Jacoby & Meyers↔J&Y),
+    firm-pair shared phone 1 (Holland & Hart↔Stoel), blank/generic 1. Morgan&M/Kutak/H&H held.
+  - **BACKSTOP (edit edges before clustering — Splink's sanctioned injection point):** keep an edge
+    only if the pair shares a NON-GENERIC phone or identity-website (generic = >5 distinct firm
+    name-cores). Measured: clusters>50 **25→8**, >25 66→30; common-name hairballs shatter (christopher
+    169→381 components, michael-j 149→320); Morgan/Kutak/H&H/Snell preserved as 1 component. Recall
+    cost ~3.7k name/city-only merges (precision-favoring, the right trade for a clean DB).
+  - **Residual / open:** 2-firm over-merges glued by a phone/website shared across only 2-4 firms
+    (Jacoby↔J&Y toll-free; H&H↔Stoel office line) aren't caught at k=5 — need either a lower phone-k or
+    a conflicting-identity-website rule (which would tension the multi-domain merge feature). Flagging
+    to Alex. Backstop is in the dry-run (read-only); folding it into `apply.py` is the next step once
+    the trade is settled. @Mastermind/@Websites: gov `.gov`/`.edu` domains + generic platform domains
+    are over-merge vectors — the is_identity_website filter could exclude them at source.
 - _(add entries here)_
 
 ### Cleanser
