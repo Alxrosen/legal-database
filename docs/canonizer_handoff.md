@@ -1,4 +1,4 @@
-# Canonizer — session context / handoff (2026-06-09, post-Splink-pivot)
+# Canonizer — session context / handoff (2026-06-15, canonical DB CREATED)
 
 You are the **Canonizer**: the Claude session that owns **canonical firm resolution** for
 `legal-deal-sourcing` (scrape US law-firm directories → normalize → resolve into canonical firms,
@@ -18,33 +18,67 @@ for Bow Street **internal deal-sourcing**, NOT republication). Read this whole f
 - **Disjoint writes**: you WRITE only `firms` / `firm_source_record_links` / `match_review_queue`.
 - **Coordination = `COORDINATION.md` over git+`main`**: edit ONLY your `### Canonizer` section
   (timestamped `YYYY-MM-DD HH:MM UTC` bullets), commit, `git push origin Canonizer:main`.
-- Tests: `uv run pytest` (352 green) · lint: `uv run ruff check src tests` + `ruff format`.
+- Tests: `uv run pytest` (428 green) · lint: `uv run ruff check src tests` + `ruff format`.
 
-## THE BIG PICTURE — where the pivot stands
-Alex greenlit replacing the hand-rolled matcher (blocking.py + scoring.py floors/caps +
-apply.py `_UnionFind`) with **Splink 4 on DuckDB** (`docs/audit/splink-adoption-plan.md`).
-**Status: Splink is built, tuned over 4 rounds with Alex, and BEATS the bespoke matcher on the
-human reference.** What remains (in order):
-1. **Full-corpus (450k) validation** — everything so far ran on the ~62k-record eval working set;
-   confirm λ/threshold/settings hold at production scale (runtime + blocking volume too).
-2. **Wire into the pipeline** — write Splink `match_probability` into
-   `match_review_queue.score_components`, swap ONLY `apply.py`'s `_UnionFind` for
-   `linker.clustering.cluster_pairwise_predictions_at_threshold`. **KEEP `fusion.py` +
-   `identity.py` + rapidfuzz** (Splink does match+cluster, NOT field fusion).
-3. **OPEN ITEM 1 (robust `fuse_attorney_count`)** — independent of Splink (fusion, not matching).
-   Design direction already validated: floor = distinct-attorney union; reject "stated" counts
-   grossly discordant with OBSERVED evidence (union + cluster footprint); office_count/scope are
-   additive-only corroborators (they're NULL-or-1 on ~79% of sites — never the basis for rejection).
+## THE BIG PICTURE — the canonical DB now EXISTS
+Splink 4 on DuckDB replaced the hand-rolled matcher (`docs/audit/splink-adoption-plan.md`). It was
+built, tuned over many rounds with Alex, validated on a 50-pair human label set + 32-agent cluster
+verification, given a distinctiveness-aware backstop, and **WIRED INTO `apply.py` AND RUN — the
+canonical `firms` table is created.**
+- **CREATE the canonical DB:** `uv run … python -m legal_sourcing.resolution.apply --splink --threshold 0.5`
+  (idempotent: clears+rebuilds `firms`/`firm_source_record_links`; source rows untouched; ~minutes).
+  Last run (2026-06-15): **192,599 firms / 242,046 links** from 450,653 records. Morgan & Morgan→1
+  firm (468 recs), Kutak Rock (114), Snell & Wilmer (69) correct; the old 437-rec gov hairball is
+  gone (split into single entities). ~22k nameless firms (justia-only, website but no name — known).
+- **Pipeline:** `apply --splink` → `dry_run.compute_backstop_clusters(session, threshold)` (extract →
+  `train_linker` → predict → `backstop_kept_edges` edge filter → `_UnionFind` components) →
+  `apply.apply_clusters(components)` → `fuse_cluster` per component (survivorship, UNCHANGED) writes
+  `firms`. `fusion.py` + `identity.py` + rapidfuzz are untouched (Splink does match+cluster only).
+- **What remains / OPEN:**
+  1. **Residual over-merges** (verified, small): 2-firm clusters glued by a phone/website shared
+     across only 2–4 firms — **Jacoby & Meyers ↔ J&Y Law** (toll-free, 67-rec cluster), **Holland &
+     Hart ↔ Stoel Rives** (shared office phone, 77). Backstop's generic-cutoff is k=5 (needs >5
+     distinct firms), so 2-firm lead-gen slips through. Fix options Alex is weighing: lower the
+     phone-k, or a conflicting-identity-website rule (which would tension the multi-domain feature).
+     Also gov entities sharing a distinctive geo token (e.g. "Pima County Attorney's Office" 93) — may
+     be acceptable (one real office) — review.
+  2. **ClaimsHero-type recall miss:** Splink scores some correct cross-domain merges just below the
+     threshold (website-conflict penalty); the backstop can't add edges Splink didn't propose.
+  3. **OPEN ITEM 1 (robust `fuse_attorney_count`)** — independent (fusion, not matching). Floor =
+     distinct-attorney union; reject "stated" counts grossly discordant with OBSERVED evidence
+     (union + footprint); office_count/scope additive-only (NULL-or-1 on ~79% of sites).
 
-## The two modules you own (both on `main`)
+## The modules you own (all on `main`)
+- **`resolution/splink_linker.py`** — the engine (extract_frame, train_linker, DEFAULT_VARIANT,
+  DEFAULT_PROB_TWO_RANDOM, threshold derivation). CLI: `compare`/`tune`/`prior`/`errors`/`sample`/
+  `threshold`. Blocking keys on `firm_name_core` (NOT raw name — the raw "law office" bucket = 300M
+  pairs at full corpus; core ≈ 1.1M).
 - **`resolution/eval_harness.py`** — the measurement gate. Identity-website + known-firm-oracle
-  ground truth → 328k auto-labeled pairs + **40 human labels** (`data/eval/clerical_labels.csv`,
-  committed = the project's ground-truth gold). Metrics: pairwise P/R/F1 sweep, B-cubed,
-  blocking-recall ceiling. Auto-labels are DE-BIASED (shared phone + name≥92 ⇒ one firm even across
-  domains — `_multidomain_same_firm`). CLI: `bespoke`, `clerical-sample`.
-- **`resolution/splink_linker.py`** — the engine. CLI: `compare` (head-to-head vs bespoke),
-  `tune --variants …`, `prior --lambdas …`, `errors` (per-clerical-pair verdicts + FP/FN dump),
-  `sample` (active-learning export), `threshold` (full P/R/F1 curve).
+  ground truth → auto-labeled pairs + the human label list (`data/eval/clerical_labels.csv`,
+  committed = ground-truth gold). Metrics: pairwise P/R/F1 sweep, B-cubed. Auto-labels DE-BIASED
+  (shared phone + name≥92 ⇒ one firm — `_multidomain_same_firm`). CLI: `bespoke`, `clerical-sample`.
+- **`resolution/dry_run.py`** — READ-ONLY full-corpus QA + the production clustering function.
+  `compute_backstop_clusters(session, threshold)` is what `apply --splink` calls. `backstop_kept_edges`
+  is THE backstop (below). The dry-run also prints graph metrics (density/`is_bridge` via igraph),
+  threshold-sweep monotonic invariant, generic-value report, a stratified verification sample, and a
+  **LABEL REGRESSION** of every `clerical_labels.csv` pair vs Splink-alone AND Splink+backstop.
+- **`resolution/apply.py`** — canonical write. `apply --splink` (NEW) = Splink+backstop;
+  `apply_clusters(components)` fuses+writes; `apply_decisions` (old queue path) still works.
+  `_materialize_firms` is the shared fuse+write loop.
+
+## THE BACKSTOP (Alex's term = a growing known-answer test list + a guardrail that passes it)
+Two senses, both live:
+1. **The known-answer list** (`data/eval/clerical_labels.csv`, **~50 pairs**, grown by DB sampling):
+   should-merge + should-NOT-merge real records. `dry_run` runs it as a regression test every run.
+   GROW IT by sampling the DB (esp. should-NOT-merge traps) and re-checking Splink — that's the loop
+   Alex wants. Last score: Splink-alone 41/50, **Splink+backstop 42/50**.
+2. **The guardrail** = `backstop_kept_edges`: keep a predicted edge ONLY IF the pair shares a
+   NON-GENERIC strong identifier (phone/website; generic = on >5 distinct firm name-cores) OR a
+   DISTINCTIVE (rare) name token (token in ≤40 distinct firm cores). This is the verified root-cause
+   fix: over-merges glue on a common name ("michael"/"smith"/"christopher") or a many-firm
+   phone/domain; legitimate low-corroboration merges share their own phone/website or a rare brand
+   token ("zurich"/"claimshero"). A BLUNT "require strong id" version scored 37/50 (broke the
+   distinctive-name merges) — the distinctiveness-aware version is the keeper.
 
 ## Locked-in model decisions (each was MEASURED — don't relitigate without new evidence)
 - **`DEFAULT_VARIANT = "tuned2_no_pa"`**: TF-name JaroWinkler + name-DERIVATION containment level

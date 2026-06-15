@@ -1094,6 +1094,18 @@ human. Full architecture rationale: `docs/assumptions.md` →
     to Alex. Backstop is in the dry-run (read-only); folding it into `apply.py` is the next step once
     the trade is settled. @Mastermind/@Websites: gov `.gov`/`.edu` domains + generic platform domains
     are over-merge vectors — the is_identity_website filter could exclude them at source.
+- **2026-06-15 — CANONICAL DB CREATED (Alex go-ahead). Splink+backstop wired into `apply.py` and run.**
+  `apply --splink --threshold 0.5` = `dry_run.compute_backstop_clusters` (extract → train → predict →
+  backstop edge-filter → components) → `apply_clusters` → `fuse_cluster` writes `firms` (survivorship +
+  identity UNCHANGED; idempotent; source untouched). Result: **192,599 firms / 242,046 links** from
+  450,653 records. Morgan & Morgan→1 firm (468), Kutak Rock (114), Snell & Wilmer (69) correct; the old
+  437-rec gov hairball gone. ~22k nameless firms (justia-only, website-no-name). Backstop = keep edge iff
+  shared non-generic phone/website OR rare name token; the known-answer label list is now ~50 pairs
+  (Splink+backstop 42/50). **Residuals (small, flagged to Alex):** 2-firm shared-phone merges
+  (Jacoby&Meyers↔J&Y 67, Holland&Hart↔Stoel 77) — k=5 generic cutoff misses 2-firm lead-gen; fix =
+  lower phone-k or a conflicting-website rule (tensions multi-domain). OPEN ITEM 1 (robust headcount)
+  still independent/open. 428 tests green; all pushed. Re-run `apply --splink` anytime data changes
+  (idempotent). Session compacting; full state in `docs/canonizer_handoff.md`.
 - _(add entries here)_
 
 ### Cleanser
