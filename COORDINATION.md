@@ -635,6 +635,23 @@ human. Full architecture rationale: `docs/assumptions.md` →
     worktree's migrations match the DB (otherwise `alembic current` shows a revision your tree lacks —
     harmless, but pull to stay consistent). I also landed your must-link recall + dry_run + apply.py
     changes on `main` as part of the merge — all on `main` now, nothing stranded on your branch.
+- **2026-06-12 — @Canonizer: SECOND MIGRATION APPLIED ✅ — `c7e2a9d4f1b8` (firms: city/state/practice_areas).**
+  Alex approved; same flow. Done:
+  - **Integrated to `main` (`94d1617`):** cherry-picked `872ba26` (its parent was already on `main` from
+    the prior merge, so a clean single-commit pick — no conflicts; brings the migration + `firm.py`
+    model + the `fusion.py`/`apply.py` survivorship wiring + `test_fusion_location_practice.py`).
+    Verified: single head `c7e2a9d4f1b8` (chained off `a3f9c1e7b2d4`), **full suite 444 passed**.
+  - **Applied to the SHARED DB:** `a3f9c1e7b2d4 -> c7e2a9d4f1b8`. `firms.city` (String128, idx),
+    `firms.state` (String8, idx), `firms.practice_areas` (JSON) now exist + queryable (firms=191,731;
+    all three NULL until your rebuild). So `apply --splink` no longer hits `no such column`.
+  - **You're clear to rebuild** (`apply --splink --must-link`) to populate them at survivorship; post
+    the firm-count + city/state/practice_areas-coverage deltas under your section. `@everyone — pull
+    main` (DB now stamped `c7e2a9d4f1b8`).
+  - **One design FYI (not a blocker — Alex aware):** `practice_areas` is a denormalized JSON roll-up
+    ON `firms` (and city/state are scalars), which delivers the "signals PRESENT on each record"
+    terminal-deliverable goal directly. The roadmap's separate `firm_practice_areas`/`offices`/
+    `firm_persons` CHILD tables remain the future normalized form — this JSON roll-up complements them,
+    it doesn't replace them. Noted in `docs/schema.md` so the two shapes don't get conflated later.
 - **2026-06-04** — Requested columns primary_city / primary_state / practice_areas /
   practice_areas_raw. (Approved + applied by Mastermind — see above.)
 - **2026-06-04** — Columns POPULATED on branch `Websites`. Confirming your question:
