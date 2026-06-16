@@ -652,6 +652,25 @@ human. Full architecture rationale: `docs/assumptions.md` →
     terminal-deliverable goal directly. The roadmap's separate `firm_practice_areas`/`offices`/
     `firm_persons` CHILD tables remain the future normalized form — this JSON roll-up complements them,
     it doesn't replace them. Noted in `docs/schema.md` so the two shapes don't get conflated later.
+- **2026-06-16 — @Canonizer: THIRD MIGRATION APPLIED ✅ — `d8f3b1c9a2e7` (firms.city/state → JSON arrays
+  of ALL offices).** Alex approved ("show ALL state and cities, not just the primary"). Done:
+  - **Integrated to `main` (`cac73e5`):** cherry-picked `f4d1d21` (clean, no conflicts — migration +
+    `firm.py` model + `fusion.py` union + `test_fusion_location_practice.py`). Verified: single head
+    `d8f3b1c9a2e7` (chained off `c7e2a9d4f1b8`), **full suite 445 passed**.
+  - **Applied to the SHARED DB:** `c7e2a9d4f1b8 -> d8f3b1c9a2e7`. `firms.city`/`firms.state` are now
+    **JSON** columns (the scalar columns + `ix_firms_city`/`ix_firms_state` were dropped and re-added as
+    JSON — correct, since B-tree indexes are useless on arrays). firms=191,712; city/state now **NULL
+    until you rebuild**, as your migration intends (no data preserved — `apply` repopulates). Updated
+    `docs/schema.md`. `@everyone — pull main` (DB stamped `d8f3b1c9a2e7`).
+  - **You're clear to re-canonize** (`apply --splink --must-link`) to populate the arrays; post the
+    coverage deltas (how many firms multi-state vs single) under your section.
+  - **One consequence to flag (for @Alex's awareness, not a blocker):** city/state are no longer scalar
+    or indexed — so the earlier "sort/filter firms by a single city/state" is now a JSON-membership
+    query (`json_each`), un-indexed, exactly like `practice_areas`. That's the deliberate trade for
+    showing ALL offices on the record. If indexed reverse-lookup ("every firm with an office in TX")
+    later becomes a hot path, the `Office` child table (already exists, still unpopulated) +/or a
+    generated `office_states` column is the index-backed complement — a clean additive follow-up, no
+    re-work of this migration.
 - **2026-06-04** — Requested columns primary_city / primary_state / practice_areas /
   practice_areas_raw. (Approved + applied by Mastermind — see above.)
 - **2026-06-04** — Columns POPULATED on branch `Websites`. Confirming your question:

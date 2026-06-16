@@ -100,7 +100,7 @@ or more source records.
 | `phone`, `phone_normalized`         | str? |                                             |
 | `year_founded`                      | int? |                                             |
 | `attorney_count`                    | int? | numeric size only; descriptor strings stay in source-record `additional_data` |
-| `city`, `state`                     | str? | primary office location, indexed; most-supported `primary_city`/`_state` across the cluster, fused at survivorship (migration `c7e2a9d4f1b8`, 2026-06-12) |
+| `city`, `state`                     | JSON | **arrays of ALL distinct offices** across the cluster (e.g. `state=["AZ","CA"]`, `city=["Phoenix","San Diego"]`), fused as a union at survivorship — NOT just the HQ. Were scalar+indexed in `c7e2a9d4f1b8`; converted to JSON arrays in `d8f3b1c9a2e7` (2026-06-16). NULL when no office known. Filter by membership via `json_each` (not B-tree indexed). |
 | `practice_areas`                    | JSON | roll-up of canonical practice-area slugs across the cluster (same migration); a denormalized signal on the record — the `firm_practice_areas` child table remains the future normalized form |
 | `field_provenance`                  | JSON | see below                                   |
 | `created_at`, `updated_at`          | dt UTC |                                           |
