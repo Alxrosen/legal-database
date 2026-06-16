@@ -1,8 +1,8 @@
 """Tests for fusing location (city/state) + practice areas onto the canonical firm.
 
 Pure-function tests (no DB / no network): build FirmSourceRecord objects and assert
-`fuse_cluster` fills `city`, `state`, `practice_areas` (and that location is a
-consistent (city, state) pair chosen by weighted vote — the dominant office).
+`fuse_cluster` fills `city`, `state`, `practice_areas` as the UNION of ALL distinct
+offices / practice areas across the cluster (not just the dominant office).
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ def _fsr(**kw) -> FirmSourceRecord:
     return FirmSourceRecord(**base)
 
 
-def test_fuse_cluster_picks_dominant_office_and_unions_practices():
+def test_fuse_cluster_unions_all_offices_and_practices():
     members = [
         _fsr(
             primary_city="Phoenix", primary_state="AZ", practice_areas_matched=["personal-injury"]
@@ -31,22 +31,37 @@ def test_fuse_cluster_picks_dominant_office_and_unions_practices():
         _fsr(primary_city="Tucson", primary_state="AZ", practice_areas_matched=[]),
     ]
     res = fuse_cluster(members, now=_TS)
-    # Dominant (most-supported) office is Phoenix, AZ; city + state stay consistent.
-    assert res.city == "Phoenix"
-    assert res.state == "AZ"
+    # ALL distinct offices (sorted), not just the dominant one.
+    assert res.city == ["Phoenix", "Tucson"]
+    assert res.state == ["AZ"]
     # Practice areas are the UNION across the cluster.
     assert set(res.practice_areas) == {"personal-injury", "family-law"}
-    assert "location" in res.field_provenance
+    assert res.field_provenance["city"]["method"] == "union"
     assert res.field_provenance["practice_areas"]["method"] == "union"
 
 
-def test_fuse_cluster_location_requires_state():
-    # No state anywhere -> city/state stay None (state is the anchor).
-    members = [_fsr(primary_city="Nowhere", primary_state=None, practice_areas_matched=[])]
+def test_fuse_cluster_all_states_and_filters_address_garbage_cities():
+    members = [
+        _fsr(primary_city="Phoenix", primary_state="AZ", practice_areas_matched=[]),
+        _fsr(primary_city="Los Angeles", primary_state="CA", practice_areas_matched=[]),
+        # Mis-parsed address in the city field (has digits) -> filtered out; its
+        # state still counts toward the union.
+        _fsr(
+            primary_city="555 Bluff St, St George UT 84770",
+            primary_state="UT",
+            practice_areas_matched=[],
+        ),
+    ]
     res = fuse_cluster(members, now=_TS)
+    assert res.state == ["AZ", "CA", "UT"]
+    assert res.city == ["Los Angeles", "Phoenix"]  # garbage city dropped
+    assert res.practice_areas is None
+
+
+def test_fuse_cluster_no_location():
+    res = fuse_cluster([_fsr(primary_city=None, primary_state=None)], now=_TS)
     assert res.city is None
     assert res.state is None
-    assert res.practice_areas is None
 
 
 def test_fuse_practice_areas_includes_website_enrichment():

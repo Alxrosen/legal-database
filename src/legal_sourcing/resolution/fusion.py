@@ -409,19 +409,24 @@ def fuse_year_founded(
     return None
 
 
-def fuse_location(members: list[FirmSourceRecord], now: datetime) -> FieldChoice | None:
-    """Canonical (city, state): weighted vote on the (primary_city, primary_state)
-    PAIR so the two stay consistent — the most-supported office (usually HQ) for a
-    multi-office firm. State anchors the pair (records without a state don't vote);
-    city may be None."""
-    claims: list[tuple[Any, FirmSourceRecord]] = []
+def fuse_states(members: list[FirmSourceRecord]) -> list[str] | None:
+    """ALL distinct states across the cluster's offices (sorted) — a firm spans
+    many offices, so we keep every state, not just the dominant one."""
+    states = {(getattr(m, "primary_state", None) or "").strip().upper() for m in members}
+    states.discard("")
+    return sorted(states) or None
+
+
+def fuse_cities(members: list[FirmSourceRecord]) -> list[str] | None:
+    """ALL distinct office cities across the cluster (sorted). Skips values that
+    look like a mis-parsed street address (contain a digit) — a known Martindale
+    office-parser issue (flagged to @Fixer) — so the list stays clean city names."""
+    cities = set()
     for m in members:
-        state = (getattr(m, "primary_state", None) or "").strip().upper()
-        if not state:
-            continue
-        city = (getattr(m, "primary_city", None) or "").strip() or None
-        claims.append(((city, state), m))
-    return _exact_weighted_vote(claims, now, method="location_vote")
+        c = (getattr(m, "primary_city", None) or "").strip()
+        if c and not any(ch.isdigit() for ch in c):
+            cities.add(c)
+    return sorted(cities) or None
 
 
 def fuse_practice_areas(
@@ -459,8 +464,8 @@ class FusionResult:
     phone_normalized: str | None
     year_founded: int | None
     attorney_count: int | None
-    city: str | None
-    state: str | None
+    city: list[str] | None
+    state: list[str] | None
     practice_areas: list[str] | None
     field_provenance: dict[str, Any]
     member_ids: list[int]
@@ -494,7 +499,8 @@ def fuse_cluster(
     website_c = fuse_website(members, now)
     acount_c = fuse_attorney_count(members, enrichment, now)
     year_c = fuse_year_founded(members, enrichment, now)
-    location_c = fuse_location(members, now)
+    cities = fuse_cities(members)
+    states = fuse_states(members)
     practice_areas = fuse_practice_areas(members, enrichment)
 
     provenance: dict[str, Any] = {}
@@ -505,18 +511,22 @@ def fuse_cluster(
         ("website", website_c),
         ("attorney_count", acount_c),
         ("year_founded", year_c),
-        ("location", location_c),
     ):
         if choice is not None:
             provenance[field_name] = _provenance_entry(choice, now)
-    if practice_areas:
-        provenance["practice_areas"] = {
-            "value": practice_areas,
-            "source": "cluster_union",
-            "method": "union",
-            "count": len(practice_areas),
-            "written_at": now.isoformat(),
-        }
+    for field_name, vals in (
+        ("city", cities),
+        ("state", states),
+        ("practice_areas", practice_areas),
+    ):
+        if vals:
+            provenance[field_name] = {
+                "value": vals,
+                "source": "cluster_union",
+                "method": "union",
+                "count": len(vals),
+                "written_at": now.isoformat(),
+            }
 
     if acount_c is not None and acount_c.extra.get("is_min"):
         notes.append("attorney_count is a lower bound (distinct attorneys seen)")
@@ -534,8 +544,8 @@ def fuse_cluster(
         phone_normalized=(phone_c.value if phone_c else None),
         year_founded=(year_c.value if year_c else None),
         attorney_count=(acount_c.value if acount_c else None),
-        city=(location_c.value[0] if location_c else None),
-        state=(location_c.value[1] if location_c else None),
+        city=cities,
+        state=states,
         practice_areas=practice_areas,
         field_provenance=provenance,
         member_ids=[m.id for m in members],

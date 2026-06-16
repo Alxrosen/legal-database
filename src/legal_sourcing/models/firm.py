@@ -49,11 +49,12 @@ class Firm(Base, TimestampMixin):
     year_founded: Mapped[int | None] = mapped_column(Integer, nullable=True)
     attorney_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    # Primary office location — the most-supported (city, state) across the
-    # cluster (the HQ / dominant office for a multi-office firm). Same typing as
-    # FirmSourceRecord.primary_city/_state. NULL = not derivable.
-    city: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
-    state: Mapped[str | None] = mapped_column(String(8), nullable=True, index=True)
+    # ALL distinct office locations across the cluster (JSON arrays, sorted) — a
+    # firm spans many offices, so these hold every city/state, not just the HQ.
+    # e.g. state=["AZ","CA"], city=["Phoenix","San Diego"]. none_as_null so empty
+    # is SQL NULL. NULL = not derivable.
+    city: Mapped[list[str] | None] = mapped_column(JSON(none_as_null=True), nullable=True)
+    state: Mapped[list[str] | None] = mapped_column(JSON(none_as_null=True), nullable=True)
     # Canonical PracticeArea.slug values surfaced across the firm's records
     # (UNION — a firm covers all of them). NULL = none extracted.
     practice_areas: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
