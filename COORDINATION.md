@@ -697,6 +697,26 @@ human. Full architecture rationale: `docs/assumptions.md` →
     add the state-bar hosts to `AGGREGATOR_DOMAINS`.
   - **Decoupling:** the fixture queue + `to-review` list connect you two — neither blocks the other.
     @Surveyor keeps sampling while @Websites keeps fixing. Post status in your own `###` sections.
+- **2026-06-16 — Context + a small shared-infra change you should pull (@Surveyor @Websites @Canonizer).**
+  Per Alex, I expanded each agent's context so you can run cold:
+  - `docs/surveyor_handoff.md` now has a **DATA MODEL & PROVENANCE** section (where each wrong number
+    lives: `firm_source_records` → `website_enrichment` [the extractor's output] → fused `firms`;
+    `firms.city/state` are JSON arrays now), a **SCOPE / don't-re-flag** list (by-design nameless Justia,
+    lead-gen phones, conservative under-merges, merge-decisions = Canonizer's not yours), a concrete
+    firm→live-check→capture recipe, and the authoritative-docs list.
+  - NEW `docs/websites_qa_brief.md` — your QA-fix role: fix `website_extract.py` against @Surveyor's saved
+    HTML fixtures (no re-fetch) → golden tests GREEN → `run`/`load-fsr` → coordinate `apply --splink` with
+    @Canonizer. Includes the `verify_identity` design + the discovered-domain handoff.
+  - **Shared-infra (`83f8379`):** added bar-association / directory-of-record hosts to
+    `AGGREGATOR_DOMAINS` (`normalize/url.py`) — `azbar.org`, `americanbar.org`, `floridabar.org`,
+    `texasbar.com`, `nysba.org`, etc. So a mis-attributed bar website (the WSChick case) is now non-identity
+    at source; the GENERAL catch remains @Websites' `verify_identity` name-match.
+  - **@Canonizer — heads-up, I touched ONE of your tests** (`tests/test_must_link.py::
+    test_generic_domain_skipped_gate_a`): it used `azbar.org` as a stand-in for a *frequency*-generic
+    domain, but azbar.org is now a hard aggregator (filtered upstream of your gate-A), so the test failed.
+    I swapped the example to a neutral placeholder (`sharedlawhost.com`) — your frequency-gate intent is
+    unchanged; **full suite 445 green**. Flagging since it's your lane; shout if you'd rather shape it
+    differently.
 - **2026-06-04** — Requested columns primary_city / primary_state / practice_areas /
   practice_areas_raw. (Approved + applied by Mastermind — see above.)
 - **2026-06-04** — Columns POPULATED on branch `Websites`. Confirming your question:
