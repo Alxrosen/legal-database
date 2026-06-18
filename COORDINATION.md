@@ -1995,4 +1995,44 @@ were orphaned under the Mastermind section.)_
     small-firm rosters (1-4) + an over/under from picking a "N attorneys" sentence over the actual roster.
     The headcount extractor is the highest-leverage fix.
   - **Loop status:** rounds 1-2 = 8 total bugs ⇒ 10-consecutive-clean not met; more rounds `/goal`-driven.
+- **2026-06-18 22:11 UTC — ROUNDS 3-4 + new `--targeted` mode (on main `7a8db5b`). 14 RED fixtures total.**
+  Re-baselined on the updated DB (Websites was running `load-fsr` on `source="website"`; `firms`/
+  `website_enrichment` stable, so sampling was safe). **No extractor code on main yet ⇒ all 14 fixtures
+  remain open RED work orders for @Websites.**
+  - **Round 3 (random, 12 sampled): CLEAN — 0 bugs** (9 clean, 1 uncertain). A convergence signal that
+    random sampling had exhausted the common bugs (goodspeedmerrill's 30 + michiganlegalcenter's 8 both
+    verified CORRECT by judges — the suspicion flags were cleared, as designed).
+  - **New `sample --targeted N`:** since random converged, added a targeted draw over stored-suspect cohorts
+    (url-mismatch / cross-domain redirect / high-count-single-office / `.org` / malformed / bad-year;
+    excludes the deferred `needs_render` class). **Much higher yield.**
+  - **Round 4 (TARGETED, 12 fetched): 5 bugs** (7 clean, 0 uncertain; healthy, not quarantined). Counts
+    verified vs FULL staged HTML. **@Websites — 7 new RED golden rows, spanning NEW failure modes beyond
+    the round-1/2 null-misses:**
+    1. **shukerdorris.com** `attorney_count` 400→**4** — the `stated` method mis-scraped "400 lawyers" from
+       a **blog about a FAWL survey**, not the firm. (Headcount `stated` reads non-firm numbers from blog copy.)
+    2. **catalanolegal.com** 1→**4** & **klineburgerandnussey.com** null→**5** — `heading_roles` undercounts
+       rosters incl. **Of Counsel** (the recurring small-firm-roster miss).
+    3. **michaelsmithattorney.com** `is_law_related` true→**false** + `url_verification_status`→**not_a_law_firm**
+       — the domain now serves a **Thai online-gambling site**; extraction DRIFTED from baseline not_a_law_firm
+       to verified. (A former-law domain repurposed; the relevance gate accepts it.)
+    4. **abogadopichardo.com** `is_law_related` false→**true** + →**verified** — a genuine **Spanish-language
+       immigration firm** ("Abogados de Inmigración", name matches domain) the relevance gate **MISSED
+       (false negative)**. ⇒ the relevance gate needs non-English (Spanish) legal terms.
+  - **Correctly NOT flagged (precision):** mckesson.com (real non-firm, already not_a_law_firm), vlplawgroup.com
+    (50 attorneys confirmed: "about 50 attorneys"), two more gambling/e-commerce sites already not_a_law_firm.
+  - **Bug taxonomy for @Websites (14 fixtures, by failure mode — highest leverage first):** (a) **headcount**
+    — null-miss on small rosters (anderson 1, apw 3, ccrow 4, klineburger 5), undercount incl. of-counsel
+    (catalanolegal 1→4, gross-shuman 15→24, jameslafevor →3), and stated-figure over-scrape (shukerdorris
+    400→4); (b) **relevance/verification** — false-positive on non-firms (walmart, michaelsmith-gambling) and
+    **false-negative on non-English firms** (abogadopichardo). The headcount + relevance gates are the two
+    highest-leverage fixes.
+  - **Size monitor:** R3 median ~502 KB / no oversize; R4 median ~401 KB, 1 oversize (michaelsmith 1518 KB —
+    a gambling interstitial; I trimmed that fixture to home). Fixtures now gzipped, suite ~1.4 MB total.
+  - **For @Canonizer/@Websites (not my fixtures):** `jameslafevor.com`→globalgrahamlaw.com (R2) and
+    `juliecaselawoffice.com`→mynameisjabee.com (R4, now an Indonesian e-commerce/gambling site) — cross-domain
+    redirects / repurposed domains for the `redirect_domain` mis-attribution guard.
+  - **Loop status:** 4 rounds, ~13 bugs / 14 golden rows; 10-consecutive-clean NOT met (R4 had 5). Targeted
+    cohorts still have depth (url-mismatch 1.4k, redirect 1.6k unmined). Pausing here for @Websites to work
+    the backlog is reasonable; I can also run more targeted rounds. I'll **`apply-rescrape` only AFTER
+    @Websites lands the parser fixes**, then re-verify.
 - _(add entries here)_
