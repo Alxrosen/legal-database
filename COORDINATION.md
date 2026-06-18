@@ -2035,4 +2035,31 @@ were orphaned under the Mastermind section.)_
     cohorts still have depth (url-mismatch 1.4k, redirect 1.6k unmined). Pausing here for @Websites to work
     the backlog is reasonable; I can also run more targeted rounds. I'll **`apply-rescrape` only AFTER
     @Websites lands the parser fixes**, then re-verify.
+- **2026-06-18 22:45 UTC — ROUND 5 (bad-year cohort): a split finding for @Websites AND @Canonizer (main `99c1b81`).**
+  Mined `firms.year_founded` < 1850 / > 2026. Because `firms.year_founded` is **FUSED**, I ran the REAL
+  extractor over each fixture to find the true culprit — and the golden test auto-separates extractor bugs
+  from fusion artifacts (a captured `year_founded` lands GREEN when the extractor is innocent). Result:
+  - **🔧 @Websites — `years_in_operation` mis-reads "combined/collective experience"** (the systematic one).
+    Pages say *"Over 200 Years of Experience"* / *"200 years of combined legal experience"* and the extractor
+    sets `years_in_operation=200`. Representative golden: **pwggc.com** (`years_in_operation` 200→none). This
+    recurs across the whole cohort (donmarcari, kearnsrotolo, coferconnelly, habbas, …) — one fix clears many.
+  - **🔧 @Websites — two distinct `year_founded` extractor bugs:** **faxonlawgroup.com** extracts **1791**
+    from the 7th-Amendment line ("...since 1791") → should be none; **hooperhathaway.com** MISSES the stated
+    founding ("established by Frank Stivers in **1895**") and returns None → should be 1895.
+  - **🧭 @Canonizer/@Cleanser — `year_founded` is being DERIVED in FUSION** from the bad `years_in_operation`:
+    `year_founded ≈ 2026 − years_in_operation` (200→1826). For pwggc/donmarcari/kearnsrotolo/sandsanderson/
+    akintate/coferconnelly/habbas/wyomingllc the **extractor returns `year_founded=None`** but `firms.year_founded`
+    is 1826/1836/etc. ⇒ that's `fuse_year_founded` (or equivalent) inventing a founding year from
+    combined-experience. Even after @Websites fixes `years_in_operation`, please check the fusion derivation.
+  - **Precision held:** **magavern.com (1826)** and **nsglaw.com (1827)** are GENUINELY that old (explicitly
+    "Established 1826/1827") — extractor correct, NOT flagged.
+  - **Also captured:** **wyomingllcattorney.com** is_law_related true→false (+not_a_law_firm) — an LLC-formation
+    /registered-agent service explicitly "without the law firm" (a new non-firm class); **faxonlawgroup.com**
+    `primary_city` "Street New Haven"→"New Haven" (leading-token parse artifact); **habbaslaw.com**
+    `attorney_count` 1→9 (solo mis-detection on a 9-attorney firm). Removed an initial pwggc `year_founded`
+    mis-capture once the extractor proved innocent there.
+  - **Tally:** 21 RED golden rows across the extractor's failure surface — headcount (null-miss / of-counsel
+    & big undercount / solo-misdetect / survey over-scrape), relevance (retail/gambling/LLC-service false-pos,
+    non-English false-neg), years_in_operation (combined-experience), year_founded (amendment over-extract,
+    missed stated year), primary_city (parse artifact). Loop continues (autonomous, per Alex).
 - _(add entries here)_
