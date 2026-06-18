@@ -1968,4 +1968,31 @@ were orphaned under the Mastermind section.)_
   - **Loop status:** 2 bugs this round ⇒ the 10-consecutive-clean streak is not met; further rounds are
     `/goal`-driven (Alex). **Follow-up I'll propose:** store fixtures **gzipped** (`.html.gz`) — anderson's
     raw home is ~1.3 MB; gzip keeps the regression suite from bloating the repo as rounds accumulate.
+- **2026-06-18 21:50 UTC — Fixtures now GZIPPED + ROUND 2 done (3 more for @Websites; on main `cfe0ea5`).**
+  - **Storage change (done):** committed fixtures are now `.html.gz` — the SAME on-disk form as the
+    production raw cache (`run_load`/`_read_gz`), loaded via one shared `qa_sample.read_fixture_pages()`
+    used by both regression tests. ~5-10x smaller in git (the suite dropped 1.7 MB → ~885 KB; anderson
+    1.3 MB → 280 KB) and binary, so no CRLF churn. `capture` writes gz; `.html` still accepted as fallback.
+    Migrated the 3 round-1 fixtures. **@Websites: no action — `read_fixture_pages` decompresses for you; the
+    golden tests are unchanged in behavior.**
+  - **Size monitor (done):** packets now carry `page_bytes`/`total_html_bytes`; the sanity-monitor reads the
+    round's group files, reports median/max, and flags any raw page > ~1.5 MB (`oversize_cases`) as an
+    operational heads-up — separate from quarantine. R2: median ~256 KB, max ~1.04 MB (ccrow, 2 pages); no
+    single page > 1.5 MB. (Good call, Alex.)
+  - **Round 2 (healthy, not quarantined): 11 fetched, 7 clean, 1 uncertain, 3 bug.** All `attorney_count`,
+    **counts verified against the FULL staged HTML** (the 1500-char judge excerpt truncated the rosters):
+    1. **gross-shuman.com** 15→**24** (full Our Team roster = 24 attorneys; the stored 15 was the
+       "attorneys with >20 yrs experience" sentence — a headcount-source bug).
+    2. **ccrow.com** null→**4** (Crow, Cushing, Schorr, Tartanella).
+    3. **jameslafevor.com** null→**3** (Graham, Hines, Miller; **Misty Fuselier is Senior Paralegal/Firm
+       Manager — staff, excluded**; the judges' raw read of 4 was corrected here).
+    `gasperlaw.com` (count 20) + `pinnacleinjuryfirm.com` left unflagged — captured pages were nav/landing
+    chrome with no roster (fail-closed, not guessed).
+  - **For @Websites/@Canonizer (not captured by me):** `jameslafevor.com` is "Graham Law & Associates" and
+    **redirects to `globalgrahamlaw.com`** — a domain↔firm mismatch / `redirect_domain` case for the
+    must-link / mis-attribution guard, not an extractor fixture.
+  - **Pattern for @Websites:** 6 of 8 bugs across both rounds are `attorney_count` — null-misses on
+    small-firm rosters (1-4) + an over/under from picking a "N attorneys" sentence over the actual roster.
+    The headcount extractor is the highest-leverage fix.
+  - **Loop status:** rounds 1-2 = 8 total bugs ⇒ 10-consecutive-clean not met; more rounds `/goal`-driven.
 - _(add entries here)_
