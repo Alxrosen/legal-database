@@ -155,10 +155,15 @@ def test_name_domain_affinity():
 
 
 def test_generic_domain_skipped_gate_a():
+    # A neutral domain shared across >5 distinct firm cores must hit the
+    # FREQUENCY-based generic-skip gate. (Use a placeholder, NOT a real bar/
+    # aggregator host — azbar.org et al. are now in AGGREGATOR_DOMAINS and get
+    # filtered as non-identity upstream, before this gate; that path is covered
+    # elsewhere. This test isolates the frequency gate.)
     rows = [
         {
             "unique_id": i,
-            "website_identity": "azbar.org",
+            "website_identity": "sharedlawhost.com",
             "name_core_key": f"firm{i:02d}",
             "source": "az_bar",
             "name_normalized": f"firm {i} llp",
@@ -169,7 +174,7 @@ def test_generic_domain_skipped_gate_a():
     edges, stats, groups = website_must_link_edges(_df(rows), {})
     assert edges == []
     assert stats.get("generic_domains_skipped") == 1
-    assert "azbar.org" not in groups
+    assert "sharedlawhost.com" not in groups
 
 
 def test_cross_domain_redirect_merges_acquired_firm():
