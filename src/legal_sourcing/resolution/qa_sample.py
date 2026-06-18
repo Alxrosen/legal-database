@@ -410,6 +410,46 @@ def _inspect_has_website(
     return packet
 
 
+def _targeted_candidates(session: Session, n: int) -> list[str]:
+    """N identity-website firms whose STORED signals already look suspect — a
+    higher-yield draw than random once the common bugs are mapped. Cohorts:
+    mis-attributed/non-firm verification, cross-domain redirect, high count in a
+    single office, .org website, malformed (userinfo) domain, implausible founding
+    year. Excludes the known-deferred needs_render (thin/JS) class. The packet's
+    own suspicion flags re-derive the reason, so we just print the cohort mix."""
+    rows = session.execute(
+        text(
+            """
+            SELECT DISTINCT we.website,
+              CASE
+                WHEN we.url_verification_status IN ('legal_but_mismatched','not_a_law_firm') THEN 'url_mismatch'
+                WHEN we.redirect_domain IS NOT NULL AND we.redirect_domain != we.website THEN 'redirect'
+                WHEN we.attorney_count_min >= 30 AND COALESCE(we.office_count,0) <= 1 THEN 'high_count_single_office'
+                WHEN we.website LIKE '%.org' THEN 'org_domain'
+                WHEN f.website_normalized LIKE '%@%' THEN 'malformed_domain'
+                ELSE 'bad_year'
+              END AS reason
+            FROM website_enrichment we
+            JOIN firms f ON f.website_normalized = we.website
+            WHERE we.url_verification_status IN ('legal_but_mismatched','not_a_law_firm')
+               OR (we.redirect_domain IS NOT NULL AND we.redirect_domain != we.website)
+               OR (we.attorney_count_min >= 30 AND COALESCE(we.office_count,0) <= 1)
+               OR we.website LIKE '%.org'
+               OR f.website_normalized LIKE '%@%'
+               OR (f.year_founded IS NOT NULL AND (f.year_founded < 1850 OR f.year_founded > :yr))
+            ORDER BY random()
+            LIMIT :n
+            """
+        ),
+        {"n": n, "yr": _now().year},
+    ).all()
+    from collections import Counter
+
+    mix = Counter(r[1] for r in rows)
+    print(f"  targeted cohort mix: {dict(mix)}")
+    return [r[0] for r in rows]
+
+
 def _heuristic_candidates(name: str) -> list[str]:
     core = firm_name_core(name)
     if not core:
@@ -476,7 +516,10 @@ def cmd_sample(args: argparse.Namespace) -> int:
         else:
             if args.domains:
                 websites = [d.strip().lower() for d in args.domains.split(",") if d.strip()]
-                src = "targeted"
+                src = "explicit"
+            elif args.targeted:
+                websites = _targeted_candidates(session, args.targeted)
+                src = "targeted-suspicious"
             else:
                 websites = _random_firm_websites(session, args.random, min_records=args.min_records)
                 src = "random"
@@ -665,8 +708,14 @@ def main() -> int:
     g.add_argument("--random", type=int, help="N has-website firms to fetch + verify")
     g.add_argument(
         "--domains",
-        help="comma-separated domains to inspect directly (targeted; e.g. seed the "
-        "known cases gagemathers.com,walmart.com)",
+        help="comma-separated domains to inspect directly (e.g. seed known cases "
+        "gagemathers.com,walmart.com)",
+    )
+    g.add_argument(
+        "--targeted",
+        type=int,
+        help="N firms whose STORED signals look suspect (mis-attribution / redirect / "
+        "high-count-single-office / .org / malformed / bad-year) — higher yield than random",
     )
     g.add_argument("--no-website", type=int, help="N website-less firms to surface for search")
     s.add_argument("--min-records", type=int, default=1, help="min source records behind a domain")
