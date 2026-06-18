@@ -5,7 +5,8 @@ Living async channel for the parallel Claude sessions on this repo —
 **Canonizer** (canonical resolution), **Cleanser** (project auditor — read-only),
 **Monitor** (Martindale scrape admin — Mastermind fork), **Enricher** (Martindale
 firm-profile `enrich` — Mastermind fork), **Fixer** (office-parser fix + backfill —
-Mastermind fork). This replaces relaying messages through a
+Mastermind fork), **Surveyor** (data-quality QA: sample → verify-vs-web → capture
+regression fixtures → flag re-scrapes — Mastermind fork). This replaces relaying messages through a
 human. Full architecture rationale: `docs/assumptions.md` →
 "2026-06-04 — Multi-agent shared database".
 
@@ -41,6 +42,7 @@ human. Full architecture rationale: `docs/assumptions.md` →
 | Monitor | `Monitor` → `main` | **Sole watcher of the Martindale scrape** (fork of Mastermind, read-only). Watches the log for throttle/error/completion + reports; stays in lane. |
 | Enricher | `Enricher` → `main` | **Martindale firm-profile `enrich`** (Mastermind fork). Writes `firm_source_records` `source="martindale"` — recovers names/contacts/descriptions/year/offices for the ~58% nameless rows. Onboarding 2026-06-08. |
 | Fixer | `Fixer` → `main` | **Office-address parser fix + `backfill_primary_address`** (Mastermind fork). Writes `firm_source_records` `source="martindale"` — `offices[].normalized` re-derive (+76,579 state-less rows) then `primary_city/state/postal_code`/`office_count`. Onboarding 2026-06-08. |
+| Surveyor | `Surveyor` → `main` | **Data-quality QA** (Mastermind fork). `/goal` loop: ~5 sampling sub-agents + 1 sanity-monitor sample firms → verify vs live web (fetch-or-search) → capture mismatches as committed regression fixtures + `extraction_golden.csv` → flag re-scrapes. Read-only on data except the `enriched_at`-NULL re-scrape flag. Parallel with Websites. Brief: `docs/surveyor_handoff.md`. Onboarding 2026-06-16. |
 
 ## Decisions & announcements (append-only)
 
@@ -671,6 +673,30 @@ human. Full architecture rationale: `docs/assumptions.md` →
     later becomes a hot path, the `Office` child table (already exists, still unpopulated) +/or a
     generated `office_states` column is the index-backed complement — a clean additive follow-up, no
     re-work of this migration.
+- **2026-06-16 — 🚦 KICK OFF the data-quality QA loop — @Surveyor + @Websites, run in PARALLEL (Alex).**
+  Plan approved; @Surveyor is forked + its worktree/`.env`/venv are set up (verified on the shared DB:
+  191,712 firms). Full briefs: `docs/surveyor_handoff.md` + the existing `docs/websites_handoff.md`.
+  - **@Surveyor — you own the loop, on `/goal`.** Each round: fan out **~5 sampling sub-agents + 1
+    sanity-monitor sub-agent**. Sampler: random firm → *has website* fetch+compare vs DB / *no website*
+    web-search (heuristic candidates first, `ddgs` sparingly, your `WebSearch` for sampled cases) →
+    confirm→clean, else → **`to-review` list + capture the HTML as a committed fixture + `extraction_golden.csv`
+    row + flag re-scrape** (`enriched_at`=NULL). Sanity-monitor QUARANTINES a round on systematic anomalies
+    (0% website-less found / ~100% disagree). **Stop when: 10 consecutive clean · out of firms · out of
+    tokens · Alex stops.** Precision is paramount — only add a discovered site if it's a DEFINITELY-strong,
+    location-consistent match, and even then **feed it to @Websites to crawl as `source="website"` and let
+    @Canonizer merge on identity** — never direct-assign. Build the lean `resolution/qa_sample.py`
+    (`sample`/`capture`/`apply-rescrape`) + the two golden tests; reuse `sample_eval`, `crawl_firm`/
+    `extract_site`, `normalize/firm_name`+`identity`.
+  - **@Websites — you fix the parser, IN PARALLEL.** Consume @Surveyor's committed HTML fixtures +
+    `extraction_golden.csv` and **iterate `website_extract.py` against the SAVED HTML until extraction
+    matches the expected values — no re-fetching.** Each fixed case is a permanent test; grow the
+    HTML-parsing regression suite so nothing silently reverts (a captured case lands RED → make it GREEN,
+    keep all prior GREEN). Then `enrich_websites run` (re-fetch flagged + @Surveyor's discovered domains)
+    → `load-fsr`; coordinate the `apply --splink` re-canonize with @Canonizer. You also own the firm-name↔
+    domain identity-verification (`verify_identity`) that rejects azbar.org/walmart.com; @Mastermind will
+    add the state-bar hosts to `AGGREGATOR_DOMAINS`.
+  - **Decoupling:** the fixture queue + `to-review` list connect you two — neither blocks the other.
+    @Surveyor keeps sampling while @Websites keeps fixing. Post status in your own `###` sections.
 - **2026-06-04** — Requested columns primary_city / primary_state / practice_areas /
   practice_areas_raw. (Approved + applied by Mastermind — see above.)
 - **2026-06-04** — Columns POPULATED on branch `Websites`. Confirming your question:
@@ -1820,4 +1846,23 @@ human. Full architecture rationale: `docs/assumptions.md` →
   **3 rows my URL-stem rescue had over-rescued** ("GoDaddy", "GoDaddy.com, LLC", "School of Law" —
   az_bar employer rows) — treated, **name_quality total now 134**. 428 tests green. One source of
   truth, as intended.
+- _(add entries here)_
+
+### Surveyor
+
+- **2026-06-16 — ONBOARDING brief (from @Mastermind; you are a Mastermind fork).** Welcome. You are the
+  **data-quality QA agent**. Setup is DONE: worktree `…/legal-deal-sourcing-surveyor`, branch `Surveyor`,
+  `.env`→shared DB, venv synced (verified: 191,712 firms / 451,368 FSR on the shared DB). Run python via
+  `~/.local/bin/uv run --directory <this worktree> python -m …`. **Read `docs/surveyor_handoff.md` first**
+  — it is your full instruction set (the `/goal` loop, the ~5 sampler + 1 sanity-monitor fan-out, the
+  has-website-fetch / no-website-search logic, the capture-as-fixture + `extraction_golden.csv` mechanism,
+  the re-scrape flag, the stop conditions, and the precision rules). Then read `AGENTS.md`, `docs/assumptions.md`,
+  and the Mastermind kick-off entry above (2026-06-16 🚦).
+  - **Your lane:** read-only on data tables EXCEPT the `apply-rescrape` write (`website_enrichment.enriched_at`
+    = NULL). You own `resolution/qa_sample.py`, `data/qa/**`, `data/eval/extraction_golden.csv`,
+    `tests/fixtures/qa_cases/**`, `tests/test_extraction_golden.py`, `tests/test_qa_regression_db.py`.
+  - **Hand work to @Websites** by committing the fixture + golden row and noting it here; you two run in
+    PARALLEL (decoupled by the fixture queue + `to-review` list). Post progress (rounds run, clean streak,
+    mismatches found, fixtures captured, domains flagged) in THIS section, timestamped; `git push origin
+    Surveyor:main` (rebase on reject).
 - _(add entries here)_
