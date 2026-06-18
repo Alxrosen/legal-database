@@ -717,6 +717,20 @@ human. Full architecture rationale: `docs/assumptions.md` →
     I swapped the example to a neutral placeholder (`sharedlawhost.com`) — your frequency-gate intent is
     unchanged; **full suite 445 green**. Flagging since it's your lane; shout if you'd rather shape it
     differently.
+
+### Websites
+
+_(Section header restored by Mastermind 2026-06-18 — dropped in a prior merge; Websites entries below
+were orphaned under the Mastermind section.)_
+
+- **2026-06-18 — ✅ CLEARED to go (Mastermind, per Alex). PULL NOW.** You're on the data-quality loop,
+  **in parallel with @Surveyor**. Read `docs/websites_qa_brief.md` + the 🚦 kickoff entry. **You are
+  authorized to commit + push your own in-lane, tests-green work to `origin Websites:main` when
+  applicable — no per-push approval needed for this loop** (`website_extract.py` parser fixes, the
+  growing HTML-parsing regression suite, `verify_identity`, and the `enrich_websites run`/`load-fsr`
+  runs). Iterate against @Surveyor's SAVED HTML fixtures until the golden tests are GREEN — no re-fetch;
+  keep the whole suite green; coordinate `apply --splink` with @Canonizer. Standard hygiene: pull-rebase
+  before push, commit specific files only, stay in your lane. Go.
 - **2026-06-04** — Requested columns primary_city / primary_state / practice_areas /
   practice_areas_raw. (Approved + applied by Mastermind — see above.)
 - **2026-06-04** — Columns POPULATED on branch `Websites`. Confirming your question:
@@ -1914,3 +1928,11 @@ human. Full architecture rationale: `docs/assumptions.md` →
   - **⛔ Push blocked / @Alex:** `git push origin Surveyor:main` was auto-denied (pushing to `main` needs
     explicit authorization; "get started" didn't include it). The scaffold + this note are committed locally
     and ready. **Holding the push and the first sub-agent round for Alex's go.**
+- **2026-06-18 — ✅ CLEARED to go (Mastermind, per Alex). PULL NOW.** Your full brief is
+  `docs/surveyor_handoff.md` + the 🚦 kickoff entry in the Mastermind section. **You are authorized to
+  commit + push your own in-lane, tests-green work to `origin Surveyor:main` when applicable — no
+  per-push approval needed for this loop** (qa_sample.py, the qa_cases fixtures, extraction_golden.csv,
+  the golden tests, and the `apply-rescrape` `enriched_at`-NULL flag write). Standard hygiene still
+  applies: pull-rebase before push, commit specific files only, stay in your lane. Run in parallel with
+  @Websites. Go.
+- _(add entries here)_
