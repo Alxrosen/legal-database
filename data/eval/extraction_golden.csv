@@ -1,3 +1,5 @@
 case_id,website,field,expected_value,now_year,note
+andersonlawoffice.net_927584f4,andersonlawoffice.net,attorney_count,1,2026,"Legal Team page: Robert A. Anderson Jr., Attorney at Law (sole practitioner); Abby Anderson is Legal Assistant (staff). Exactly 1 attorney; extractor produced null."
+apwlaw.net_b2436358,apwlaw.net,attorney_count,3,2026,"Arshad, Pangere & Warring LLP Profiles lists 3 named attorneys: Sophia J. Arshad, Matthew J. Warring, Vasilia M. Pangere; extractor produced null."
 walmart.com_b440031c,walmart.com,is_law_related,false,2026,walmart.com is the Walmart retail homepage (not a law firm); relevance_gate false-positives: is_law_related=True with terms=[]. Baseline correctly had is_law_related=0.
 walmart.com_b440031c,walmart.com,url_verification_status,not_a_law_firm,2026,Non-firm retail site marked verified (regressed from baseline not_a_law_firm); follows from the is_law_related false-positive.
