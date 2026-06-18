@@ -90,9 +90,75 @@ Plus the regression tests (these are the spec for Websites): `tests/test_extract
   + `resolution/identity.py`, the tmp_path-SQLite + `monkeypatch make_engine` test pattern, inline-HTML
   fixtures in `tests/test_website_extract.py`.
 
+## DATA MODEL & PROVENANCE — where each wrong number actually lives (READ THIS FIRST)
+Three layers; the numbers Alex flagged are **not** authored on `firms` — they're **fused** there:
+1. **`firm_source_records`** — raw per-source rows (martindale / justia / az_bar / findlaw / **website**).
+   `(source, source_firm_id)` unique. Identity + raw fields per source.
+2. **`website_enrichment`** — the per-DOMAIN crawl cache = **the extractor's output**. Keyed by `website`
+   (bare domain). Holds `attorney_count_min` / `_method` / `_is_min` / `_confidence` / `_raw`,
+   `staff_count_min`, `years_in_operation_min`, `office_count` / `office_addresses`, `practice_areas`,
+   `url_verification_status` / `_score`, `redirect_domain`, `enriched_at`, `raw_html_path`. **This is where
+   gagemathers' "9" and WSChick's "26"/"1981" live**, produced by `enrichment/website_extract.py`.
+3. **`firms`** — canonical, **FUSED** by `resolution/fusion.py` at `apply` time. Note current shapes
+   (verified live, model now matches): **`city`/`state` are JSON arrays of ALL offices** (`["AZ","CA"]`),
+   `practice_areas` is a JSON slug list, `attorney_count`/`year_founded` are scalars, `field_provenance`
+   (JSON) records which source won each field.
+
+**Provenance you need for comparisons:**
+- `firms.attorney_count` ← `fuse_attorney_count` = roughly **max(verified website count, distinct-attorney
+  union across source rows)** — a *verified* `website_enrichment.attorney_count_min` is authoritative. So a
+  wrong canonical count almost always traces to the extractor's headcount → `website_enrichment` → fused up.
+  (Confirmed example: firm 1 `attorney_count=2` ⇐ `website_enrichment.attorney_count_min=2, method=solo`.)
+- `firms.year_founded` ← fused; a website's `years_in_operation` only counts at ≥5 (noise guard).
+- `firms.website_normalized` ← `fuse_website` (weighted vote over identity domains). A WRONG website
+  (azbar.org/walmart.com) is a **mis-attribution** — the `verify_identity` gap, Websites' lane.
+- `firms.city/state/practice_areas` ← fused unions across the cluster.
+
+**THE FIX PATH (you flag; Websites + the chain fix):** edit `website_extract.py` → `enrich_websites load`
+(re-extract cached HTML → updates `website_enrichment`, no network) → `load-fsr` (refresh `source="website"`
+FSR) → `apply --splink --must-link` (CLEARS + rebuilds `firms`). **You cannot edit `firms` directly — it is
+wiped and rebuilt every apply.** This is exactly why we capture the bad HTML as a fixture and fix the
+extractor, not the row.
+
+## SCOPE — what IS a Surveyor finding, and what to NOT re-flag
+**In scope (per-firm EXTRACTED data vs the live site):** wrong `attorney_count` (attorneys vs staff),
+wrong `year_founded`, wrong/mis-attributed `website`, missing/extra offices, wrong practice areas, a
+non-firm site marked `verified`.
+**OUT of scope / by-design — do NOT raise these as bugs** (you'll waste rounds + trip the sanity-monitor):
+- **Nameless Justia-only firms** — Justia carries no firm name; namelessness there is expected (named by
+  website/martindale merge, not your concern).
+- **A firm that genuinely has no website** — individually fine; only the *aggregate* "0% of website-less
+  firms found online" is a finding (the sanity-monitor's job, = our search is broken).
+- **Shared toll-free / lead-gen phones** (e.g. `+18336461198` on 450 records) — a deliberate non-merge
+  guard, not a data error.
+- **MERGE decisions** (should firm A + B be one? did a multi-domain firm split? conservative under-merges)
+  — that's Canonizer / the eval harness, NOT you. You judge a *single* firm's fields against *its* site.
+
+## CONCRETE RECIPE (per sampled firm)
+1. Pick a firm (`sample_eval._random_firm_websites`, or random `firms`). Get `firms.website_normalized`.
+2. If it has a website: fetch live (`crawl_firm`) → `extract_site` → compare the re-extracted
+   `attorney_count` / `year_founded` / offices / practice areas / **and whether the site's name matches the
+   firm** (identity) against `firms` + the firm's `website_enrichment` row. Also eyeball the live page as
+   ground truth (an LLM read of the team/about page is your "truth" for headcount).
+3. If no website: heuristic candidate domains → `ddgs`/`WebSearch` → identity+location match.
+4. Mismatch → `to-review` + capture fixture + golden row + flag re-scrape (per the loop section). Confirm →
+   clean. Seed your first fixtures with the known cases: **gagemathers.com** (count 9→3, staff 3),
+   **WSChick** (count 26→2, year 1981→none, website azbar.org→mis-attributed), **walmart.com** (non-firm).
+
+## AUTHORITATIVE DOCS to consult
+- `docs/schema.md` — table-by-table (incl. the `firms.city/state` JSON-array note).
+- `docs/assumptions.md` — the decision log (search "website", "attorney_count", "lead-gen", "2026-06-08").
+- `docs/data_sources/firm_websites.md` §12–13 — the website-enrichment extraction rules + verification.
+- `docs/audit/2026-06-08-data-quality.md` — the known corpus issues (so you don't re-flag them).
+- `resolution/fusion.py` (`fuse_attorney_count`, `fuse_website`) — exactly how canonical fields are chosen.
+
 ## Operational gotchas
 - Run via `uv run --directory <worktree>`; commit specific files only (never `git add -A`); don't disturb
   another agent's uncommitted WIP; no `Co-Authored-By: Claude` trailer.
 - Live fetches flake — handle like `crawl_firm` (record `unreachable`, never abort the round).
 - Pin `now_year` per golden row so year assertions don't rot over calendar time.
 - Surface each row's `enriched_at` in findings so a stale baseline isn't misread as a new bug.
+- The shared DB is live + multi-writer (WAL). Your reads are always safe; your ONE write
+  (`enriched_at`=NULL) is column-disjoint + idempotent. Never write `firms`/source rows directly.
+- `/goal` is the iteration driver (Alex runs it) — you don't build it; you structure each round to fan out,
+  track the consecutive-clean counter, and honor the stop conditions.

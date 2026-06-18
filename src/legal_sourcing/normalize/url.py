@@ -100,6 +100,23 @@ AGGREGATOR_DOMAINS: frozenset[str] = frozenset(
         "goo.gl",
         "bing.com",
         "yelp.com",
+        # Bar associations / official member-directories of record — never a single
+        # firm's own website (azbar.org was mis-attributed as "WSChick PC"'s site).
+        # The GENERAL catch is the extractor's firm-name<->domain identity match +
+        # the .gov/.edu rule (covers e.g. calbar.ca.gov); these are the frequent
+        # non-.gov bar hosts worth hard-listing.
+        "americanbar.org",
+        "abanet.org",
+        "azbar.org",
+        "floridabar.org",
+        "texasbar.com",
+        "nysba.org",
+        "wsba.org",
+        "illinoisbar.org",
+        "michbar.org",
+        "ncbar.org",
+        "missouribar.com",
+        "ohiobar.org",
     }
 )
 
