@@ -240,15 +240,18 @@ def _firms_context(session: Session, website: str) -> dict[str, Any] | None:
 # Staging: recover the raw HTML crawl_firm just wrote, for fixtures + excerpt
 
 
-def _stage_pages(website: str, run_dir: Path) -> tuple[dict[str, str], dict[str, str]]:
+def _stage_pages(
+    website: str, run_dir: Path
+) -> tuple[dict[str, str], dict[str, str], dict[str, int]]:
     """Recover the raw HTML crawl_firm just wrote -> stage as plain .html (for
     fixtures) and return per-role visible text (the distilled signal a judge
-    reads — esp. the attorneys/team roster, which a home-biased blob truncates)."""
+    reads — esp. the attorneys/team roster, which a home-biased blob truncates)
+    plus per-role RAW byte sizes (so the sanity-monitor can watch HTML size)."""
     base = get_settings().raw_data_dir / "firm_websites"
     bucket = _bucket(website)
     gzs = sorted(base.glob(f"*/{bucket}/*.html.gz"), key=lambda p: p.stat().st_mtime)
     if not gzs:
-        return {}, {}
+        return {}, {}, {}
     # Latest gz per role wins (mtime-sorted; later overwrites earlier).
     by_role: dict[str, Path] = {}
     for gz in gzs:
@@ -259,13 +262,15 @@ def _stage_pages(website: str, run_dir: Path) -> tuple[dict[str, str], dict[str,
     out_dir.mkdir(parents=True, exist_ok=True)
     staged: dict[str, str] = {}
     page_text: dict[str, str] = {}
+    page_bytes: dict[str, int] = {}
     for role, gz in by_role.items():
         html = _read_gz(gz)
         fp = out_dir / f"{role}.html"
         fp.write_bytes(html)
         staged[role] = _rel(fp)
         page_text[role] = _visible_text(_tree(html))[:EXCERPT_CHARS]
-    return staged, page_text
+        page_bytes[role] = len(html)
+    return staged, page_text, page_bytes
 
 
 # ---------------------------------------------------------------------------
@@ -391,12 +396,15 @@ def _inspect_has_website(
     if packet["status"] == "unreachable":
         packet["staged_pages"] = {}
         packet["page_text"] = {}
+        packet["page_bytes"] = {}
         packet["drift"] = []
         packet["suspicion"] = ["unreachable_live"]
         return packet
-    staged, page_text = _stage_pages(website, run_dir)
+    staged, page_text, page_bytes = _stage_pages(website, run_dir)
     packet["staged_pages"] = staged
     packet["page_text"] = page_text
+    packet["page_bytes"] = page_bytes
+    packet["total_html_bytes"] = sum(page_bytes.values())
     packet["drift"] = _drift(fresh, baseline)
     packet["suspicion"] = _suspicion(website, fresh, firms_ctx, baseline, now_year)
     return packet
