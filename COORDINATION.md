@@ -1885,4 +1885,32 @@ human. Full architecture rationale: `docs/assumptions.md` →
     PARALLEL (decoupled by the fixture queue + `to-review` list). Post progress (rounds run, clean streak,
     mismatches found, fixtures captured, domains flagged) in THIS section, timestamped; `git push origin
     Surveyor:main` (rebase on reject).
-- _(add entries here)_
+- **2026-06-18 20:40 UTC — QA-loop ENGINE is built, tested, and committed (awaiting push auth).**
+  Read the enriched `docs/surveyor_handoff.md` (DATA MODEL & PROVENANCE + SCOPE) and the AGGREGATOR_DOMAINS
+  bar-host add — thanks @Mastermind; design is aligned. Stood up the deterministic engine the `/goal` loop
+  drives (commits `cdd70e2`, `b9a8f42`, on branch `Surveyor`, **not yet on main — see push note below**):
+  - **`resolution/qa_sample.py`** — `sample` (`--random N` / `--domains d1,d2` / `--no-website N`): re-fetch
+    via the production `crawl_firm`, diff the fresh extraction vs the `website_enrichment` baseline + `firms`
+    context, stage raw HTML, emit `data/qa/<ts>/findings.json` evidence packets (baseline + fresh +
+    `text_excerpt` + suspicion flags + `baseline_enriched_at`). `capture` (promote staged HTML → committed
+    fixture + `extraction_golden.csv` row + `to_review`/`rescrape` queues). `apply-rescrape` (`enriched_at`
+    =NULL — my only data write). Reuses `_random_firm_websites`, `crawl_firm`/`extract_site`,
+    `is_identity_website`, `normalize.firm_name`.
+  - **Design note:** re-extracting the same pages reproduces the same (possibly wrong) value, so the CLI
+    flags *drift* + *suspicion* only; **ground-truth judgment is the sub-agent's job** (LLM reads the
+    `text_excerpt`/staged HTML, per the handoff recipe). Honors SCOPE: dropped a merge-domain flag (that's
+    @Canonizer's lane), do-not-re-flag list respected.
+  - **Golden suite (the spec I hand @Websites):** `tests/test_extraction_golden.py` (parametrized over the
+    golden CSV → `extract_site` over committed fixtures → assert; `now_year` pinned) + `tests/
+    test_qa_regression_db.py` (drives the real `run_load` over the gz/sidecar bucket → asserts stored
+    `website_enrichment`). Verified end-to-end: a captured case lands **RED** in both, and the synthetic
+    `run_load` plumbing test is **GREEN** (445→448 suite stays green; new files lint clean).
+  - **Live smoke test already found a real bug:** `reid@reidnathan.com` — an email leaked into
+    `website_normalized` (real domain `reidnathan.com`). Flagged `malformed_domain`; this is a *normalize*
+    fix (→ @Fixer / `normalize/url`), not an extractor fixture. Noting for triage, not capturing as golden.
+  - **@Websites — nothing to consume yet** (no fixtures captured pending the first real round + push). The
+    pipeline is ready: a captured case = a RED `test_extraction_golden` you make GREEN against the saved
+    HTML (no re-fetch), then `run`/`load-fsr` → coordinate `apply --splink` with @Canonizer.
+  - **⛔ Push blocked / @Alex:** `git push origin Surveyor:main` was auto-denied (pushing to `main` needs
+    explicit authorization; "get started" didn't include it). The scaffold + this note are committed locally
+    and ready. **Holding the push and the first sub-agent round for Alex's go.**
