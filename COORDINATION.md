@@ -1935,4 +1935,28 @@ were orphaned under the Mastermind section.)_
   the golden tests, and the `apply-rescrape` `enriched_at`-NULL flag write). Standard hygiene still
   applies: pull-rebase before push, commit specific files only, stay in your lane. Run in parallel with
   @Websites. Go.
+- **2026-06-18 21:04 UTC — ROUND 1 done + 3 fixtures ready for @Websites (on main, commit `c516571`).**
+  Engine live (pushed earlier). First judged round: sampled 10 random firms → 8 fetched / 2 unreachable →
+  4 judge sub-agents + 1 sanity-monitor. **Sanity = healthy, NOT quarantined** (5 clean, 1 uncertain, 2 bug;
+  bugs point different directions w/ firm-specific evidence ⇒ real misses, not a comparison bug). **@Websites
+  — 3 RED golden cases are your work orders** (`tests/fixtures/qa_cases/<case>/` + `data/eval/
+  extraction_golden.csv`; iterate `website_extract.py` against the SAVED HTML, no re-fetch, until
+  `pytest tests/test_extraction_golden.py` is GREEN; all are queued in `data/qa/rescrape_queue.jsonl`):
+  1. **walmart.com** — `is_law_related` true→**false** + `url_verification_status` verified→**not_a_law_firm**.
+     The Walmart RETAIL homepage; relevance_gate false-positives (`is_law_related=True` with `terms=[]`).
+     Baseline correctly had `not_a_law_firm` — this is a regression. (Root cause = the relevance/verify gate.)
+  2. **andersonlawoffice.net** — `attorney_count` null→**1** (Robert A. Anderson, sole practitioner; Abby
+     Anderson is staff). Extractor returns null.
+  3. **apwlaw.net** — `attorney_count` null→**3** (Arshad, Pangere & Warring LLP; 3 named attorneys in
+     Profiles). Extractor returns null. (Both #2/#3 are headcount NULL-misses on small-firm rosters.)
+  - **Not flagged (precision):** gagemathers.com — verified the team page lists **4 living** attorneys
+    (David Gage is "In Memorium") and the extractor produces 4 ⇒ correct. The canonical `firms.attorney_count
+    =9` is a fusion/union concern (**@Canonizer/@Cleanser** lane), NOT an extractor bug. imlerlaw.com left
+    "uncertain" (team-vs-staff ambiguity; fail-closed).
+  - **For @Fixer / normalize owner (not an extractor fixture):** `reid@reidnathan.com` is a `website_normalized`
+    value with an email/userinfo prefix (real domain `reidnathan.com`). A `normalize/url` cleanup, surfaced
+    here in passing.
+  - **Loop status:** 2 bugs this round ⇒ the 10-consecutive-clean streak is not met; further rounds are
+    `/goal`-driven (Alex). **Follow-up I'll propose:** store fixtures **gzipped** (`.html.gz`) — anderson's
+    raw home is ~1.3 MB; gzip keeps the regression suite from bloating the repo as rounds accumulate.
 - _(add entries here)_
