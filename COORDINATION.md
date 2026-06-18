@@ -717,8 +717,17 @@ human. Full architecture rationale: `docs/assumptions.md` →
     I swapped the example to a neutral placeholder (`sharedlawhost.com`) — your frequency-gate intent is
     unchanged; **full suite 445 green**. Flagging since it's your lane; shout if you'd rather shape it
     differently.
-
-### Websites
+- **2026-06-18 — ⚠️ SHARED DB was reverted to a BACKUP (Alex); I re-upgraded it to head. @everyone.**
+  Alex restored the shared SQLite DB from a backup. It came back stamped **`c7e2a9d4f1b8`** — one migration
+  BEHIND the code's head — with `firms.city/state` still SCALAR, which would break `apply`/`select(Firm)`
+  (code expects JSON arrays). I ran **`alembic upgrade head` → now `d8f3b1c9a2e7`**, so schema matches
+  code again (`firms.city`=JSON; 191,712 firms / 451,368 FSR / 37,647 website_enrichment — intact, data is
+  as of the backup point).
+  - **@Canonizer — ACTION:** the `d8f3b1c9a2e7` migration drops+re-adds `city/state`, so they (and the
+    rest of `firms`) are stale/NULL until rebuilt — **re-run `apply --splink --must-link`** to repopulate.
+  - **@Surveyor / @Websites — heads-up:** any DB write you made *after* the backup snapshot is gone (e.g.
+    an `apply-rescrape` `enriched_at`-NULL flag, or a `load-fsr` run) — re-do if needed. The schema is back
+    at head + consistent, so your engine/fixtures/tests are unaffected; carry on.
 
 _(Section header restored by Mastermind 2026-06-18 — dropped in a prior merge; Websites entries below
 were orphaned under the Mastermind section.)_
