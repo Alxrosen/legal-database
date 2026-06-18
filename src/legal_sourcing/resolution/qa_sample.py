@@ -74,7 +74,9 @@ GOLDEN_HEADER = ["case_id", "website", "field", "expected_value", "now_year", "n
 
 # Roles promoted into a committed fixture (extract_site keys off these names).
 FIXTURE_ROLES = ("home", "attorneys", "team", "about", "offices", "locations")
-EXCERPT_CHARS = 4000
+# Per-role visible-text cap in findings packets (enough for an attorney roster
+# without dumping a 250KB page into a judge's context).
+EXCERPT_CHARS = 2500
 
 
 # ---------------------------------------------------------------------------
@@ -218,12 +220,15 @@ def _firms_context(session: Session, website: str) -> dict[str, Any] | None:
 # Staging: recover the raw HTML crawl_firm just wrote, for fixtures + excerpt
 
 
-def _stage_pages(website: str, run_dir: Path) -> tuple[dict[str, str], str]:
+def _stage_pages(website: str, run_dir: Path) -> tuple[dict[str, str], dict[str, str]]:
+    """Recover the raw HTML crawl_firm just wrote -> stage as plain .html (for
+    fixtures) and return per-role visible text (the distilled signal a judge
+    reads — esp. the attorneys/team roster, which a home-biased blob truncates)."""
     base = get_settings().raw_data_dir / "firm_websites"
     bucket = _bucket(website)
     gzs = sorted(base.glob(f"*/{bucket}/*.html.gz"), key=lambda p: p.stat().st_mtime)
     if not gzs:
-        return {}, ""
+        return {}, {}
     # Latest gz per role wins (mtime-sorted; later overwrites earlier).
     by_role: dict[str, Path] = {}
     for gz in gzs:
@@ -233,14 +238,14 @@ def _stage_pages(website: str, run_dir: Path) -> tuple[dict[str, str], str]:
     out_dir = run_dir / "pages" / bucket
     out_dir.mkdir(parents=True, exist_ok=True)
     staged: dict[str, str] = {}
-    texts: list[str] = []
+    page_text: dict[str, str] = {}
     for role, gz in by_role.items():
         html = _read_gz(gz)
         fp = out_dir / f"{role}.html"
         fp.write_bytes(html)
         staged[role] = _rel(fp)
-        texts.append(_visible_text(_tree(html)))
-    return staged, " ".join(texts)[:EXCERPT_CHARS]
+        page_text[role] = _visible_text(_tree(html))[:EXCERPT_CHARS]
+    return staged, page_text
 
 
 # ---------------------------------------------------------------------------
@@ -365,13 +370,13 @@ def _inspect_has_website(
     }
     if packet["status"] == "unreachable":
         packet["staged_pages"] = {}
-        packet["text_excerpt"] = ""
+        packet["page_text"] = {}
         packet["drift"] = []
         packet["suspicion"] = ["unreachable_live"]
         return packet
-    staged, excerpt = _stage_pages(website, run_dir)
+    staged, page_text = _stage_pages(website, run_dir)
     packet["staged_pages"] = staged
-    packet["text_excerpt"] = excerpt
+    packet["page_text"] = page_text
     packet["drift"] = _drift(fresh, baseline)
     packet["suspicion"] = _suspicion(website, fresh, firms_ctx, baseline, now_year)
     return packet
@@ -473,7 +478,7 @@ def cmd_sample(args: argparse.Namespace) -> int:
             f"staged raw HTML under {_rel(run_dir / 'pages')}/"
         )
     print(
-        "  -> Hand packets to sampling sub-agents to JUDGE (read text_excerpt / staged HTML); "
+        "  -> Hand packets to sampling sub-agents to JUDGE (read page_text / staged HTML); "
         "confirmed bugs -> `qa_sample capture`."
     )
     return 0
