@@ -307,8 +307,9 @@ def _suspicion(
     nm = (firms_ctx or {}).get("name")
     if nm and is_low_quality_firm_name(nm, host=website):
         flags.append("low_quality_firm_name")
-    if (firms_ctx or {}).get("firm_row_count", 1) > 1:
-        flags.append("multi_firm_for_domain")
+    # NB: a domain mapping to >1 firm row is an under-MERGE signal — Canonizer's
+    # lane, NOT a Surveyor finding (handoff SCOPE). firm_row_count stays in the
+    # firms context for awareness, but we deliberately do not flag on it.
     return flags
 
 
@@ -440,8 +441,13 @@ def cmd_sample(args: argparse.Namespace) -> int:
                     f"cand={f['heuristic_candidates']} lowq={f['low_quality_name']}"
                 )
         else:
-            websites = _random_firm_websites(session, args.random, min_records=args.min_records)
-            print(f"=== QA has-website sample ({len(websites)}) — run {run_ts} ===")
+            if args.domains:
+                websites = [d.strip().lower() for d in args.domains.split(",") if d.strip()]
+                src = "targeted"
+            else:
+                websites = _random_firm_websites(session, args.random, min_records=args.min_records)
+                src = "random"
+            print(f"=== QA has-website sample ({len(websites)}, {src}) — run {run_ts} ===")
             packets = []
             with FirmWebsiteScraper() as scraper:
                 for w in websites:
@@ -621,6 +627,11 @@ def main() -> int:
     )
     g = s.add_mutually_exclusive_group(required=True)
     g.add_argument("--random", type=int, help="N has-website firms to fetch + verify")
+    g.add_argument(
+        "--domains",
+        help="comma-separated domains to inspect directly (targeted; e.g. seed the "
+        "known cases gagemathers.com,walmart.com)",
+    )
     g.add_argument("--no-website", type=int, help="N website-less firms to surface for search")
     s.add_argument("--min-records", type=int, default=1, help="min source records behind a domain")
     s.set_defaults(func=cmd_sample)
