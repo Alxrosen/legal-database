@@ -1,0 +1,4 @@
+# Surveyor QA golden fixtures live here, one dir per case_id:
+#   tests/fixtures/qa_cases/<case_id>/{home,attorneys,about,team,offices}.html
+# Committed raw HTML so the extractor regression suite runs offline (no re-fetch).
+# Written by `qa_sample capture`; asserted by tests/test_extraction_golden.py.

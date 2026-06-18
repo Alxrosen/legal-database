@@ -1,0 +1,5 @@
+# Transient per-run QA artifacts (timestamp dirs hold staged raw HTML + findings.json).
+# The committed form of a bad case is the fixture under tests/fixtures/qa_cases/.
+# Keep the durable queues (to_review.jsonl, rescrape_queue.jsonl) tracked.
+*/
+!.gitignore

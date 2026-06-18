@@ -50,3 +50,8 @@ notebooks/*
 
 # Canonization dry-run artifacts (regenerable; clusters.csv is ~450k rows)
 data/dry_run/
+
+# Surveyor QA: transient per-run artifacts (staged raw HTML + findings.json).
+# The committed form of a bad case is the fixture under tests/fixtures/qa_cases/;
+# the durable queues (data/qa/{to_review,rescrape_queue}.jsonl) stay tracked.
+data/qa/*/
