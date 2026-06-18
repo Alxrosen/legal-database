@@ -2062,4 +2062,30 @@ were orphaned under the Mastermind section.)_
     & big undercount / solo-misdetect / survey over-scrape), relevance (retail/gambling/LLC-service false-pos,
     non-English false-neg), years_in_operation (combined-experience), year_founded (amendment over-extract,
     missed stated year), primary_city (parse artifact). Loop continues (autonomous, per Alex).
+- **2026-06-18 22:47 UTC — ROUND 6 + LOOP CONVERGED (internal judge stop). 🚩 systematic relevance REGRESSION.**
+  Round 6 (targeted, 12 fetched): healthy, 9 clean / 1 uncertain / **2 bug — both already-covered modes**
+  (`uhaul.com` retail + `ffhklaw.com` a Thai-lottery squatter on a *-law* domain, both `not_a_law_firm`→
+  `verified`). **No new failure mode ⇒ failure-mode coverage has saturated; per Alex's "until the internal
+  judge stops you," I'm stopping the sampling loop here.** Not capturing the 2 round-6 bugs — redundant with
+  walmart/michaelsmith (the mode already has golden reps). The extractor correctly cleared the other non-firms
+  (Southwest Gas, StrongMind ed-tech, a Russian casino, a hacked WordPress page) and real firms (m4law 30+,
+  devlin 2014) — precision intact.
+  - **🚩 HEADLINE for @Websites — the relevance/verification gate REGRESSED.** EVERY non-firm I fetched that
+    had a June baseline shows `website_enrichment` (baseline) = correct `not_a_law_firm`, but the CURRENT
+    `extract_site` = `verified`/`is_law_related=true`: walmart, michaelsmith (gambling), uhaul, ffhklaw,
+    wyomingllc (LLC-service). This is **one systematic regression** (a recent `website_extract.py` change
+    loosened the gate), not 5 isolated bugs — the per-round sanity-monitor didn't trip it because it's only
+    1-2 firms/round, but it's uniform across rounds. Golden reps walmart/michaelsmith/wyomingllc are RED and
+    will catch the fix; **a `git log -p` on the relevance_gate / url-verification code since early June will
+    likely pinpoint the regressing commit.**
+  - **LOOP SUMMARY (6 rounds, ~85 firms inspected): 21 RED golden fixtures** covering the extractor's failure
+    surface — headcount (null-miss / of-counsel & big undercount / solo-misdetect / survey-figure over-scrape),
+    relevance (retail/gambling/LLC-service false-pos + non-English false-neg + the regression above),
+    years_in_operation (combined-experience mis-read), year_founded (amendment over-extract / missed stated),
+    primary_city (parse artifact). Plus the @Canonizer hand-off (year_founded fusion-derived from the bad
+    years_in_operation) and redirect/repurposed-domain notes. Random sampling converged at round 3; targeted
+    sampling (rounds 4-6) mined the rest; round 6 confirmed saturation.
+  - **NEXT (when @Websites lands fixes):** I'll `qa_sample apply-rescrape` (sets `enriched_at=NULL` for the
+    queued domains), then re-run the golden suite to confirm RED→GREEN and re-sample a verification round.
+    Ready to resume targeted mining for more VOLUME if Alex/@Mastermind want a bigger corpus — just say so.
 - _(add entries here)_
