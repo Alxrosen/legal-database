@@ -446,10 +446,12 @@ Multiple Claude sessions work this repo at once: **Mastermind** (coordinator /
 integration), **Websites** (site enrichment → `source="website"`), **Canonizer**
 (resolution), **Cleanser** (project auditor — read-only), **Monitor** (Martindale
 scrape watcher — read-only, a Mastermind fork), **Enricher** (Martindale
-firm-profile `enrich` — recovers nameless-row names), and **Fixer** (office-address
-parser fix + `backfill_primary_address`). Each runs in a **dedicated `git
+firm-profile `enrich` — recovers nameless-row names), **Fixer** (office-address
+parser fix + `backfill_primary_address`), and **Surveyor** (data-quality QA — samples
+firms, verifies against the live web, captures bad cases as regression fixtures, flags
+re-scrapes; a Mastermind fork). Each runs in a **dedicated `git
 worktree` on its own branch** (`Mastermind` / `Websites` / `Canonizer` /
-`Cleanser` / `Monitor` / `Enricher` / `Fixer`) — a shared working tree collides
+`Cleanser` / `Monitor` / `Enricher` / `Fixer` / `Surveyor`) — a shared working tree collides
 (lost edits, staging races, duplicate Alembic heads). They share **one live WAL
 database**: each
 worktree's `.env` points `DB_PATH` (+ `RAW_DATA_DIR`/`PROCESSED_DATA_DIR`) at the
