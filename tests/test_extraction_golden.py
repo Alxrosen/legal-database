@@ -20,11 +20,11 @@ import pytest
 
 from legal_sourcing.enrichment.website_extract import extract_site
 from legal_sourcing.resolution.qa_sample import (
-    FIXTURE_ROLES,
     FIXTURES_DIR,
     GOLDEN_CSV,
     GOLDEN_FIELDS,
     GOLDEN_HEADER,
+    read_fixture_pages,
 )
 
 
@@ -38,13 +38,7 @@ def _golden_rows() -> list[dict[str, str]]:
 
 
 def _load_pages(case_id: str) -> list[tuple[str, bytes]]:
-    case_dir = FIXTURES_DIR / case_id
-    pages: list[tuple[str, bytes]] = []
-    for role in FIXTURE_ROLES:
-        fp = case_dir / f"{role}.html"
-        if fp.exists():
-            pages.append((role, fp.read_bytes()))
-    return pages
+    return read_fixture_pages(FIXTURES_DIR / case_id)
 
 
 _ROWS = _golden_rows()
@@ -66,8 +60,8 @@ def test_golden_csv_is_wellformed() -> None:
         for row in reader:
             assert row["field"] in GOLDEN_FIELDS, f"unknown field {row['field']!r}"
             case_dir = FIXTURES_DIR / row["case_id"]
-            assert (case_dir / "home.html").exists(), (
-                f"missing fixture home.html for {row['case_id']}"
+            assert (case_dir / "home.html.gz").exists() or (case_dir / "home.html").exists(), (
+                f"missing fixture home page for {row['case_id']}"
             )
             int(row["now_year"])  # parses
 

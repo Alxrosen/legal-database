@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 from legal_sourcing.models.base import Base
 from legal_sourcing.pipelines import enrich_websites as ew
 from legal_sourcing.pipelines.enrich_websites import _bucket
-from legal_sourcing.resolution.qa_sample import FIXTURE_ROLES, FIXTURES_DIR, GOLDEN_CSV
+from legal_sourcing.resolution.qa_sample import FIXTURES_DIR, GOLDEN_CSV, read_fixture_pages
 
 # Golden field -> the website_enrichment column it lands in (only the fields the
 # crawl cache actually stores; e.g. year_founded / name_normalized live elsewhere).
@@ -40,14 +40,15 @@ _FIELD_TO_COLUMN = {
 }
 
 
-def _seed_raw(raw_dir, website: str, pages: dict[str, str]) -> None:
+def _seed_raw(raw_dir, website: str, pages: dict[str, str | bytes]) -> None:
     """Write the gz bucket + home sidecar that run_load reads from disk."""
     bucket = _bucket(website)
     d = raw_dir / "firm_websites" / "2026-06-18" / bucket
     d.mkdir(parents=True, exist_ok=True)
     for role, html in pages.items():
+        data = html if isinstance(html, bytes) else html.encode("utf-8")
         with gzip.open(d / f"{role}.html.gz", "wb") as f:
-            f.write(html.encode("utf-8"))
+            f.write(data)
     (d / "home.json").write_text(
         json.dumps(
             {"url": f"https://{website}/", "final_url": f"https://{website}/", "status": 200}
@@ -118,12 +119,8 @@ _DB_CASES = _golden_db_cases()
 )
 def test_golden_case_survives_load(tmp_path, monkeypatch, row: dict[str, str]) -> None:
     case_dir = FIXTURES_DIR / row["case_id"]
-    pages = {
-        role: (case_dir / f"{role}.html").read_text(encoding="utf-8", errors="replace")
-        for role in FIXTURE_ROLES
-        if (case_dir / f"{role}.html").exists()
-    }
-    assert "home" in pages, f"missing home.html for {row['case_id']}"
+    pages = {role: html for role, html in read_fixture_pages(case_dir)}
+    assert "home" in pages, f"missing home page for {row['case_id']}"
     eng = _run_load_into(tmp_path, monkeypatch, row["website"], pages)
     column = _FIELD_TO_COLUMN[row["field"]]
     with Session(eng) as s:

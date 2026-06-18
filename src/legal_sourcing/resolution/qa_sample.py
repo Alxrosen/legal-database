@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gzip
 import json
 import re
 import sys
@@ -77,6 +78,25 @@ FIXTURE_ROLES = ("home", "attorneys", "team", "about", "offices", "locations")
 # Per-role visible-text cap in findings packets (enough for an attorney roster
 # without dumping a 250KB page into a judge's context).
 EXCERPT_CHARS = 2500
+
+
+def read_fixture_pages(case_dir: Path) -> list[tuple[str, bytes]]:
+    """Load a committed fixture's pages as (role, html-bytes) for ``extract_site``.
+
+    Fixtures are stored gzipped (``<role>.html.gz`` — the production raw-cache
+    form, ~5-10x smaller in git); plain ``<role>.html`` is accepted as a fallback
+    for any legacy fixture. Single loader shared by both regression tests so the
+    storage format lives in exactly one place.
+    """
+    pages: list[tuple[str, bytes]] = []
+    for role in FIXTURE_ROLES:
+        gz = case_dir / f"{role}.html.gz"
+        raw = case_dir / f"{role}.html"
+        if gz.exists():
+            pages.append((role, gzip.decompress(gz.read_bytes())))
+        elif raw.exists():
+            pages.append((role, raw.read_bytes()))
+    return pages
 
 
 # ---------------------------------------------------------------------------
@@ -532,17 +552,20 @@ def cmd_capture(args: argparse.Namespace) -> int:
         )
         return 2
 
-    # 1. Promote staged raw HTML -> committed fixture (only the extractor roles).
+    # 1. Promote staged raw HTML -> committed fixture, GZIPPED (.html.gz) — the
+    #    same on-disk form as the production raw cache (pipelines.enrich_websites),
+    #    so the suite reads it exactly like production (run_load / _read_gz) and a
+    #    1MB page costs ~100KB in git. read_fixture_pages decompresses for tests.
     dest = FIXTURES_DIR / case_id
     dest.mkdir(parents=True, exist_ok=True)
     promoted = []
     for role in FIXTURE_ROLES:
         sp = src_pages / f"{role}.html"
         if sp.exists():
-            (dest / f"{role}.html").write_bytes(sp.read_bytes())
+            (dest / f"{role}.html.gz").write_bytes(gzip.compress(sp.read_bytes()))
             promoted.append(role)
     if "home" not in promoted:
-        print(f"refusing to capture {website}: no home.html staged", file=sys.stderr)
+        print(f"refusing to capture {website}: no home page staged", file=sys.stderr)
         return 2
 
     now_year = args.now_year or _now().year

@@ -1,4 +1,6 @@
 # Surveyor QA golden fixtures live here, one dir per case_id:
-#   tests/fixtures/qa_cases/<case_id>/{home,attorneys,about,team,offices}.html
-# Committed raw HTML so the extractor regression suite runs offline (no re-fetch).
-# Written by `qa_sample capture`; asserted by tests/test_extraction_golden.py.
+#   tests/fixtures/qa_cases/<case_id>/{home,attorneys,about,team,offices}.html.gz
+# Committed GZIPPED raw HTML (same form as the production raw cache; ~5-10x smaller
+# in git, binary so no CRLF churn) so the extractor regression suite runs offline,
+# no re-fetch. Written by `qa_sample capture`; loaded via qa_sample.read_fixture_pages;
+# asserted by tests/test_extraction_golden.py + tests/test_qa_regression_db.py.
