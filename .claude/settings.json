@@ -8,5 +8,20 @@
       "WebFetch",
       "WebFetch(domain:*)"
     ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Workflow",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"IDIOMATIC-FIRST CHECK (before orchestrating this multi-agent plan): confirm you have researched the most effective, idiomatic, best-practice way to do this. Lead with the standard/established approach; REUSE existing functions, utilities, and modules instead of reinventing; and verify the design is genuinely best-practice before fanning out agents. If you have not validated the approach against how this is normally done, do that research FIRST.\"}}'",
+            "statusMessage": "Idiomatic-first check"
+          }
+        ]
+      }
+    ]
   }
 }
