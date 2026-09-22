@@ -43,6 +43,9 @@ Used 6 Agents in tandem with a coordination workflow.
 Discovered the usefulness of the following phrase:
 "research the most *idiomatic, efficient, and effective* way ..."
 
+Prompted for the creation of a COORDINATION.md document that helped to facilitate
+agentic collaboration. 
+
 This prioritized properly-documented paths that accomplished the goal and did so in
 a simple way. 
 
