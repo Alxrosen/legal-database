@@ -39,7 +39,7 @@ Used 6 Agents in tandem with a coordination workflow.
    repetitive, incorrect, or poorly-documented parts of the project. Found very
    few. 
 
-# Prompting
+### Prompting
 Discovered the usefulness of the following phrase:
 "research the most *idiomatic, efficient, and effective* way ..."
 
